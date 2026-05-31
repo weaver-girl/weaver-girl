@@ -1,0 +1,8 @@
+# Example YAML-based hook configuration
+interceptors:
+  - className: "com.github.cc11001100.weavergirl.sample.app.TargetService"
+    method: "greet"
+    before: "com.github.cc11001100.weavergirl.sample.interceptor.SampleYamlInterceptor"
+  - className: "com.github.cc11001100.weavergirl.sample.app.TargetService"
+    methodPattern: "calc.*"
+    after: "com.github.cc11001100.weavergirl.sample.interceptor.SampleYamlInterceptor"
