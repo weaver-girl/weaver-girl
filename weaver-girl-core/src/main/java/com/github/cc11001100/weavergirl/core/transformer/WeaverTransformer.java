@@ -1,0 +1,103 @@
+// weaver-girl-core/src/main/java/com/github/cc11001100/weavergirl/core/transformer/WeaverTransformer.java
+package com.github.cc11001100.weavergirl.core.transformer;
+
+import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
+import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
+import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.core.InterceptAdvice;
+import net.bytebuddy.agent.builder.AgentBuilder;
+import net.bytebuddy.description.type.TypeDescription;
+import net.bytebuddy.dynamic.DynamicType;
+import net.bytebuddy.utility.JavaModule;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.lang.instrument.Instrumentation;
+import java.security.ProtectionDomain;
+
+import static net.bytebuddy.matcher.ElementMatchers.*;
+
+/**
+ * Core transformer that registers ByteBuddy type transformers
+ * based on registered interceptor definitions.
+ */
+public class WeaverTransformer {
+
+    private static final Logger log = LoggerFactory.getLogger(WeaverTransformer.class);
+
+    private final InterceptorRegistry registry;
+
+    public WeaverTransformer(InterceptorRegistry registry) {
+        this.registry = registry;
+    }
+
+    /**
+     * Install this transformer onto the given Instrumentation instance.
+     */
+    public void install(Instrumentation instrumentation) {
+        AgentBuilder agentBuilder = new AgentBuilder.Default()
+                .disableClassFormatChanges()
+                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+                .with(new AgentBuilder.Listener.Adapter() {
+                    @Override
+                    public void onTransformation(TypeDescription typeDescription, ClassLoader classLoader,
+                                                  JavaModule module, boolean loaded, DynamicType dynamicType) {
+                        log.info("Transformed class: {}", typeDescription.getName());
+                    }
+
+                    @Override
+                    public void onError(String typeName, ClassLoader classLoader,
+                                        JavaModule module, boolean loaded, Throwable throwable) {
+                        log.warn("Error transforming class {}: {}", typeName, throwable.getMessage());
+                    }
+                });
+
+        for (InterceptorDefinition definition : registry.getAllDefinitions()) {
+            ClassMatcher classMatcher = definition.getPointcut().getClassMatcher();
+            net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> typeMatcher = buildTypeMatcher(classMatcher);
+            if (typeMatcher != null) {
+                agentBuilder = agentBuilder
+                        .type(typeMatcher)
+                        .transform((builder, typeDescription, classLoader, module, protectionDomain) ->
+                                builder.visit(net.bytebuddy.asm.Advice.to(InterceptAdvice.class)
+                                        .on(buildMethodMatcher(definition.getPointcut().getMethodMatcher())))
+                        );
+            }
+        }
+
+        agentBuilder.installOn(instrumentation);
+        log.info("WeaverTransformer installed with {} interceptor definitions", registry.getAllDefinitions().size());
+    }
+
+    private net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> buildTypeMatcher(ClassMatcher classMatcher) {
+        switch (classMatcher.getMatchType()) {
+            case EXACT_NAME:
+                return named(classMatcher.getPattern());
+            case NAME_PATTERN:
+                return nameMatches(classMatcher.getPattern());
+            case ANNOTATION:
+                return isAnnotatedWith(named(classMatcher.getPattern()));
+            case SUPER_CLASS:
+                return hasSuperType(named(classMatcher.getPattern()));
+            case INTERFACE:
+                return hasSuperType(isInterface().and(named(classMatcher.getPattern())));
+            default:
+                log.warn("Unsupported class match type: {}", classMatcher.getMatchType());
+                return null;
+        }
+    }
+
+    private net.bytebuddy.matcher.ElementMatcher.Junction<net.bytebuddy.description.method.MethodDescription> buildMethodMatcher(
+            com.github.cc11001100.weavergirl.api.matcher.MethodMatcher methodMatcher) {
+        switch (methodMatcher.getMatchType()) {
+            case EXACT_NAME:
+                return named(methodMatcher.getPattern());
+            case NAME_PATTERN:
+                return nameMatches(methodMatcher.getPattern());
+            case ANY:
+                return isMethod();
+            default:
+                return isMethod();
+        }
+    }
+}
