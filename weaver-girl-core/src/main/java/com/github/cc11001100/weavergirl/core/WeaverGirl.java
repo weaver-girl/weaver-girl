@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.instrument.Instrumentation;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -28,25 +29,30 @@ public class WeaverGirl {
     private static final Logger log = LoggerFactory.getLogger(WeaverGirl.class);
 
     private final InterceptorRegistry registry;
+    private final PluginLoader pluginLoader;
     private Instrumentation instrumentation;
 
     private WeaverGirl() {
         this.registry = new DefaultInterceptorRegistry();
+        this.pluginLoader = new PluginLoader();
     }
 
     /**
      * Bootstrap the agent — called from premain/agentmain.
      * Loads plugins via SPI and installs the transformer.
+     *
+     * @param instrumentation the JVM Instrumentation instance
+     * @param config agent configuration properties (may be empty)
      */
-    public static WeaverGirl bootstrap(Instrumentation instrumentation) {
+    public static WeaverGirl bootstrap(Instrumentation instrumentation, java.util.Map<String, String> config) {
         log.info("WeaverGirl agent starting...");
         WeaverGirl weaverGirl = new WeaverGirl();
         weaverGirl.instrumentation = instrumentation;
 
         InterceptorHolder.setRegistry(weaverGirl.registry);
 
-        PluginLoader pluginLoader = new PluginLoader();
-        pluginLoader.loadPlugins(WeaverGirl.class.getClassLoader(), weaverGirl.registry);
+        weaverGirl.pluginLoader.loadPlugins(WeaverGirl.class.getClassLoader(), weaverGirl.registry,
+                config != null ? config : Collections.emptyMap());
 
         WeaverTransformer transformer = new WeaverTransformer(weaverGirl.registry);
         transformer.install(instrumentation);
@@ -54,6 +60,25 @@ public class WeaverGirl {
         log.info("WeaverGirl agent started with {} interceptor definitions",
                 weaverGirl.registry.getAllDefinitions().size());
         return weaverGirl;
+    }
+
+    /**
+     * Bootstrap the agent — called from premain/agentmain.
+     * Loads plugins via SPI and installs the transformer.
+     */
+    public static WeaverGirl bootstrap(Instrumentation instrumentation) {
+        return bootstrap(instrumentation, Collections.emptyMap());
+    }
+
+    /**
+     * Shutdown the agent — destroy all plugins and clean up.
+     * Should be called from a shutdown hook.
+     */
+    public void shutdown() {
+        log.info("WeaverGirl agent shutting down...");
+        pluginLoader.destroyAll();
+        InterceptorHolder.setRegistry(null);
+        log.info("WeaverGirl agent shut down complete");
     }
 
     /**

@@ -19,6 +19,14 @@ public interface InterceptorRegistry {
     void register(InterceptorDefinition definition);
 
     /**
+     * Unregister an interceptor definition by name.
+     *
+     * @param name the name of the interceptor definition to remove
+     * @return true if a definition was removed, false if not found
+     */
+    boolean unregister(String name);
+
+    /**
      * Get all interceptor definitions that match the given class name.
      */
     List<InterceptorDefinition> getInterceptorsForClass(String className);
