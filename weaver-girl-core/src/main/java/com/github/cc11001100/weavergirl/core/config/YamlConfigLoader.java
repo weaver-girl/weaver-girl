@@ -182,6 +182,22 @@ public class YamlConfigLoader {
                 errors.add("no before, after, or around advice class specified");
             }
 
+            // Validate regex patterns
+            if (ic.getClassPattern() != null && !ic.getClassPattern().isEmpty()) {
+                try {
+                    java.util.regex.Pattern.compile(ic.getClassPattern());
+                } catch (java.util.regex.PatternSyntaxException e) {
+                    errors.add("invalid classPattern regex: " + e.getMessage());
+                }
+            }
+            if (ic.getMethodPattern() != null && !ic.getMethodPattern().isEmpty()) {
+                try {
+                    java.util.regex.Pattern.compile(ic.getMethodPattern());
+                } catch (java.util.regex.PatternSyntaxException e) {
+                    errors.add("invalid methodPattern regex: " + e.getMessage());
+                }
+            }
+
             if (errors.isEmpty()) {
                 valid.add(ic);
             } else {

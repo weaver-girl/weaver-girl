@@ -30,11 +30,22 @@ public class ConfigWatcher {
     private volatile long lastReloadTime = 0;
     private static final long DEBOUNCE_MILLIS = 2000;
     private Thread watcherThread;
+    private Runnable afterReloadCallback;
 
     public ConfigWatcher(String configPath, InterceptorRegistry registry) {
         this.configPath = configPath;
         this.registry = registry;
         this.configLoader = new YamlConfigLoader();
+    }
+
+    /**
+     * Set a callback to be invoked after a successful config reload.
+     * Typically used to trigger retransformation of already-loaded classes.
+     *
+     * @param callback the callback to run after reload
+     */
+    public void setAfterReloadCallback(Runnable callback) {
+        this.afterReloadCallback = callback;
     }
 
     /**
@@ -80,6 +91,10 @@ public class ConfigWatcher {
                                 configLoader.loadFromFile(configPath, registry);
                                 log.info("Config reloaded with {} interceptors",
                                         registry.getAllDefinitions().size());
+                                // Trigger retransform after reload
+                                if (afterReloadCallback != null) {
+                                    afterReloadCallback.run();
+                                }
                             } catch (Exception e) {
                                 log.error("Failed to reload config: {}", e.getMessage());
                             }

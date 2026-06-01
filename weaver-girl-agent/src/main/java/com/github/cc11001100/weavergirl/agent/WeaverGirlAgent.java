@@ -67,6 +67,7 @@ public class WeaverGirlAgent {
                 // Start config watcher if watch=true
                 if ("true".equalsIgnoreCase(args.get("watch"))) {
                     configWatcher = new ConfigWatcher(configPath, weaverGirl.getRegistry());
+                    configWatcher.setAfterReloadCallback(() -> weaverGirl.retransformLoadedClasses());
                     configWatcher.start();
                 }
             }

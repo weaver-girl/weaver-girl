@@ -164,15 +164,26 @@ public class WeaverTransformer {
 
     private net.bytebuddy.matcher.ElementMatcher.Junction<net.bytebuddy.description.method.MethodDescription> buildMethodMatcher(
             com.github.cc11001100.weavergirl.api.matcher.MethodMatcher methodMatcher) {
+        net.bytebuddy.matcher.ElementMatcher.Junction<net.bytebuddy.description.method.MethodDescription> userMatcher;
         switch (methodMatcher.getMatchType()) {
             case EXACT_NAME:
-                return named(methodMatcher.getPattern());
+                userMatcher = named(methodMatcher.getPattern());
+                break;
             case NAME_PATTERN:
-                return nameMatches(methodMatcher.getPattern());
+                userMatcher = nameMatches(methodMatcher.getPattern());
+                break;
             case ANY:
-                return isMethod();
+                userMatcher = isMethod();
+                break;
             default:
-                return isMethod();
+                userMatcher = isMethod();
         }
+        // Always exclude bridge, synthetic, native, and abstract methods
+        // These cannot be or should not be instrumented by ByteBuddy Advice
+        return userMatcher
+                .and(not(isBridge()))
+                .and(not(isSynthetic()))
+                .and(not(isNative()))
+                .and(not(isAbstract()));
     }
 }

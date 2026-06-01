@@ -43,10 +43,23 @@ public class PluginJarScanner {
         List<PluginClassLoader> classLoaders = new ArrayList<>();
         for (File jar : jars) {
             try {
-                URL jarUrl = jar.toURI().toURL();
-                PluginClassLoader cl = new PluginClassLoader(new URL[]{jarUrl}, parentClassLoader);
+                List<URL> urls = new ArrayList<>();
+                urls.add(jar.toURI().toURL());
+
+                // Scan lib/ subdirectory next to the plugin JAR for dependency JARs
+                File libDir = new File(jar.getParent(), "lib");
+                if (libDir.isDirectory()) {
+                    File[] libJars = libDir.listFiles((libDirectory, name) -> name.endsWith(".jar"));
+                    if (libJars != null) {
+                        for (File libJar : libJars) {
+                            urls.add(libJar.toURI().toURL());
+                        }
+                    }
+                }
+
+                PluginClassLoader cl = new PluginClassLoader(urls.toArray(new URL[0]), parentClassLoader);
                 classLoaders.add(cl);
-                log.info("Loaded plugin JAR: {} (ClassLoader: {})", jar.getName(), cl);
+                log.info("Loaded plugin JAR: {} with {} URLs (ClassLoader: {})", jar.getName(), urls.size(), cl);
             } catch (Exception e) {
                 log.error("Failed to load plugin JAR {}: {}", jar.getName(), e.getMessage());
             }

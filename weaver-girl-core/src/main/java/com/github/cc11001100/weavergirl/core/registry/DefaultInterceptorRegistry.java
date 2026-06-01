@@ -2,6 +2,7 @@
 package com.github.cc11001100.weavergirl.core.registry;
 
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
+import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,8 +42,24 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
         if (indexDirty) {
             rebuildIndex();
         }
-        List<InterceptorDefinition> cached = classIndex.get(className);
-        return cached != null ? cached : Collections.emptyList();
+        List<InterceptorDefinition> result = new ArrayList<>(classIndex.getOrDefault(className, Collections.emptyList()));
+
+        // Also check non-EXACT_NAME matchers (pattern, annotation, super, interface)
+        // These can't be indexed by class name, so we scan all definitions
+        for (InterceptorDefinition def : definitions) {
+            ClassMatcher classMatcher = def.getPointcut().getClassMatcher();
+            if (classMatcher.getMatchType() != ClassMatcher.MatchType.EXACT_NAME) {
+                if (classMatcher.matches(className)) {
+                    if (!result.contains(def)) {
+                        result.add(def);
+                    }
+                }
+            }
+        }
+
+        // Sort by priority
+        result.sort(Comparator.comparingInt(InterceptorDefinition::getPriority));
+        return result;
     }
 
     @Override

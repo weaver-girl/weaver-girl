@@ -35,7 +35,7 @@ public class InterceptAdvice {
     public static MethodInvocation onMethodEnter(
             @Advice.Origin Class<?> targetClass,
             @Advice.Origin Method method,
-            @Advice.This Object target,
+            @Advice.This(optional = true) Object target,
             @Advice.AllArguments Object[] arguments) {
         try {
             InterceptorHolder.incrementInterceptorInvocationCount();

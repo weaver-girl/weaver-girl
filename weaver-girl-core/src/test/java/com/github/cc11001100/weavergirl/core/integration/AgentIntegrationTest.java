@@ -49,8 +49,18 @@ class AgentIntegrationTest {
         }
     }
 
+    /** Target class with a static method for testing static interception. */
+    public static class StaticTargetService {
+        public static String staticGreet(String name) {
+            return "Static Hello, " + name;
+        }
+    }
+
     private static final String TARGET_CLASS =
             "com.github.cc11001100.weavergirl.core.integration.AgentIntegrationTest$TargetService";
+
+    private static final String STATIC_TARGET_CLASS =
+            "com.github.cc11001100.weavergirl.core.integration.AgentIntegrationTest$StaticTargetService";
 
     private static Instrumentation instrumentation;
     private DefaultInterceptorRegistry registry;
@@ -212,6 +222,77 @@ class AgentIntegrationTest {
         assertEquals("Integration", capturedArg.get());
         assertEquals("Hello, Integration", capturedReturn.get());
         assertEquals("Hello, Integration", result);
+    }
+
+    @Test
+    void staticMethodInterception_targetIsNull() {
+        AtomicBoolean beforeCalled = new AtomicBoolean(false);
+        AtomicReference<Object> capturedTarget = new AtomicReference<>();
+        AtomicReference<String> capturedMethodName = new AtomicReference<>();
+        AtomicReference<Object> capturedReturn = new AtomicReference<>();
+
+        Interceptor interceptor = new Interceptor() {
+            @Override
+            public void before(MethodInvocation inv) {
+                beforeCalled.set(true);
+                capturedTarget.set(inv.getTarget());
+                capturedMethodName.set(inv.getMethodName());
+            }
+
+            @Override
+            public void after(MethodInvocation inv) {
+                capturedReturn.set(inv.getReturnValue());
+            }
+        };
+
+        registry.register(new InterceptorDefinition("test-static",
+                new Pointcut(ClassMatcher.byName(STATIC_TARGET_CLASS), MethodMatcher.byName("staticGreet")),
+                interceptor));
+
+        installTransformer();
+
+        String result = StaticTargetService.staticGreet("World");
+
+        assertTrue(beforeCalled.get(), "before() should have been called for static method");
+        assertNull(capturedTarget.get(), "target should be null for static methods");
+        assertEquals("staticGreet", capturedMethodName.get(), "Method name should be captured correctly");
+        assertEquals("Static Hello, World", capturedReturn.get(), "Return value should be captured");
+        assertEquals("Static Hello, World", result, "Original return value should be preserved");
+    }
+
+    @Test
+    void staticMethodInterception_beforeAndAfterCallbacksWork() {
+        AtomicBoolean beforeCalled = new AtomicBoolean(false);
+        AtomicBoolean afterCalled = new AtomicBoolean(false);
+        AtomicReference<Object> capturedReturn = new AtomicReference<>();
+
+        Interceptor interceptor = new Interceptor() {
+            @Override
+            public void before(MethodInvocation inv) {
+                beforeCalled.set(true);
+                assertNull(inv.getTarget(), "Target should be null for static methods");
+            }
+
+            @Override
+            public void after(MethodInvocation inv) {
+                afterCalled.set(true);
+                capturedReturn.set(inv.getReturnValue());
+            }
+        };
+
+        registry.register(new InterceptorDefinition("test-static-callbacks",
+                new Pointcut(ClassMatcher.byName(STATIC_TARGET_CLASS), MethodMatcher.byName("staticGreet")),
+                interceptor));
+
+        WeaverTransformer transformer = new WeaverTransformer(registry);
+        transformer.install(instrumentation);
+        transformer.retransformLoadedClasses();
+
+        String result = StaticTargetService.staticGreet("World");
+        assertTrue(beforeCalled.get(), "before() should be called for static methods");
+        assertTrue(afterCalled.get(), "after() should be called for static methods");
+        assertEquals("Static Hello, World", capturedReturn.get(), "Return value should be captured");
+        assertEquals("Static Hello, World", result, "Original return value should be preserved");
     }
 
     private void installTransformer() {
