@@ -11,12 +11,59 @@ public class WeaverConfig {
 
     private List<InterceptorConfig> interceptors = new ArrayList<>();
 
+    // Agent-level settings
+    private Integer samplingThreshold;      // invocations/second threshold
+    private Integer circuitBreakerFailures;  // consecutive failures before opening
+    private Long circuitBreakerCooldown;     // cooldown in milliseconds
+    private List<String> excludedClasses;    // class name patterns to exclude from instrumentation
+    private String logLevel;                 // TRACE, DEBUG, INFO, WARN, ERROR
+
     public List<InterceptorConfig> getInterceptors() {
         return interceptors;
     }
 
     public void setInterceptors(List<InterceptorConfig> interceptors) {
         this.interceptors = interceptors != null ? interceptors : new ArrayList<>();
+    }
+
+    public Integer getSamplingThreshold() {
+        return samplingThreshold;
+    }
+
+    public void setSamplingThreshold(Integer samplingThreshold) {
+        this.samplingThreshold = samplingThreshold;
+    }
+
+    public Integer getCircuitBreakerFailures() {
+        return circuitBreakerFailures;
+    }
+
+    public void setCircuitBreakerFailures(Integer circuitBreakerFailures) {
+        this.circuitBreakerFailures = circuitBreakerFailures;
+    }
+
+    public Long getCircuitBreakerCooldown() {
+        return circuitBreakerCooldown;
+    }
+
+    public void setCircuitBreakerCooldown(Long circuitBreakerCooldown) {
+        this.circuitBreakerCooldown = circuitBreakerCooldown;
+    }
+
+    public List<String> getExcludedClasses() {
+        return excludedClasses;
+    }
+
+    public void setExcludedClasses(List<String> excludedClasses) {
+        this.excludedClasses = excludedClasses;
+    }
+
+    public String getLogLevel() {
+        return logLevel;
+    }
+
+    public void setLogLevel(String logLevel) {
+        this.logLevel = logLevel;
     }
 
     public static class InterceptorConfig {

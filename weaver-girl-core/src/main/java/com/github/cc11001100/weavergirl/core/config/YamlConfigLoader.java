@@ -56,12 +56,34 @@ public class YamlConfigLoader {
             if (config == null) {
                 config = new WeaverConfig();
             }
+            applyDefaults(config);
             validate(config);
             registerFromConfig(config, registry);
             return config;
         } catch (YAMLException e) {
             log.error("Failed to parse YAML config: {}", e.getMessage());
             return new WeaverConfig();
+        }
+    }
+
+    /**
+     * Apply sensible defaults for agent-level settings that were not specified in the YAML.
+     */
+    private void applyDefaults(WeaverConfig config) {
+        if (config.getSamplingThreshold() == null) {
+            config.setSamplingThreshold(100);
+        }
+        if (config.getCircuitBreakerFailures() == null) {
+            config.setCircuitBreakerFailures(5);
+        }
+        if (config.getCircuitBreakerCooldown() == null) {
+            config.setCircuitBreakerCooldown(30000L);
+        }
+        if (config.getExcludedClasses() == null) {
+            config.setExcludedClasses(new ArrayList<>());
+        }
+        if (config.getLogLevel() == null) {
+            config.setLogLevel("INFO");
         }
     }
 
