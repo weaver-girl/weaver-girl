@@ -103,6 +103,19 @@ public interface WeaverPlugin {
     void registerInterceptors(InterceptorRegistry registry);
 
     /**
+     * Declare the names of plugins that must be loaded before this plugin.
+     * The framework will ensure all declared dependencies are initialized
+     * before this plugin's init() is called.
+     *
+     * <p>Default implementation returns an empty array (no dependencies).</p>
+     *
+     * @return the names of plugins this plugin depends on
+     */
+    default String[] depends() {
+        return new String[0];
+    }
+
+    /**
      * Destroy the plugin and release resources.
      *
      * <p>Called once during agent shutdown. Use this method to perform cleanup such as
