@@ -4,6 +4,7 @@ package com.github.cc11001100.weavergirl.core.plugin;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.core.WeaverGirl;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -65,6 +66,29 @@ public class PluginLoader {
      */
     public List<WeaverPlugin> loadPlugins(InterceptorRegistry registry, Map<String, String> config) {
         return loadPlugins(Thread.currentThread().getContextClassLoader(), registry, config);
+    }
+
+    /**
+     * Load plugins from a plugin directory, creating an isolated ClassLoader per JAR.
+     * This is the preferred way to load plugins in production.
+     *
+     * @param pluginDir the directory containing plugin JARs
+     * @param registry the interceptor registry
+     * @param config agent configuration
+     * @return the list of successfully loaded plugins
+     */
+    public List<WeaverPlugin> loadPluginsFromDirectory(String pluginDir,
+            InterceptorRegistry registry, Map<String, String> config) {
+        PluginJarScanner scanner = new PluginJarScanner();
+        List<PluginClassLoader> classLoaders = scanner.scan(pluginDir,
+                WeaverGirl.class.getClassLoader());
+
+        List<WeaverPlugin> allPlugins = new ArrayList<>();
+        for (PluginClassLoader cl : classLoaders) {
+            List<WeaverPlugin> plugins = loadPlugins(cl, registry, config);
+            allPlugins.addAll(plugins);
+        }
+        return allPlugins;
     }
 
     /**

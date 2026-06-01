@@ -2,11 +2,15 @@
 package com.github.cc11001100.weavergirl.agent;
 
 import com.github.cc11001100.weavergirl.core.WeaverGirl;
+import com.github.cc11001100.weavergirl.core.config.ConfigWatcher;
 import com.github.cc11001100.weavergirl.core.config.YamlConfigLoader;
+import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.instrument.Instrumentation;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Java Agent entry point.
@@ -16,12 +20,14 @@ import java.lang.instrument.Instrumentation;
  * <pre>
  *   java -javaagent:weaver-girl-agent.jar -jar app.jar
  *   java -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml -jar app.jar
+ *   java -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml,watch=true -jar app.jar
  * </pre>
  */
 public class WeaverGirlAgent {
 
     private static final Logger log = LoggerFactory.getLogger(WeaverGirlAgent.class);
     private static final String CONFIG_PREFIX = "config=";
+    private static volatile ConfigWatcher configWatcher;
 
     /**
      * Premain entry — called before application main() when using -javaagent flag.
@@ -43,12 +49,24 @@ public class WeaverGirlAgent {
 
             WeaverGirl weaverGirl = WeaverGirl.bootstrap(instrumentation);
 
+            // Parse agent arguments
+            Map<String, String> args = parseAgentArgs(agentArgs);
+
             // Load YAML config if specified via agent arguments
-            if (agentArgs != null && !agentArgs.isEmpty()) {
-                String configPath = parseConfigPath(agentArgs);
-                if (configPath != null) {
-                    YamlConfigLoader configLoader = new YamlConfigLoader();
-                    configLoader.loadFromFile(configPath, weaverGirl.getRegistry());
+            String configPath = args.get("config");
+            if (configPath == null && agentArgs != null && !agentArgs.isEmpty()
+                    && (agentArgs.endsWith(".yml") || agentArgs.endsWith(".yaml"))) {
+                configPath = agentArgs;
+            }
+
+            if (configPath != null) {
+                YamlConfigLoader configLoader = new YamlConfigLoader();
+                configLoader.loadFromFile(configPath, weaverGirl.getRegistry());
+
+                // Start config watcher if watch=true
+                if ("true".equalsIgnoreCase(args.get("watch"))) {
+                    configWatcher = new ConfigWatcher(configPath, weaverGirl.getRegistry());
+                    configWatcher.start();
                 }
             }
 
@@ -62,6 +80,9 @@ public class WeaverGirlAgent {
             final WeaverGirl shutdownRef = weaverGirl;
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 try {
+                    if (configWatcher != null) {
+                        configWatcher.stop();
+                    }
                     shutdownRef.shutdown();
                 } catch (Exception e) {
                     // Shutdown hook must not throw
@@ -82,13 +103,29 @@ public class WeaverGirlAgent {
         }
     }
 
-    private static String parseConfigPath(String agentArgs) {
+    /**
+     * Parse agent arguments in key=value format separated by commas.
+     * Example: "config=/path/to/weaver.yml,watch=true"
+     */
+    private static Map<String, String> parseAgentArgs(String agentArgs) {
+        Map<String, String> result = new LinkedHashMap<>();
+        if (agentArgs == null || agentArgs.isEmpty()) {
+            return result;
+        }
+        // Handle legacy format: bare config path without key=
         if (agentArgs.startsWith(CONFIG_PREFIX)) {
-            return agentArgs.substring(CONFIG_PREFIX.length()).trim();
+            String value = agentArgs.substring(CONFIG_PREFIX.length()).trim();
+            result.put("config", value);
+            return result;
         }
-        if (!agentArgs.isEmpty() && (agentArgs.endsWith(".yml") || agentArgs.endsWith(".yaml"))) {
-            return agentArgs;
+        // Handle key=value,key=value format
+        String[] parts = agentArgs.split(",");
+        for (String part : parts) {
+            int eq = part.indexOf('=');
+            if (eq > 0) {
+                result.put(part.substring(0, eq).trim(), part.substring(eq + 1).trim());
+            }
         }
-        return null;
+        return result;
     }
 }
