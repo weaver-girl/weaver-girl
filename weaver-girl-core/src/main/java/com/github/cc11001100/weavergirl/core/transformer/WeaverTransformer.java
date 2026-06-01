@@ -16,9 +16,21 @@ import org.slf4j.LoggerFactory;
 import java.lang.instrument.Instrumentation;
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
-import static net.bytebuddy.matcher.ElementMatchers.*;
+import static net.bytebuddy.matcher.ElementMatchers.nameStartsWith;
+import static net.bytebuddy.matcher.ElementMatchers.nameMatches;
+import static net.bytebuddy.matcher.ElementMatchers.named;
+import static net.bytebuddy.matcher.ElementMatchers.isMethod;
+import static net.bytebuddy.matcher.ElementMatchers.isBridge;
+import static net.bytebuddy.matcher.ElementMatchers.isSynthetic;
+import static net.bytebuddy.matcher.ElementMatchers.isNative;
+import static net.bytebuddy.matcher.ElementMatchers.isAbstract;
+import static net.bytebuddy.matcher.ElementMatchers.isInterface;
+import static net.bytebuddy.matcher.ElementMatchers.isAnnotatedWith;
+import static net.bytebuddy.matcher.ElementMatchers.hasSuperType;
+import static net.bytebuddy.matcher.ElementMatchers.not;
 
 /**
  * Core transformer that registers ByteBuddy type transformers
@@ -30,9 +42,14 @@ public class WeaverTransformer {
 
     private final InterceptorRegistry registry;
     private Instrumentation instrumentation;
+    private List<String> excludedClassPatterns = Collections.emptyList();
 
     public WeaverTransformer(InterceptorRegistry registry) {
         this.registry = registry;
+    }
+
+    public void setExcludedClassPatterns(List<String> patterns) {
+        this.excludedClassPatterns = patterns != null ? patterns : Collections.emptyList();
     }
 
     /**
@@ -46,7 +63,32 @@ public class WeaverTransformer {
         BootstrapInjection bootstrapInjection = new BootstrapInjection();
         bootstrapInjection.inject(instrumentation);
 
+        // Exclude agent implementation packages to prevent ClassCircularityError.
+        // We exclude specific sub-packages, NOT the entire weavergirl namespace,
+        // because user code and test target classes may exist under weavergirl.api
+        // or weavergirl.core.integration (test helpers).
+        net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> excludeMatcher = nameStartsWith("com.github.cc11001100.weavergirl.core.registry.")
+                .or(nameStartsWith("com.github.cc11001100.weavergirl.core.transformer."))
+                .or(nameStartsWith("com.github.cc11001100.weavergirl.core.config."))
+                .or(nameStartsWith("com.github.cc11001100.weavergirl.core.plugin."))
+                .or(nameStartsWith("com.github.cc11001100.weavergirl.core.circuit."))
+                .or(nameStartsWith("com.github.cc11001100.weavergirl.core.sampling."))
+                .or(nameStartsWith("com.github.cc11001100.weavergirl.core.status."))
+                .or(nameStartsWith("com.github.cc11001100.weavergirl.agent."))
+                .or(nameStartsWith("com.github.cc11001100.weavergirl.shade."))
+                .or(nameStartsWith("net.bytebuddy."))
+                .or(nameStartsWith("org.slf4j."))
+                .or(nameStartsWith("org.yaml."))
+                .or(nameStartsWith("sun."))
+                .or(nameStartsWith("jdk.internal."))
+                .or(nameStartsWith("com.sun."));
+
+        for (String pattern : excludedClassPatterns) {
+            excludeMatcher = excludeMatcher.or(nameMatches(pattern));
+        }
+
         AgentBuilder agentBuilder = new AgentBuilder.Default()
+                .ignore(excludeMatcher)
                 .disableClassFormatChanges()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .with(new AgentBuilder.InjectionStrategy.UsingInstrumentation(

@@ -3,6 +3,7 @@ package com.github.cc11001100.weavergirl.agent;
 
 import com.github.cc11001100.weavergirl.core.WeaverGirl;
 import com.github.cc11001100.weavergirl.core.config.ConfigWatcher;
+import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
 import com.github.cc11001100.weavergirl.core.config.YamlConfigLoader;
 import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
 import org.slf4j.Logger;
@@ -51,15 +52,25 @@ public class WeaverGirlAgent {
             // Parse agent arguments
             Map<String, String> args = parseAgentArgs(agentArgs);
 
-            WeaverGirl weaverGirl = WeaverGirl.bootstrap(instrumentation, args);
-
-            // Load YAML config if specified via agent arguments
+            // Determine YAML config path (before bootstrap so that
+            // excludedClasses can be wired into the transformer's ignore matcher)
             String configPath = args.get("config");
             if (configPath == null && agentArgs != null && !agentArgs.isEmpty()
                     && (agentArgs.endsWith(".yml") || agentArgs.endsWith(".yaml"))) {
                 configPath = agentArgs;
             }
 
+            // Parse config for agent-level settings (excludedClasses etc.)
+            // without registering interceptors yet (registry not available until after bootstrap)
+            WeaverConfig weaverConfig = null;
+            if (configPath != null) {
+                YamlConfigLoader configLoader = new YamlConfigLoader();
+                weaverConfig = configLoader.parseFromFile(configPath);
+            }
+
+            WeaverGirl weaverGirl = WeaverGirl.bootstrap(instrumentation, args, weaverConfig);
+
+            // Now register interceptors from YAML config (registry is available)
             if (configPath != null) {
                 YamlConfigLoader configLoader = new YamlConfigLoader();
                 configLoader.loadFromFile(configPath, weaverGirl.getRegistry());

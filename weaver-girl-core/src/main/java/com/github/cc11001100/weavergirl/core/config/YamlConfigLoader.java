@@ -30,6 +30,39 @@ public class YamlConfigLoader {
 
     private final ConcurrentHashMap<String, Interceptor> adviceCache = new ConcurrentHashMap<>();
 
+    /**
+     * Parse a YAML config file without registering interceptors.
+     * Useful when you need the WeaverConfig (e.g., excludedClasses) before
+     * the InterceptorRegistry is available.
+     *
+     * @param filePath path to the YAML config file
+     * @return parsed WeaverConfig, or an empty WeaverConfig on failure
+     */
+    public WeaverConfig parseFromFile(String filePath) {
+        Path path = Paths.get(filePath);
+        if (!Files.exists(path)) {
+            log.warn("Configuration file not found: {}", filePath);
+            return new WeaverConfig();
+        }
+
+        try (Reader reader = Files.newBufferedReader(path)) {
+            Yaml yaml = new Yaml();
+            WeaverConfig config = yaml.loadAs(reader, WeaverConfig.class);
+            if (config == null) {
+                config = new WeaverConfig();
+            }
+            applyDefaults(config);
+            validate(config);
+            return config;
+        } catch (IOException e) {
+            log.error("Failed to read config file {}: {}", filePath, e.getMessage());
+            return new WeaverConfig();
+        } catch (YAMLException e) {
+            log.error("Failed to parse YAML config: {}", e.getMessage());
+            return new WeaverConfig();
+        }
+    }
+
     public WeaverConfig loadFromFile(String filePath, InterceptorRegistry registry) {
         Path path = Paths.get(filePath);
         if (!Files.exists(path)) {

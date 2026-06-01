@@ -9,6 +9,7 @@ import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 import com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin;
 import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
 import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
 import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
@@ -50,6 +51,19 @@ public class WeaverGirl {
      * @param config agent configuration properties (may be empty)
      */
     public static WeaverGirl bootstrap(Instrumentation instrumentation, java.util.Map<String, String> config) {
+        return bootstrap(instrumentation, config, null);
+    }
+
+    /**
+     * Bootstrap the agent — called from premain/agentmain.
+     * Loads plugins via SPI and installs the transformer, applying
+     * excludedClasses from WeaverConfig to the transformer's ignore matcher.
+     *
+     * @param instrumentation the JVM Instrumentation instance
+     * @param config agent configuration properties (may be empty)
+     * @param weaverConfig YAML configuration (may be null)
+     */
+    public static WeaverGirl bootstrap(Instrumentation instrumentation, java.util.Map<String, String> config, WeaverConfig weaverConfig) {
         log.info("WeaverGirl agent starting...");
         WeaverGirl weaverGirl = new WeaverGirl();
         weaverGirl.instrumentation = instrumentation;
@@ -60,6 +74,11 @@ public class WeaverGirl {
                 config != null ? config : Collections.emptyMap());
 
         WeaverTransformer transformer = new WeaverTransformer(weaverGirl.registry);
+
+        if (weaverConfig != null && weaverConfig.getExcludedClasses() != null) {
+            transformer.setExcludedClassPatterns(weaverConfig.getExcludedClasses());
+        }
+
         transformer.install(instrumentation);
         weaverGirl.transformer = transformer;
 
@@ -79,7 +98,7 @@ public class WeaverGirl {
      * Loads plugins via SPI and installs the transformer.
      */
     public static WeaverGirl bootstrap(Instrumentation instrumentation) {
-        return bootstrap(instrumentation, Collections.emptyMap());
+        return bootstrap(instrumentation, Collections.emptyMap(), null);
     }
 
     /**
