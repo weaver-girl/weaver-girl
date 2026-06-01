@@ -33,14 +33,14 @@ class InterceptorCircuitBreakerTest {
 
     @Test
     void shouldInvokeReturnsTrueAfterCooldownExpires() throws InterruptedException {
-        InterceptorCircuitBreaker cb = new InterceptorCircuitBreaker(3, 100); // 100ms cooldown
+        InterceptorCircuitBreaker cb = new InterceptorCircuitBreaker(3, 10); // 10ms cooldown
         for (int i = 0; i < 3; i++) {
             cb.recordFailure("cooldown-interceptor");
         }
         assertFalse(cb.shouldInvoke("cooldown-interceptor"));
 
         // Wait for cooldown to expire
-        Thread.sleep(150);
+        Thread.sleep(100);
 
         assertTrue(cb.shouldInvoke("cooldown-interceptor"));
     }

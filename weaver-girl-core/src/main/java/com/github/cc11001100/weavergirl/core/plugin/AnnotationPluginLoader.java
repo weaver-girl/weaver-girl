@@ -1,4 +1,3 @@
-// weaver-girl-core/src/main/java/com/github/cc11001100/weavergirl/core/plugin/AnnotationPluginLoader.java
 package com.github.cc11001100.weavergirl.core.plugin;
 
 import com.github.cc11001100.weavergirl.annotation.*;

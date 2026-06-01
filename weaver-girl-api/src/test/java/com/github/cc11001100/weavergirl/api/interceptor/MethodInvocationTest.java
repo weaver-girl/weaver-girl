@@ -88,4 +88,47 @@ class MethodInvocationTest {
         assertFalse(inv.hasException());
         assertFalse(inv.isReturnOverridden());
     }
+
+    @Test
+    void constructor_nullMethodName_returnsNull() {
+        MethodInvocation inv = new MethodInvocation(String.class, null, "target", null);
+        assertNull(inv.getMethodName());
+    }
+
+    @Test
+    void constructor_emptyMethodName_returnsEmpty() {
+        MethodInvocation inv = new MethodInvocation(String.class, "", "target", null);
+        assertEquals("", inv.getMethodName());
+    }
+
+    @Test
+    void getArguments_returnsDefensiveCopy() {
+        MethodInvocation inv = new MethodInvocation(String.class, "method", "target", new Object[]{"a", "b"});
+        Object[] args = inv.getArguments();
+        args[0] = "mutated";
+        assertEquals("a", inv.getArgument(0));
+    }
+
+    @Test
+    void setReturnValue_null_explicitlySetsNull() {
+        MethodInvocation inv = new MethodInvocation(String.class, "method", "target", null);
+        inv.setReturnValue("first");
+        assertEquals("first", inv.getReturnValue());
+        assertTrue(inv.isReturnOverridden());
+        inv.setReturnValue(null);
+        assertNull(inv.getReturnValue());
+        assertTrue(inv.isReturnOverridden());
+    }
+
+    @Test
+    void suppressException_withReturnValue_exceptionSuppressedAndReturnUsed() {
+        MethodInvocation inv = new MethodInvocation(String.class, "method", "target", null);
+        inv.setThrowable(new RuntimeException("boom"));
+        inv.setReturnValue("fallback");
+        inv.suppressException();
+        assertTrue(inv.isExceptionSuppressed());
+        assertTrue(inv.hasException());
+        assertEquals("fallback", inv.getReturnValue());
+        assertTrue(inv.isReturnOverridden());
+    }
 }

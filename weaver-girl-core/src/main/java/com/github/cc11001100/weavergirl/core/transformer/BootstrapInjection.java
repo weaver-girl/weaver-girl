@@ -1,4 +1,3 @@
-// weaver-girl-core/src/main/java/com/github/cc11001100/weavergirl/core/transformer/BootstrapInjection.java
 package com.github.cc11001100.weavergirl.core.transformer;
 
 import org.slf4j.Logger;

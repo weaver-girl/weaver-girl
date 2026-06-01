@@ -1,4 +1,3 @@
-// weaver-girl-core/src/main/java/com/github/cc11001100/weavergirl/core/status/AgentStatus.java
 package com.github.cc11001100.weavergirl.core.status;
 
 import java.util.Collections;

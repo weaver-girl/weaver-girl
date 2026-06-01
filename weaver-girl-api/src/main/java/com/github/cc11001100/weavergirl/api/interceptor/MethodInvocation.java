@@ -149,7 +149,7 @@ public class MethodInvocation {
      * @return the argument array
      */
     public Object[] getArguments() {
-        return arguments;
+        return arguments.clone();
     }
 
     /**

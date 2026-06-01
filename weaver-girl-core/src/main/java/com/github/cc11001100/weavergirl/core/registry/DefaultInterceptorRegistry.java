@@ -1,4 +1,3 @@
-// weaver-girl-core/src/main/java/com/github/cc11001100/weavergirl/core/registry/DefaultInterceptorRegistry.java
 package com.github.cc11001100.weavergirl.core.registry;
 
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
@@ -26,7 +25,7 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
     @Override
     public void register(InterceptorDefinition definition) {
         if (definition == null) {
-            log.warn("Attempted to register null InterceptorDefinition, ignoring");
+            log.warn("Attempted to register null InterceptorDefinition, ignoring. Call stack:", new Exception());
             return;
         }
         synchronized (this) {

@@ -1,4 +1,3 @@
-// weaver-girl-core/src/main/java/com/github/cc11001100/weavergirl/core/config/WeaverConfig.java
 package com.github.cc11001100.weavergirl.core.config;
 
 import java.util.ArrayList;

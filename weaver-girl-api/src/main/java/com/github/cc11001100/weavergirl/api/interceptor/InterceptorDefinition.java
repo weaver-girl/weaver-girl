@@ -65,6 +65,15 @@ public class InterceptorDefinition {
      * @param priority    execution priority; lower values = higher priority (executed first)
      */
     public InterceptorDefinition(String name, Pointcut pointcut, Interceptor interceptor, int priority) {
+        if (name == null || name.isEmpty()) {
+            throw new IllegalArgumentException("Interceptor name must not be null or empty");
+        }
+        if (pointcut == null) {
+            throw new IllegalArgumentException("Pointcut must not be null for interceptor: " + name);
+        }
+        if (interceptor == null) {
+            throw new IllegalArgumentException("Interceptor must not be null for interceptor: " + name);
+        }
         this.name = name;
         this.pointcut = pointcut;
         this.interceptor = interceptor;

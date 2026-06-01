@@ -1,4 +1,3 @@
-// weaver-girl-core/src/main/java/com/github/cc11001100/weavergirl/core/InterceptAdvice.java
 package com.github.cc11001100.weavergirl.core;
 
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;

@@ -1,4 +1,3 @@
-// weaver-girl-core/src/main/java/com/github/cc11001100/weavergirl/core/config/YamlConfigLoader.java
 package com.github.cc11001100.weavergirl.core.config;
 
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
@@ -256,7 +255,7 @@ public class YamlConfigLoader {
             if (errors.isEmpty()) {
                 valid.add(ic);
             } else {
-                log.warn("Skipping invalid interceptor config: {}", String.join(", ", errors));
+                log.warn("Skipping invalid interceptor config for class '{}': {}", ic.getClassName(), String.join(", ", errors));
             }
         }
         config.setInterceptors(valid);
