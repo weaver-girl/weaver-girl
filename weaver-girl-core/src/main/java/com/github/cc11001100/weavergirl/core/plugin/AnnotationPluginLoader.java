@@ -49,8 +49,8 @@ public class AnnotationPluginLoader {
 
         Object interceptorInstance;
         try {
-            interceptorInstance = clazz.newInstance();
-        } catch (InstantiationException | IllegalAccessException e) {
+            interceptorInstance = clazz.getDeclaredConstructor().newInstance();
+        } catch (Exception e) {
             log.error("Cannot instantiate interceptor class {}: {}", clazz.getName(), e.getMessage());
             return;
         }
@@ -105,6 +105,7 @@ public class AnnotationPluginLoader {
 
             @Override
             public void after(MethodInvocation invocation) {
+                invokeMethods(instance, arounds, invocation);
                 invokeMethods(instance, afters, invocation);
             }
 
