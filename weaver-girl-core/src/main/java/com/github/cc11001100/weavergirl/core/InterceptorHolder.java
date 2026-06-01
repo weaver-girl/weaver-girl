@@ -2,6 +2,7 @@ package com.github.cc11001100.weavergirl.core;
 
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.circuit.InterceptorCircuitBreaker;
+import com.github.cc11001100.weavergirl.core.management.AgentMonitor;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,10 +40,15 @@ public class InterceptorHolder {
 
     public static void incrementInterceptorInvocationCount() {
         AgentStatus.getInstance().incrementInterceptorInvocationCount();
+        AgentMonitor.getInstance().incrementInterceptCount();
     }
 
     public static void incrementInterceptorErrorCount() {
         AgentStatus.getInstance().incrementInterceptorErrorCount();
+    }
+
+    public static void recordInterceptTime(long nanos) {
+        AgentMonitor.getInstance().addInterceptTime(nanos);
     }
 
     // --- Circuit breaker delegates ---

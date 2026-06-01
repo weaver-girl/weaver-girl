@@ -9,6 +9,7 @@ import com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin;
 import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
+import com.github.cc11001100.weavergirl.core.management.AgentMonitor;
 import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
@@ -100,6 +101,12 @@ public class WeaverGirl {
 
         JmxRegistrar.register();
 
+        // Register JMX monitoring MBean
+        AgentMonitor monitor = AgentMonitor.getInstance();
+        monitor.register();
+        monitor.setInterceptorDefinitionCount(weaverGirl.registry.getAllDefinitions().size());
+        monitor.setPluginCount(weaverGirl.pluginLoader.getLoadedPlugins().size());
+
         SamplingMonitor samplingMonitor = new SamplingMonitor(SamplingController.getInstance());
         samplingMonitor.start();
         weaverGirl.samplingMonitor = samplingMonitor;
@@ -130,6 +137,7 @@ public class WeaverGirl {
             samplingMonitor.stop();
         }
         pluginLoader.destroyAll();
+        AgentMonitor.getInstance().unregister();
         JmxRegistrar.unregister();
         InterceptorHolder.setRegistry(null);
         log.info("WeaverGirl agent shut down complete");
