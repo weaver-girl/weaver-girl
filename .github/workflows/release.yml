@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: 8
+          distribution: temurin
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Build and test
+        run: mvn clean install -B -V -e
+
+      - name: Package agent JAR
+        run: mvn package -DskipTests -B
+
+      - name: Verify agent JAR
+        run: |
+          AGENT_JAR=$(find weaver-girl-agent/target -name "weaver-girl-agent-*.jar" ! -name "*sources*" ! -name "*javadoc*" | head -1)
+          echo "Agent JAR: $AGENT_JAR"
+          test -n "$AGENT_JAR" || (echo "FAIL: No agent JAR found" && exit 1)
+          echo "=== Manifest ==="
+          unzip -p "$AGENT_JAR" META-INF/MANIFEST.MF | head -10
+          echo "=== Plugin count ==="
+          jar tf "$AGENT_JAR" | grep 'plugins/.*Plugin\.class' | grep -v '\$' | wc -l
+          echo "AGENT_JAR=$AGENT_JAR" >> $GITHUB_ENV
+
+      - name: Generate checksum
+        run: |
+          sha256sum $AGENT_JAR > $AGENT_JAR.sha256
+          echo "=== Checksum ==="
+          cat $AGENT_JAR.sha256
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Weaver-Girl ${{ github.ref_name }}
+          body: |
+            ## Installation
+
+            ```bash
+            # Download
+            curl -L -o weaver-girl-agent.jar https://github.com/cc11001100/weaver-girl/releases/download/${{ github.ref_name }}/weaver-girl-agent.jar
+
+            # Verify checksum
+            sha256sum -c weaver-girl-agent.jar.sha256
+
+            # Use
+            java -javaagent:weaver-girl-agent.jar -jar your-app.jar
+            ```
+
+            ## What's Included
+            - 12 built-in plugins: Servlet, Spring, JDBC, Redis, Kafka, gRPC, MongoDB, HttpClient, MethodTiming, TraceCorrelation, ExceptionMonitor, Logging
+            - Adaptive sampling, circuit breaker, JMX diagnostics
+            - Hot-reload support
+
+            ## Requirements
+            - Java 1.8+
+          files: |
+            ${{ env.AGENT_JAR }}
+            ${{ env.AGENT_JAR }}.sha256
+          draft: false
+          prerelease: false

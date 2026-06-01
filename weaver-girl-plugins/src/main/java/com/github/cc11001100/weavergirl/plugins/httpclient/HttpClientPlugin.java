@@ -116,7 +116,9 @@ public class HttpClientPlugin extends AbstractPlugin {
         };
 
         // Intercept Apache HttpClient execute methods
-        registry.register(interceptClassPattern(APACHE_HTTP_CLIENT.replace(".", "\\."))
+        // CloseableHttpClient is abstract — use bySuperClass to match
+        // concrete implementations like InternalHttpClient, MinimalHttpClient
+        registry.register(interceptSubclassOf(APACHE_HTTP_CLIENT)
             .methodPattern("execute|doExecute")
             .around(
                 inv -> httpClientInterceptor.before(inv),

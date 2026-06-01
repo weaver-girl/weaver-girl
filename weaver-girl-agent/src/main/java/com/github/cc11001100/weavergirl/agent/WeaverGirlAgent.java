@@ -5,6 +5,7 @@ import com.github.cc11001100.weavergirl.core.WeaverGirl;
 import com.github.cc11001100.weavergirl.core.config.ConfigWatcher;
 import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
 import com.github.cc11001100.weavergirl.core.config.YamlConfigLoader;
+import com.github.cc11001100.weavergirl.core.event.JsonEventListener;
 import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,6 +63,13 @@ public class WeaverGirlAgent {
             if ("true".equals(args.get("debug"))) {
                 System.setProperty("weavergirl.debug", "true");
                 log.info("Diagnostic mode enabled (weavergirl.debug=true)");
+            }
+
+            // Enable structured JSON event output if jsonEvents=true
+            if ("true".equals(args.get("jsonEvents"))) {
+                com.github.cc11001100.weavergirl.core.event.InterceptorEventPublisher.getInstance()
+                        .addListener(new JsonEventListener());
+                log.info("Structured JSON event output enabled (jsonEvents=true)");
             }
 
             // Determine YAML config path (before bootstrap so that

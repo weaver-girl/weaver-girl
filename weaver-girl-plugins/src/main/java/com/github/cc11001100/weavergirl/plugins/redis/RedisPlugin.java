@@ -103,7 +103,9 @@ public class RedisPlugin extends AbstractPlugin {
             .build());
 
         // Intercept Lettuce commands
-        registry.register(intercept(LETTUCE_COMMANDS)
+        // StatefulRedisConnection is an interface — use byInterface to match
+        // concrete implementations like StatefulRedisConnectionImpl
+        registry.register(interceptImplementing(LETTUCE_COMMANDS)
             .methodPattern("get|set|del|hget|hset|lpush|rpush|sadd|zadd|expire|exists|incr|decr|publish|subscribe|ping|info")
             .around(
                 inv -> redisInterceptor.before(inv),
