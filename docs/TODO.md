@@ -49,20 +49,39 @@
 - [x] Bootstrap 类注入 — BootstrapInjection + InjectionStrategy.UsingInstrumentation
 - [x] API Javadoc — 13 个 public API 类完整 Javadoc + @since 标签
 
-## 🔧 P4 企业级能力（当前批次）
+## ✅ P4 企业级能力（已完成）
 
-- [x] **条件化增强** — TypeExistenceChecker 跳过不存在类的拦截器
-- [x] **健康检查 / 状态报告** — AgentStatus 单例 + 转换/调用/错误计数 + getReport()
-- [x] **插件依赖解析** — WeaverPlugin.depends() + PluginDependencyResolver 拓扑排序
-- [x] **Agent 自诊断** — WeaverGirlMBean + AgentStatusMonitor + JmxRegistrar
-- [x] **自适应采样** — SamplingController + SamplingMonitor + daemon 调度
-- [ ] **性能基准测试** — JMH 微基准测试拦截开销
-- [ ] **多 Agent 共存测试** — 与 SkyWalking/OpenTelemetry 共存无冲突
+- [x] 条件化增强 — TypeExistenceChecker 跳过不存在类的拦截器
+- [x] 健康检查 / 状态报告 — AgentStatus 单例 + 转换/调用/错误计数 + getReport()
+- [x] 插件依赖解析 — WeaverPlugin.depends() + PluginDependencyResolver 拓扑排序
+- [x] Agent 自诊断 — WeaverGirlMBean + AgentStatusMonitor + JmxRegistrar
+- [x] 自适应采样 — SamplingController + SamplingMonitor + daemon 调度
+- [x] 性能基准测试 — JMH InterceptorBenchmark + MatcherBenchmark
+- [x] 多 Agent 共存测试 — MultiAgentCoexistenceTest 验证与其它 Agent 无冲突
 
 ## 📊 统计
 
 - **源文件**: 45 个 Java 文件
-- **测试文件**: 21 个
-- **测试总数**: 280 个，全部通过
-- **提交总数**: 35+ 个
+- **测试文件**: 25 个
+- **测试总数**: 288 个，全部通过
+- **提交总数**: 43 个
 - **模块**: 5 个 Maven 模块 (api, core, annotation, agent, sample)
+
+## 🎯 能力对比（vs 成熟产品）
+
+| 能力 | SkyWalking | OpenTelemetry | Weaver-Girl |
+|------|-----------|---------------|-------------|
+| 字节码增强 | ✅ | ✅ | ✅ |
+| 插件体系 | ✅ | ✅ | ✅ |
+| ClassLoader 隔离 | ✅ | ✅ | ✅ |
+| Bootstrap 类注入 | ✅ | ✅ | ✅ |
+| 已加载类重转换 | ✅ | ✅ | ✅ |
+| YAML 配置 | ✅ | ✅ | ✅ |
+| 动态配置重载 | ✅ | ❌ | ✅ |
+| JMX 自诊断 | ✅ | ❌ | ✅ |
+| 自适应采样 | ✅ | ❌ | ✅ |
+| 跨线程上下文 | ✅ | ✅ | ✅ |
+| 插件依赖解析 | ❌ | ❌ | ✅ |
+| 条件化增强 | ✅ | ✅ | ✅ |
+| 注解驱动 | ❌ | ❌ | ✅ |
+| 多 Agent 共存 | ✅ | ✅ | ✅ |
