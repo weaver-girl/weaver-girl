@@ -21,6 +21,7 @@ public class MethodInvocation {
     private Object returnValue;
     private Throwable throwable;
     private boolean isSkipped;
+    private boolean returnOverridden;
 
     public MethodInvocation(Class<?> targetClass, String methodName,
                             Object target, Object[] arguments) {
@@ -59,7 +60,21 @@ public class MethodInvocation {
         return returnValue;
     }
 
+    /**
+     * Sets the return value and marks it as overridden by an interceptor.
+     * This is the public API for interceptors to override the return value.
+     */
     public void setReturnValue(Object returnValue) {
+        this.returnValue = returnValue;
+        this.returnOverridden = true;
+    }
+
+    /**
+     * Internal method for the framework to store the original return value
+     * without marking it as overridden. Interceptors should not call this;
+     * use {@link #setReturnValue(Object)} instead.
+     */
+    public void initReturnValue(Object returnValue) {
         this.returnValue = returnValue;
     }
 
@@ -81,5 +96,13 @@ public class MethodInvocation {
 
     public void skipMethod() {
         this.isSkipped = true;
+    }
+
+    /**
+     * Returns whether an interceptor has explicitly set a return value
+     * via {@link #setReturnValue(Object)}.
+     */
+    public boolean isReturnOverridden() {
+        return returnOverridden;
     }
 }
