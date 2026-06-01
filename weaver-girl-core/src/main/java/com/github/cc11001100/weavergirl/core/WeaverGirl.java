@@ -11,6 +11,9 @@ import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
 import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
+import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
+import com.github.cc11001100.weavergirl.core.sampling.SamplingMonitor;
+import com.github.cc11001100.weavergirl.core.status.JmxRegistrar;
 import com.github.cc11001100.weavergirl.core.transformer.WeaverTransformer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +35,7 @@ public class WeaverGirl {
     private final PluginLoader pluginLoader;
     private Instrumentation instrumentation;
     private WeaverTransformer transformer;
+    private SamplingMonitor samplingMonitor;
 
     private WeaverGirl() {
         this.registry = new DefaultInterceptorRegistry();
@@ -59,6 +63,12 @@ public class WeaverGirl {
         transformer.install(instrumentation);
         weaverGirl.transformer = transformer;
 
+        JmxRegistrar.register();
+
+        SamplingMonitor samplingMonitor = new SamplingMonitor(SamplingController.getInstance());
+        samplingMonitor.start();
+        weaverGirl.samplingMonitor = samplingMonitor;
+
         log.info("WeaverGirl agent started with {} interceptor definitions",
                 weaverGirl.registry.getAllDefinitions().size());
         return weaverGirl;
@@ -78,7 +88,11 @@ public class WeaverGirl {
      */
     public void shutdown() {
         log.info("WeaverGirl agent shutting down...");
+        if (samplingMonitor != null) {
+            samplingMonitor.stop();
+        }
         pluginLoader.destroyAll();
+        JmxRegistrar.unregister();
         InterceptorHolder.setRegistry(null);
         log.info("WeaverGirl agent shut down complete");
     }
