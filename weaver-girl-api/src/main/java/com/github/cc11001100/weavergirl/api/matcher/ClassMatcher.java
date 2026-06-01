@@ -4,18 +4,58 @@ import java.util.regex.Pattern;
 
 /**
  * Matcher for selecting target classes to intercept.
- * Supports matching by exact name, name pattern, annotation, or parent class.
  *
- * <p>This class lives in the API module so plugin developers can construct
- * matchers without depending on the core implementation.</p>
+ * <p>Supports matching by exact fully-qualified name, regex name pattern, annotation,
+ * superclass, or implemented interface. Use the static factory methods to create matchers.</p>
+ *
+ * <p>This class lives in the API module so plugin developers can construct matchers
+ * without depending on the core implementation.</p>
+ *
+ * <h3>MatchType semantics</h3>
+ * <ul>
+ *   <li>{@link MatchType#EXACT_NAME} &mdash; matches the fully-qualified class name exactly</li>
+ *   <li>{@link MatchType#NAME_PATTERN} &mdash; matches the fully-qualified class name against a regex</li>
+ *   <li>{@link MatchType#ANNOTATION} &mdash; matches classes annotated with the specified annotation
+ *       (resolved by the core engine at class-load time)</li>
+ *   <li>{@link MatchType#SUPER_CLASS} &mdash; matches classes that extend the specified superclass
+ *       (resolved by the core engine at class-load time)</li>
+ *   <li>{@link MatchType#INTERFACE} &mdash; matches classes that implement the specified interface
+ *       (resolved by the core engine at class-load time)</li>
+ * </ul>
+ *
+ * <h3>Usage example</h3>
+ * <pre>
+ * ClassMatcher exact    = ClassMatcher.byName("com.example.service.UserService");
+ * ClassMatcher pattern  = ClassMatcher.byNamePattern("com\\.example\\..*Service");
+ * ClassMatcher annotated = ClassMatcher.byAnnotation("com.example.Trace");
+ * ClassMatcher subclass = ClassMatcher.bySuperClass("com.example.BaseService");
+ * ClassMarker iface     = ClassMatcher.byInterface("java.io.Serializable");</pre>
+ *
+ * @see MethodMatcher
+ * @see com.github.cc11001100.weavergirl.api.pointcut.Pointcut
+ * @since 1.0.0
  */
 public class ClassMatcher {
 
+    /**
+     * Determines how a class name or metadata is matched.
+     *
+     * <p>{@code EXACT_NAME} and {@code NAME_PATTERN} are evaluated by
+     * {@link #matches(String)} directly. The remaining types ({@code ANNOTATION},
+     * {@code SUPER_CLASS}, {@code INTERFACE}) are resolved by the core engine
+     * at bytecode-instrumentation time and cannot be evaluated by
+     * {@link #matches(String)} alone.</p>
+     */
     public enum MatchType {
+        /** Match by exact fully-qualified class name. */
         EXACT_NAME,
+        /** Match by regex pattern against the fully-qualified class name. */
         NAME_PATTERN,
+        /** Match classes bearing a specific annotation. */
         ANNOTATION,
+        /** Match classes that extend a specific superclass. */
         SUPER_CLASS,
+        /** Match classes that implement a specific interface. */
         INTERFACE
     }
 
@@ -30,34 +70,103 @@ public class ClassMatcher {
                 ? Pattern.compile(pattern) : null;
     }
 
+    /**
+     * Creates a matcher that matches a class by its exact fully-qualified name.
+     *
+     * @param className the fully-qualified class name (e.g., {@code "com.example.Service"})
+     * @return a new ClassMatcher with {@link MatchType#EXACT_NAME}
+     */
     public static ClassMatcher byName(String className) {
         return new ClassMatcher(MatchType.EXACT_NAME, className);
     }
 
+    /**
+     * Creates a matcher that matches a class name against a regular expression.
+     *
+     * @param regex a Java regex pattern (e.g., {@code "com\\.example\\..*Service"})
+     * @return a new ClassMatcher with {@link MatchType#NAME_PATTERN}
+     */
     public static ClassMatcher byNamePattern(String regex) {
         return new ClassMatcher(MatchType.NAME_PATTERN, regex);
     }
 
+    /**
+     * Creates a matcher that matches classes annotated with the specified annotation.
+     *
+     * <p>Annotation matching is resolved by the core engine at class-load time;
+     * it is not evaluated by {@link #matches(String)}.</p>
+     *
+     * @param annotationClassName the fully-qualified annotation class name
+     *                            (e.g., {@code "com.example.Trace"})
+     * @return a new ClassMatcher with {@link MatchType#ANNOTATION}
+     */
     public static ClassMatcher byAnnotation(String annotationClassName) {
         return new ClassMatcher(MatchType.ANNOTATION, annotationClassName);
     }
 
+    /**
+     * Creates a matcher that matches classes that extend the specified superclass.
+     *
+     * <p>Superclass matching is resolved by the core engine at class-load time;
+     * it is not evaluated by {@link #matches(String)}.</p>
+     *
+     * @param superClassName the fully-qualified superclass name
+     *                       (e.g., {@code "com.example.BaseService"})
+     * @return a new ClassMatcher with {@link MatchType#SUPER_CLASS}
+     */
     public static ClassMatcher bySuperClass(String superClassName) {
         return new ClassMatcher(MatchType.SUPER_CLASS, superClassName);
     }
 
+    /**
+     * Creates a matcher that matches classes that implement the specified interface.
+     *
+     * <p>Interface matching is resolved by the core engine at class-load time;
+     * it is not evaluated by {@link #matches(String)}.</p>
+     *
+     * @param interfaceName the fully-qualified interface name
+     *                      (e.g., {@code "java.io.Serializable"})
+     * @return a new ClassMatcher with {@link MatchType#INTERFACE}
+     */
     public static ClassMatcher byInterface(String interfaceName) {
         return new ClassMatcher(MatchType.INTERFACE, interfaceName);
     }
 
+    /**
+     * Returns the match type of this matcher.
+     *
+     * @return the match type
+     */
     public MatchType getMatchType() {
         return matchType;
     }
 
+    /**
+     * Returns the pattern string used for matching.
+     *
+     * <p>For {@link MatchType#EXACT_NAME}, this is the exact class name.
+     * For {@link MatchType#NAME_PATTERN}, this is the regex pattern.
+     * For {@link MatchType#ANNOTATION}, {@link MatchType#SUPER_CLASS}, and
+     * {@link MatchType#INTERFACE}, this is the fully-qualified name of the
+     * annotation, superclass, or interface respectively.</p>
+     *
+     * @return the pattern string
+     */
     public String getPattern() {
         return pattern;
     }
 
+    /**
+     * Tests whether the given class name matches this matcher.
+     *
+     * <p>This method only supports {@link MatchType#EXACT_NAME} and
+     * {@link MatchType#NAME_PATTERN}. For {@code ANNOTATION}, {@code SUPER_CLASS},
+     * and {@code INTERFACE} match types, this method always returns {@code false};
+     * those are resolved by the core engine at bytecode-instrumentation time.</p>
+     *
+     * @param className the fully-qualified class name to test
+     * @return true if the class name matches
+     */
     public boolean matches(String className) {
         switch (matchType) {
             case EXACT_NAME:
