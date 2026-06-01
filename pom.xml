@@ -16,6 +16,7 @@
         <module>weaver-girl-annotation</module>
         <module>weaver-girl-api</module>
         <module>weaver-girl-core</module>
+        <module>weaver-girl-plugins</module>
         <module>weaver-girl-agent</module>
         <module>weaver-girl-sample</module>
     </modules>
@@ -118,6 +119,11 @@
             <dependency>
                 <groupId>com.github.cc11001100</groupId>
                 <artifactId>weaver-girl-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugins</artifactId>
                 <version>${project.version}</version>
             </dependency>
 

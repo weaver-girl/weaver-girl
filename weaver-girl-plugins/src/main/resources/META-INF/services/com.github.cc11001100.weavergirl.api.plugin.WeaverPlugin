@@ -1,0 +1,7 @@
+com.github.cc11001100.weavergirl.plugins.timing.MethodTimingPlugin
+com.github.cc11001100.weavergirl.plugins.servlet.ServletPlugin
+com.github.cc11001100.weavergirl.plugins.jdbc.JdbcPlugin
+com.github.cc11001100.weavergirl.plugins.trace.TraceCorrelationPlugin
+com.github.cc11001100.weavergirl.plugins.spring.SpringPlugin
+com.github.cc11001100.weavergirl.plugins.exception.ExceptionMonitorPlugin
+com.github.cc11001100.weavergirl.plugins.redis.RedisPlugin
