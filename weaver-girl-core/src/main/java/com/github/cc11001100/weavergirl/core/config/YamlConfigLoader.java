@@ -17,6 +17,9 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * Loads interceptor definitions from YAML configuration files.
@@ -40,6 +43,10 @@ public class YamlConfigLoader {
         }
     }
 
+    public WeaverConfig loadFromString(String yaml, InterceptorRegistry registry) {
+        return loadFromReader(new StringReader(yaml), registry);
+    }
+
     public WeaverConfig loadFromReader(Reader reader, InterceptorRegistry registry) {
         try {
             Yaml yaml = new Yaml();
@@ -47,6 +54,7 @@ public class YamlConfigLoader {
             if (config == null) {
                 config = new WeaverConfig();
             }
+            validate(config);
             registerFromConfig(config, registry);
             return config;
         } catch (YAMLException e) {
@@ -136,5 +144,49 @@ public class YamlConfigLoader {
         } catch (Exception e) {
             log.warn("Failed to invoke advice class {}: {}", adviceClassName, e.getMessage());
         }
+    }
+
+    /**
+     * Validates the loaded configuration, removing invalid interceptor entries
+     * and logging warnings for each skipped entry.
+     */
+    private void validate(WeaverConfig config) {
+        List<WeaverConfig.InterceptorConfig> valid = new ArrayList<>();
+        for (WeaverConfig.InterceptorConfig ic : config.getInterceptors()) {
+            List<String> errors = new ArrayList<>();
+            if ((ic.getClassName() == null || ic.getClassName().isEmpty())
+                    && (ic.getClassPattern() == null || ic.getClassPattern().isEmpty())) {
+                errors.add("no className or classPattern specified");
+            }
+            if ((ic.getMethod() == null || ic.getMethod().isEmpty())
+                    && (ic.getMethodPattern() == null || ic.getMethodPattern().isEmpty())) {
+                // Method is optional — defaults to "*" (all methods). Not an error.
+            }
+            if ((ic.getBefore() == null || ic.getBefore().isEmpty())
+                    && (ic.getAfter() == null || ic.getAfter().isEmpty())
+                    && (ic.getAround() == null || ic.getAround().isEmpty())) {
+                errors.add("no before, after, or around advice class specified");
+            }
+            // Validate advice classes exist and implement Interceptor
+            for (String adviceClass : Arrays.asList(ic.getBefore(), ic.getAfter(), ic.getAround())) {
+                if (adviceClass != null && !adviceClass.isEmpty()) {
+                    try {
+                        Class<?> clazz = Class.forName(adviceClass);
+                        if (!Interceptor.class.isAssignableFrom(clazz)) {
+                            errors.add("advice class " + adviceClass + " does not implement Interceptor");
+                        }
+                    } catch (ClassNotFoundException e) {
+                        errors.add("advice class " + adviceClass + " not found");
+                    }
+                }
+            }
+
+            if (errors.isEmpty()) {
+                valid.add(ic);
+            } else {
+                log.warn("Skipping invalid interceptor config: {}", String.join(", ", errors));
+            }
+        }
+        config.setInterceptors(valid);
     }
 }

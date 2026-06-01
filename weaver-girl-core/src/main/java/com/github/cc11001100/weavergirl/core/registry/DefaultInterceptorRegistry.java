@@ -47,6 +47,19 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
         return Collections.unmodifiableList(definitions);
     }
 
+    @Override
+    public boolean unregister(String name) {
+        if (name == null) {
+            return false;
+        }
+        boolean removed = definitions.removeIf(d -> name.equals(d.getName()));
+        if (removed) {
+            indexDirty = true;
+            log.info("Unregistered interceptor: {}", name);
+        }
+        return removed;
+    }
+
     /**
      * Clear all registered definitions. For testing purposes.
      */

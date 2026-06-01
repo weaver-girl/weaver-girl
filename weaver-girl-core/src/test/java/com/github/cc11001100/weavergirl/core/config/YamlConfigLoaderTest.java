@@ -14,6 +14,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class YamlConfigLoaderTest {
 
+    private static final String VALID_ADVICE =
+            "com.github.cc11001100.weavergirl.core.config.TestInterceptor";
+
     private InterceptorRegistry registry;
     private YamlConfigLoader loader;
 
@@ -28,7 +31,7 @@ class YamlConfigLoaderTest {
         String yaml = "interceptors:\n" +
                 "  - className: \"com.example.UserService\"\n" +
                 "    method: \"createUser\"\n" +
-                "    before: \"com.example.TestInterceptor\"\n";
+                "    before: \"" + VALID_ADVICE + "\"\n";
 
         WeaverConfig config = loader.loadFromReader(new StringReader(yaml), registry);
         assertNotNull(config);
@@ -44,8 +47,10 @@ class YamlConfigLoaderTest {
         String yaml = "interceptors:\n" +
                 "  - className: \"com.example.ServiceA\"\n" +
                 "    method: \"doWork\"\n" +
+                "    before: \"" + VALID_ADVICE + "\"\n" +
                 "  - className: \"com.example.ServiceB\"\n" +
-                "    methodPattern: \"process.*\"\n";
+                "    methodPattern: \"process.*\"\n" +
+                "    after: \"" + VALID_ADVICE + "\"\n";
 
         loader.loadFromReader(new StringReader(yaml), registry);
         assertEquals(2, registry.getAllDefinitions().size());
@@ -71,5 +76,84 @@ class YamlConfigLoaderTest {
         WeaverConfig config = loader.loadFromFile("/nonexistent/path.yml", registry);
         assertNotNull(config);
         assertTrue(config.getInterceptors().isEmpty());
+    }
+
+    // --- Validation tests ---
+
+    @Test
+    void validate_noClassNameOrClassPattern_skipsEntry() {
+        String yaml = "interceptors:\n" +
+                "  - method: \"doWork\"\n" +
+                "    before: \"" + VALID_ADVICE + "\"\n";
+
+        WeaverConfig config = loader.loadFromReader(new StringReader(yaml), registry);
+        assertTrue(config.getInterceptors().isEmpty(),
+                "Interceptor without className or classPattern should be skipped");
+        assertEquals(0, registry.getAllDefinitions().size());
+    }
+
+    @Test
+    void validate_noAdviceClasses_skipsEntry() {
+        String yaml = "interceptors:\n" +
+                "  - className: \"com.example.ServiceA\"\n" +
+                "    method: \"doWork\"\n";
+
+        WeaverConfig config = loader.loadFromReader(new StringReader(yaml), registry);
+        assertTrue(config.getInterceptors().isEmpty(),
+                "Interceptor with no before/after/around advice should be skipped");
+        assertEquals(0, registry.getAllDefinitions().size());
+    }
+
+    @Test
+    void validate_adviceClassNotFound_skipsEntry() {
+        String yaml = "interceptors:\n" +
+                "  - className: \"com.example.ServiceA\"\n" +
+                "    before: \"com.nonexistent.AdviceClass\"\n";
+
+        WeaverConfig config = loader.loadFromReader(new StringReader(yaml), registry);
+        assertTrue(config.getInterceptors().isEmpty(),
+                "Interceptor with non-existent advice class should be skipped");
+        assertEquals(0, registry.getAllDefinitions().size());
+    }
+
+    @Test
+    void validate_adviceClassNotImplementingInterceptor_skipsEntry() {
+        String yaml = "interceptors:\n" +
+                "  - className: \"com.example.ServiceA\"\n" +
+                "    before: \"com.github.cc11001100.weavergirl.core.config.NotAnInterceptor\"\n";
+
+        WeaverConfig config = loader.loadFromReader(new StringReader(yaml), registry);
+        assertTrue(config.getInterceptors().isEmpty(),
+                "Interceptor with advice class not implementing Interceptor should be skipped");
+        assertEquals(0, registry.getAllDefinitions().size());
+    }
+
+    @Test
+    void validate_validInterceptor_passesValidation() {
+        String yaml = "interceptors:\n" +
+                "  - className: \"com.example.ServiceA\"\n" +
+                "    before: \"" + VALID_ADVICE + "\"\n";
+
+        WeaverConfig config = loader.loadFromReader(new StringReader(yaml), registry);
+        assertEquals(1, config.getInterceptors().size(),
+                "Valid interceptor should pass validation");
+        assertEquals(1, registry.getAllDefinitions().size());
+    }
+
+    @Test
+    void validate_mixedValidAndInvalid_onlyValidRegistered() {
+        String yaml = "interceptors:\n" +
+                "  - className: \"com.example.ServiceA\"\n" +
+                "    before: \"" + VALID_ADVICE + "\"\n" +
+                "  - method: \"doWork\"\n" +
+                "    before: \"" + VALID_ADVICE + "\"\n" +
+                "  - className: \"com.example.ServiceB\"\n" +
+                "    after: \"com.nonexistent.Missing\"\n";
+
+        WeaverConfig config = loader.loadFromReader(new StringReader(yaml), registry);
+        assertEquals(1, config.getInterceptors().size(),
+                "Only valid interceptor should remain after validation");
+        assertEquals("com.example.ServiceA", config.getInterceptors().get(0).getClassName());
+        assertEquals(1, registry.getAllDefinitions().size());
     }
 }
