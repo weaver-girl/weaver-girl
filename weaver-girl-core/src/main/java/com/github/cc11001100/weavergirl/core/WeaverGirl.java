@@ -73,8 +73,17 @@ public class WeaverGirl {
 
         InterceptorHolder.setRegistry(weaverGirl.registry);
 
+        // Merge disabledPlugins from WeaverConfig into the config map for PluginLoader
+        java.util.Map<String, String> pluginConfig = config != null ? config : new java.util.HashMap<>();
+        if (weaverConfig != null && weaverConfig.getDisabledPlugins() != null
+                && !weaverConfig.getDisabledPlugins().isEmpty()) {
+            String disabledStr = String.join(",", weaverConfig.getDisabledPlugins());
+            pluginConfig.put("disabledPlugins", disabledStr);
+            log.info("Disabled plugins from config: {}", disabledStr);
+        }
+
         weaverGirl.pluginLoader.loadPlugins(WeaverGirl.class.getClassLoader(), weaverGirl.registry,
-                config != null ? config : Collections.emptyMap());
+                pluginConfig);
 
         WeaverTransformer transformer = new WeaverTransformer(weaverGirl.registry);
 

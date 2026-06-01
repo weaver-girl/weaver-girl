@@ -47,10 +47,16 @@ public class WeaverGirlAgent {
 
     private static void init(String agentArgs, Instrumentation instrumentation, boolean isAttach) {
         try {
-            log.info("WeaverGirl agent initializing...");
+            // Banner with version
+            String version = WeaverGirlAgent.class.getPackage().getImplementationVersion();
+            if (version == null) version = "1.0.0-SNAPSHOT";
+            log.info("WeaverGirl agent v{} initializing... ({})", version, isAttach ? "dynamic attach" : "premain");
 
             // Parse agent arguments
             Map<String, String> args = parseAgentArgs(agentArgs);
+            if (agentArgs == null || agentArgs.isEmpty()) {
+                log.info("No agent arguments provided — using built-in plugins only");
+            }
 
             // Enable diagnostic mode if debug=true is passed
             if ("true".equals(args.get("debug"))) {
@@ -72,6 +78,9 @@ public class WeaverGirlAgent {
             if (configPath != null) {
                 YamlConfigLoader configLoader = new YamlConfigLoader();
                 weaverConfig = configLoader.parseFromFile(configPath);
+                log.info("Config loaded from: {}", configPath);
+            } else {
+                log.info("No config file specified — built-in plugins will be used with defaults");
             }
 
             WeaverGirl weaverGirl = WeaverGirl.bootstrap(instrumentation, args, weaverConfig);
@@ -79,7 +88,10 @@ public class WeaverGirlAgent {
             // Now register interceptors from YAML config (registry is available)
             if (configPath != null) {
                 YamlConfigLoader configLoader = new YamlConfigLoader();
+                int beforeCount = weaverGirl.getRegistry().getAllDefinitions().size();
                 configLoader.loadFromFile(configPath, weaverGirl.getRegistry());
+                int afterCount = weaverGirl.getRegistry().getAllDefinitions().size();
+                log.info("Loaded {} interceptor definitions from YAML config", afterCount - beforeCount);
 
                 // Start config watcher if watch=true
                 if ("true".equalsIgnoreCase(args.get("watch"))) {
@@ -140,18 +152,18 @@ public class WeaverGirlAgent {
         if (agentArgs == null || agentArgs.isEmpty()) {
             return result;
         }
-        // Handle legacy format: bare config path without key=
-        if (agentArgs.startsWith(CONFIG_PREFIX)) {
-            String value = agentArgs.substring(CONFIG_PREFIX.length()).trim();
-            result.put("config", value);
-            return result;
-        }
         // Handle key=value,key=value format
         String[] parts = agentArgs.split(",");
         for (String part : parts) {
             int eq = part.indexOf('=');
             if (eq > 0) {
                 result.put(part.substring(0, eq).trim(), part.substring(eq + 1).trim());
+            } else {
+                // Handle bare path (e.g., just a .yml file path)
+                String trimmed = part.trim();
+                if (trimmed.endsWith(".yml") || trimmed.endsWith(".yaml")) {
+                    result.put("config", trimmed);
+                }
             }
         }
         return result;

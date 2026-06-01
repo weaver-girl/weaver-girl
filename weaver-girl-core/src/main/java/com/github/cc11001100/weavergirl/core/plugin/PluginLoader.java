@@ -28,6 +28,9 @@ public class PluginLoader {
      * Load all plugins from the given ClassLoader and register their interceptors.
      * Calls init() then registerInterceptors() on each plugin.
      *
+     * <p>Plugins listed in the {@code disabledPlugins} config key (comma-separated)
+     * will be skipped. Example: {@code disabledPlugins=servlet,kafka}</p>
+     *
      * @param classLoader the ClassLoader to scan for plugin SPI declarations
      * @param registry the interceptor registry
      * @param config agent configuration properties (may be empty)
@@ -43,9 +46,32 @@ public class PluginLoader {
             discovered.add(plugin);
         }
 
+        // Parse disabled plugins list
+        java.util.Set<String> disabledPlugins = new java.util.HashSet<>();
+        String disabledStr = config.getOrDefault("disabledPlugins", "");
+        if (disabledStr != null && !disabledStr.isEmpty()) {
+            for (String name : disabledStr.split(",")) {
+                String trimmed = name.trim();
+                if (!trimmed.isEmpty()) {
+                    disabledPlugins.add(trimmed);
+                }
+            }
+        }
+
+        // Filter out disabled plugins
+        List<WeaverPlugin> enabled = new ArrayList<>();
+        for (WeaverPlugin plugin : discovered) {
+            if (disabledPlugins.contains(plugin.name())) {
+                log.info("Plugin {} is disabled via config — skipping", plugin.name());
+                AgentStatus.getInstance().recordPluginStatus(plugin.name(), false, "disabled via config");
+            } else {
+                enabled.add(plugin);
+            }
+        }
+
         // Resolve dependencies before initializing
         PluginDependencyResolver resolver = new PluginDependencyResolver();
-        List<WeaverPlugin> sorted = resolver.resolve(discovered);
+        List<WeaverPlugin> sorted = resolver.resolve(enabled);
 
         for (WeaverPlugin plugin : sorted) {
             try {

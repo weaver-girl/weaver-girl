@@ -18,6 +18,7 @@ public class WeaverConfig {
     private String logLevel;                 // TRACE, DEBUG, INFO, WARN, ERROR
     private Integer maxTransformations;      // max number of classes to transform
     private List<String> onlyInterceptPackages; // limit instrumentation to these packages
+    private List<String> disabledPlugins;     // plugin names to skip during loading
 
     public List<InterceptorConfig> getInterceptors() {
         return interceptors;
@@ -81,6 +82,14 @@ public class WeaverConfig {
 
     public void setOnlyInterceptPackages(List<String> onlyInterceptPackages) {
         this.onlyInterceptPackages = onlyInterceptPackages;
+    }
+
+    public List<String> getDisabledPlugins() {
+        return disabledPlugins;
+    }
+
+    public void setDisabledPlugins(List<String> disabledPlugins) {
+        this.disabledPlugins = disabledPlugins;
     }
 
     public static class InterceptorConfig {
