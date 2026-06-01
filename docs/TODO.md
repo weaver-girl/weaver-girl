@@ -29,17 +29,22 @@ Per-interceptor metrics, plugin load status, YAML security validation
 
 ## ✅ P18 用户体验（已完成）
 
-- 版本横幅: 启动时显示 agent 版本号
-- disabledPlugins: 在 YAML 或 agent args 中按名称禁用插件
-- 修复参数解析 bug: config=foo.yml,watch=true 现在正确解析
-- 配置加载确认日志: 用户可看到配置是否加载成功
-- weaver-example.yml 完整文档化: 所有字段、插件名列表、advice 类要求
+版本横幅, disabledPlugins, 参数解析修复, 配置加载确认, YAML 文档化
+
+## ✅ P19 生产安全修复（已完成）
+
+- **CRITICAL**: InterceptAdvice 捕获 Throwable 防止 OOM/StackOverflow 穿透到目标应用
+- **HIGH**: BootstrapInjection 保持 JarFile 打开（修复 ZipFile closed 错误）
+- **HIGH**: SamplingController.shouldSample() 接入 InterceptAdvice（采样之前是死代码）
+- **HIGH**: InterceptorCircuitBreaker 同步化状态转换（修复竞态条件）
+- **HIGH**: MethodInvocationPool.release() 清除对象引用（修复 ClassLoader 内存泄漏）
+- **MEDIUM**: AgentStatus.InterceptorMetrics 使用 AtomicLong（修复计数丢失）
 
 ## 📊 统计
 
-- **源代码**: 7,481 行 (64 文件)
-- **测试代码**: 6,583 行 (48 文件)
+- **源代码**: 7,523 行 (64 文件)
+- **测试代码**: 6,593 行 (48 文件)
 - **测试总数**: 748 个，全部通过
-- **提交总数**: 81 个
+- **提交总数**: 84 个
 - **模块**: 6 个 Maven 模块
 - **内置插件**: 12 个
