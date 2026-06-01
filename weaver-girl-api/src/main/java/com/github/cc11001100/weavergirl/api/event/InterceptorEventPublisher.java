@@ -1,10 +1,6 @@
-package com.github.cc11001100.weavergirl.core.event;
+package com.github.cc11001100.weavergirl.api.event;
 
-import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
-import com.github.cc11001100.weavergirl.api.event.InterceptorEventListener;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -34,8 +30,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class InterceptorEventPublisher {
 
-    private static final Logger log = LoggerFactory.getLogger(InterceptorEventPublisher.class);
-
     private static final InterceptorEventPublisher INSTANCE = new InterceptorEventPublisher();
 
     private final CopyOnWriteArrayList<InterceptorEventListener> listeners = new CopyOnWriteArrayList<>();
@@ -64,12 +58,12 @@ public class InterceptorEventPublisher {
      * Get all registered listeners.
      */
     public List<InterceptorEventListener> getListeners() {
-        return java.util.Collections.unmodifiableList(listeners);
+        return Collections.unmodifiableList(listeners);
     }
 
     /**
      * Publish an event to all registered listeners.
-     * If a listener throws an exception, it is logged but does not
+     * If a listener throws an exception, it is printed to stderr but does not
      * prevent other listeners from receiving the event.
      *
      * @param event the event to publish
@@ -79,7 +73,7 @@ public class InterceptorEventPublisher {
             try {
                 listener.onEvent(event);
             } catch (Exception e) {
-                log.warn("Event listener threw exception: {}", e.getMessage());
+                System.err.println("[weaver-girl] Event listener threw exception: " + e.getMessage());
             }
         }
     }

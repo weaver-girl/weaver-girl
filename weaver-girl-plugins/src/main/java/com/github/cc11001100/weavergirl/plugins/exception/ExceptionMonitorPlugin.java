@@ -1,5 +1,7 @@
 package com.github.cc11001100.weavergirl.plugins.exception;
 
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
@@ -80,6 +82,16 @@ public class ExceptionMonitorPlugin extends AbstractPlugin {
                     } else {
                         log.info("[EXCEPTION] {} at {}: {}", t.getClass().getSimpleName(), location, t.getMessage());
                     }
+                    InterceptorEventPublisher.getInstance().publish(
+                            InterceptorEvent.builder()
+                                    .type("exception")
+                                    .plugin("exception-monitor")
+                                    .className(inv.getTargetClass().getSimpleName())
+                                    .methodName(inv.getMethodName())
+                                    .attribute("exceptionType", t.getClass().getName())
+                                    .attribute("error", t.getMessage())
+                                    .build()
+                    );
                 })
                 .priority(5)
                 .build()

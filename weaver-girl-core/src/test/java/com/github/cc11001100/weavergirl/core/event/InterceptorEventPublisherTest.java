@@ -2,6 +2,7 @@ package com.github.cc11001100.weavergirl.core.event;
 
 import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventListener;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

@@ -3,12 +3,14 @@ package com.github.cc11001100.weavergirl.plugins.jdbc;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -84,10 +86,21 @@ public class JdbcPlugin extends AbstractPlugin {
             public void after(MethodInvocation inv) {
                 long elapsedMs = (System.nanoTime() - startTime.get()) / 1_000_000;
                 startTime.remove();
+                String sql = extractSql(inv);
                 if (elapsedMs >= slowQueryThresholdMs) {
-                    String sql = extractSql(inv);
                     String sqlInfo = sql != null ? " SQL: " + (sql.length() > maxSqlLength ? sql.substring(0, maxSqlLength) + "..." : sql) : "";
                     log.warn("[SLOW-QUERY] {}.{} took {}ms{}", inv.getTargetClass().getSimpleName(), inv.getMethodName(), elapsedMs, sqlInfo);
+                    // Publish structured event for metrics/trace exporters
+                    InterceptorEvent.Builder eventBuilder = InterceptorEvent.builder()
+                            .type("slow-query")
+                            .plugin("jdbc")
+                            .className(inv.getTargetClass().getSimpleName())
+                            .methodName(inv.getMethodName())
+                            .durationMs(elapsedMs);
+                    if (sql != null) {
+                        eventBuilder.attribute("sql", sql.length() > maxSqlLength ? sql.substring(0, maxSqlLength) + "..." : sql);
+                    }
+                    InterceptorEventPublisher.getInstance().publish(eventBuilder.build());
                 } else if (log.isDebugEnabled()) {
                     log.debug("[JDBC] {}.{} took {}ms", inv.getTargetClass().getSimpleName(), inv.getMethodName(), elapsedMs);
                 }
@@ -97,6 +110,15 @@ public class JdbcPlugin extends AbstractPlugin {
             public void onException(MethodInvocation inv) {
                 startTime.remove();
                 log.warn("[JDBC-ERROR] {}.{} threw: {}", inv.getTargetClass().getSimpleName(), inv.getMethodName(), inv.getThrowable().getMessage());
+                InterceptorEventPublisher.getInstance().publish(
+                        InterceptorEvent.builder()
+                                .type("jdbc-error")
+                                .plugin("jdbc")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .attribute("error", inv.getThrowable().getMessage())
+                                .build()
+                );
             }
         };
 

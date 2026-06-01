@@ -1,5 +1,7 @@
 package com.github.cc11001100.weavergirl.plugins.redis;
 
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
@@ -79,6 +81,16 @@ public class RedisPlugin extends AbstractPlugin {
                         String key = extractKey(inv);
                         String keyInfo = (logKeys && key != null) ? " key=" + truncate(key, maxKeyLength) : "";
                         log.warn("[SLOW-REDIS] {}.{} took {}ms{}", inv.getTargetClass().getSimpleName(), inv.getMethodName(), elapsedMs, keyInfo);
+                        InterceptorEvent.Builder eventBuilder = InterceptorEvent.builder()
+                                .type("slow-redis")
+                                .plugin("redis")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .durationMs(elapsedMs);
+                        if (key != null) {
+                            eventBuilder.attribute("key", truncate(key, maxKeyLength));
+                        }
+                        InterceptorEventPublisher.getInstance().publish(eventBuilder.build());
                     } else if (log.isDebugEnabled()) {
                         log.debug("[REDIS] {}.{} took {}ms", inv.getTargetClass().getSimpleName(), inv.getMethodName(), elapsedMs);
                     }
@@ -89,6 +101,15 @@ public class RedisPlugin extends AbstractPlugin {
             public void onException(MethodInvocation inv) {
                 startTime.remove();
                 log.warn("[REDIS-ERROR] {}.{} threw: {}", inv.getTargetClass().getSimpleName(), inv.getMethodName(), inv.getThrowable().getMessage());
+                InterceptorEventPublisher.getInstance().publish(
+                        InterceptorEvent.builder()
+                                .type("redis-error")
+                                .plugin("redis")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .attribute("error", inv.getThrowable().getMessage())
+                                .build()
+                );
             }
         };
 

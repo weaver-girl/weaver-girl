@@ -1,5 +1,7 @@
 package com.github.cc11001100.weavergirl.plugins.timing;
 
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
@@ -80,6 +82,15 @@ public class MethodTimingPlugin extends AbstractPlugin {
             String msg = "[TIMING] {}.{} took {}ms";
             if (elapsedMs >= slowThresholdMs) {
                 log.warn(msg + " (SLOW, threshold: {}ms)", inv.getTargetClass().getName(), inv.getMethodName(), elapsedMs, slowThresholdMs);
+                InterceptorEventPublisher.getInstance().publish(
+                        InterceptorEvent.builder()
+                                .type("slow-method")
+                                .plugin("method-timing")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .durationMs(elapsedMs)
+                                .build()
+                );
             } else {
                 switch (logLevelStr) {
                     case "DEBUG": log.debug(msg, inv.getTargetClass().getName(), inv.getMethodName(), elapsedMs); break;

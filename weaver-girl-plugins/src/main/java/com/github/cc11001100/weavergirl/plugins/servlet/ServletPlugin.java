@@ -3,6 +3,7 @@ package com.github.cc11001100.weavergirl.plugins.servlet;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
@@ -113,12 +114,33 @@ public class ServletPlugin extends AbstractPlugin {
                 } else {
                     log.info("[SERVLET] {} {} took {}ms", method, uri, elapsedMs);
                 }
+                // Publish structured event
+                com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher.getInstance().publish(
+                        InterceptorEvent.builder()
+                                .type(elapsedMs >= slowThresholdMs ? "slow-request" : "request")
+                                .plugin("servlet")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .durationMs(elapsedMs)
+                                .attribute("httpMethod", method)
+                                .attribute("uri", uri)
+                                .build()
+                );
             }
 
             @Override
             public void onException(MethodInvocation inv) {
                 startTime.remove();
                 log.warn("[SERVLET-ERROR] {}.{} threw: {}", inv.getTargetClass().getSimpleName(), inv.getMethodName(), inv.getThrowable().getMessage());
+                com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher.getInstance().publish(
+                        InterceptorEvent.builder()
+                                .type("request-error")
+                                .plugin("servlet")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .attribute("error", inv.getThrowable().getMessage())
+                                .build()
+                );
             }
         };
 

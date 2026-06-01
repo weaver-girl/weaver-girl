@@ -1,5 +1,7 @@
 package com.github.cc11001100.weavergirl.plugins.mongo;
 
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
@@ -82,6 +84,17 @@ public class MongoPlugin extends AbstractPlugin {
                         String docPreview = extractDocPreview(inv);
                         log.warn("[SLOW-MONGO] {}.{} took {}ms{}{}", inv.getTargetClass().getSimpleName(), inv.getMethodName(),
                             elapsedMs, collectionInfo, docPreview != null ? " doc=" + docPreview : "");
+                        InterceptorEvent.Builder eventBuilder = InterceptorEvent.builder()
+                                .type("slow-mongo")
+                                .plugin("mongo")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .durationMs(elapsedMs)
+                                .attribute("operation", inv.getMethodName());
+                        if (docPreview != null) {
+                            eventBuilder.attribute("doc", docPreview);
+                        }
+                        InterceptorEventPublisher.getInstance().publish(eventBuilder.build());
                     } else if (log.isDebugEnabled()) {
                         log.debug("[MONGO] {}.{} took {}ms", inv.getTargetClass().getSimpleName(), inv.getMethodName(), elapsedMs);
                     }
@@ -93,6 +106,15 @@ public class MongoPlugin extends AbstractPlugin {
                 startTime.remove();
                 log.warn("[MONGO-ERROR] {}.{} threw: {}", inv.getTargetClass().getSimpleName(), inv.getMethodName(),
                     inv.getThrowable().getMessage());
+                InterceptorEventPublisher.getInstance().publish(
+                        InterceptorEvent.builder()
+                                .type("mongo-error")
+                                .plugin("mongo")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .attribute("error", inv.getThrowable().getMessage())
+                                .build()
+                );
             }
         };
 

@@ -2,8 +2,10 @@ package com.github.cc11001100.weavergirl.plugins.spring;
 
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -107,6 +109,15 @@ public class SpringPlugin extends AbstractPlugin {
                     long elapsedMs = (System.nanoTime() - start) / 1_000_000;
                     if (elapsedMs >= slowThresholdMs) {
                         log.warn("[SLOW-SPRING] {}.{} took {}ms (threshold: {}ms)", inv.getTargetClass().getSimpleName(), inv.getMethodName(), elapsedMs, slowThresholdMs);
+                        InterceptorEventPublisher.getInstance().publish(
+                                InterceptorEvent.builder()
+                                        .type("slow-spring")
+                                        .plugin("spring")
+                                        .className(inv.getTargetClass().getSimpleName())
+                                        .methodName(inv.getMethodName())
+                                        .durationMs(elapsedMs)
+                                        .build()
+                        );
                     } else if (log.isDebugEnabled()) {
                         log.debug("[SPRING] {}.{} took {}ms", inv.getTargetClass().getSimpleName(), inv.getMethodName(), elapsedMs);
                     }
@@ -117,6 +128,15 @@ public class SpringPlugin extends AbstractPlugin {
             public void onException(MethodInvocation inv) {
                 startTime.remove();
                 log.warn("[SPRING-ERROR] {}.{} threw: {}", inv.getTargetClass().getSimpleName(), inv.getMethodName(), inv.getThrowable().getMessage());
+                InterceptorEventPublisher.getInstance().publish(
+                        InterceptorEvent.builder()
+                                .type("spring-error")
+                                .plugin("spring")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .attribute("error", inv.getThrowable().getMessage())
+                                .build()
+                );
             }
         };
 

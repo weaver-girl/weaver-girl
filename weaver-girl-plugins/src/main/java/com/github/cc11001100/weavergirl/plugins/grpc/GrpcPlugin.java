@@ -1,5 +1,7 @@
 package com.github.cc11001100.weavergirl.plugins.grpc;
 
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
@@ -75,6 +77,16 @@ public class GrpcPlugin extends AbstractPlugin {
 
                     if (elapsedMs >= slowThresholdMs) {
                         log.warn("[SLOW-GRPC] {} took {}ms (threshold: {}ms)", methodInfo, elapsedMs, slowThresholdMs);
+                        InterceptorEvent.Builder eventBuilder = InterceptorEvent.builder()
+                                .type("slow-grpc")
+                                .plugin("grpc")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .durationMs(elapsedMs);
+                        if (methodName != null) {
+                            eventBuilder.attribute("grpcMethod", methodName);
+                        }
+                        InterceptorEventPublisher.getInstance().publish(eventBuilder.build());
                     } else if (log.isDebugEnabled()) {
                         log.debug("[GRPC] {} took {}ms", methodInfo, elapsedMs);
                     }
@@ -86,6 +98,15 @@ public class GrpcPlugin extends AbstractPlugin {
                 startTime.remove();
                 log.warn("[GRPC-ERROR] {}.{} threw: {}", inv.getTargetClass().getSimpleName(), inv.getMethodName(),
                         inv.getThrowable() != null ? inv.getThrowable().getMessage() : "unknown");
+                InterceptorEventPublisher.getInstance().publish(
+                        InterceptorEvent.builder()
+                                .type("grpc-error")
+                                .plugin("grpc")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .attribute("error", inv.getThrowable() != null ? inv.getThrowable().getMessage() : "unknown")
+                                .build()
+                );
             }
         };
 

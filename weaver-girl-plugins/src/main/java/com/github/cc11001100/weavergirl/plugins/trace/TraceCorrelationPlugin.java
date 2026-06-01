@@ -1,6 +1,8 @@
 package com.github.cc11001100.weavergirl.plugins.trace;
 
 import com.github.cc11001100.weavergirl.api.context.ThreadContext;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
@@ -81,6 +83,15 @@ public class TraceCorrelationPlugin extends AbstractPlugin {
             if (log.isDebugEnabled()) {
                 log.debug("[TRACE] Started trace: {} for {}.{}", traceId, inv.getTargetClass().getSimpleName(), inv.getMethodName());
             }
+            InterceptorEventPublisher.getInstance().publish(
+                    InterceptorEvent.builder()
+                            .type("trace")
+                            .plugin("trace-correlation")
+                            .className(inv.getTargetClass().getSimpleName())
+                            .methodName(inv.getMethodName())
+                            .attribute("traceId", traceId)
+                            .build()
+            );
         }
 
         @Override

@@ -1,6 +1,8 @@
 package com.github.cc11001100.weavergirl.plugins.logging;
 
 import com.github.cc11001100.weavergirl.api.context.ThreadContext;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import org.slf4j.Logger;
@@ -71,6 +73,15 @@ public class LoggingPlugin extends AbstractPlugin {
             MDC.put("spanId", spanId);
         }
         MDC.put("method", className + "." + methodName);
+        InterceptorEventPublisher.getInstance().publish(
+                InterceptorEvent.builder()
+                        .type("log-capture")
+                        .plugin("logging")
+                        .className(className)
+                        .methodName(methodName)
+                        .attribute("traceId", traceId != null ? traceId : "")
+                        .build()
+        );
     }
 
     /**

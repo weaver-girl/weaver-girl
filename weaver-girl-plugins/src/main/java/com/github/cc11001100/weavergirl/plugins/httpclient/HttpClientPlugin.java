@@ -1,6 +1,8 @@
 package com.github.cc11001100.weavergirl.plugins.httpclient;
 
 import com.github.cc11001100.weavergirl.api.context.ThreadContext;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
@@ -101,6 +103,22 @@ public class HttpClientPlugin extends AbstractPlugin {
 
                     if (elapsedMs >= slowThresholdMs) {
                         log.warn("[SLOW-HTTP] {}{} took {}ms{} (threshold: {}ms)", methodInfo, urlInfo, elapsedMs, codeInfo, slowThresholdMs);
+                        InterceptorEvent.Builder eventBuilder = InterceptorEvent.builder()
+                                .type("slow-http")
+                                .plugin("httpclient")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .durationMs(elapsedMs);
+                        if (url != null) {
+                            eventBuilder.attribute("url", url);
+                        }
+                        if (method != null) {
+                            eventBuilder.attribute("httpMethod", method);
+                        }
+                        if (responseCode > 0) {
+                            eventBuilder.attribute("statusCode", String.valueOf(responseCode));
+                        }
+                        InterceptorEventPublisher.getInstance().publish(eventBuilder.build());
                     } else if (log.isDebugEnabled()) {
                         log.debug("[HTTP-CLIENT] {}{} took {}ms{}", methodInfo, urlInfo, elapsedMs, codeInfo);
                     }
@@ -112,6 +130,15 @@ public class HttpClientPlugin extends AbstractPlugin {
                 startTime.remove();
                 log.warn("[HTTP-CLIENT-ERROR] {}.{} threw: {}", inv.getTargetClass().getSimpleName(), inv.getMethodName(),
                         inv.getThrowable() != null ? inv.getThrowable().getMessage() : "unknown");
+                InterceptorEventPublisher.getInstance().publish(
+                        InterceptorEvent.builder()
+                                .type("http-error")
+                                .plugin("httpclient")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .attribute("error", inv.getThrowable() != null ? inv.getThrowable().getMessage() : "unknown")
+                                .build()
+                );
             }
         };
 

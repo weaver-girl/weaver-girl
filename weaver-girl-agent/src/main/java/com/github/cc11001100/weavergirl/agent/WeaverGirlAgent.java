@@ -67,7 +67,7 @@ public class WeaverGirlAgent {
 
             // Enable structured JSON event output if jsonEvents=true
             if ("true".equals(args.get("jsonEvents"))) {
-                com.github.cc11001100.weavergirl.core.event.InterceptorEventPublisher.getInstance()
+                com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher.getInstance()
                         .addListener(new JsonEventListener());
                 log.info("Structured JSON event output enabled (jsonEvents=true)");
             }

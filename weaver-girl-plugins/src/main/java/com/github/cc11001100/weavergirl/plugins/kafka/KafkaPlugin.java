@@ -1,6 +1,8 @@
 package com.github.cc11001100.weavergirl.plugins.kafka;
 
 import com.github.cc11001100.weavergirl.api.context.ThreadContext;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
@@ -89,6 +91,16 @@ public class KafkaPlugin extends AbstractPlugin {
 
                     if (elapsedMs >= slowThresholdMs) {
                         log.warn("[SLOW-KAFKA-PRODUCER] send took {}ms{} (threshold: {}ms)", elapsedMs, topicInfo, slowThresholdMs);
+                        InterceptorEvent.Builder eventBuilder = InterceptorEvent.builder()
+                                .type("slow-kafka")
+                                .plugin("kafka")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .durationMs(elapsedMs);
+                        if (topic != null) {
+                            eventBuilder.attribute("topic", topic);
+                        }
+                        InterceptorEventPublisher.getInstance().publish(eventBuilder.build());
                     } else if (log.isDebugEnabled()) {
                         log.debug("[KAFKA-PRODUCER] send took {}ms{}", elapsedMs, topicInfo);
                     }
@@ -100,6 +112,15 @@ public class KafkaPlugin extends AbstractPlugin {
                 startTime.remove();
                 log.warn("[KAFKA-PRODUCER-ERROR] {}.{} threw: {}", inv.getTargetClass().getSimpleName(), inv.getMethodName(),
                         inv.getThrowable() != null ? inv.getThrowable().getMessage() : "unknown");
+                InterceptorEventPublisher.getInstance().publish(
+                        InterceptorEvent.builder()
+                                .type("kafka-error")
+                                .plugin("kafka")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .attribute("error", inv.getThrowable() != null ? inv.getThrowable().getMessage() : "unknown")
+                                .build()
+                );
             }
         };
 
@@ -123,6 +144,16 @@ public class KafkaPlugin extends AbstractPlugin {
 
                     if (elapsedMs >= slowThresholdMs) {
                         log.warn("[SLOW-KAFKA-CONSUMER] poll took {}ms{} (threshold: {}ms)", elapsedMs, topicInfo, slowThresholdMs);
+                        InterceptorEvent.Builder eventBuilder = InterceptorEvent.builder()
+                                .type("slow-kafka")
+                                .plugin("kafka")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .durationMs(elapsedMs);
+                        if (topic != null) {
+                            eventBuilder.attribute("topic", topic);
+                        }
+                        InterceptorEventPublisher.getInstance().publish(eventBuilder.build());
                     } else if (log.isDebugEnabled()) {
                         log.debug("[KAFKA-CONSUMER] poll took {}ms{}", elapsedMs, topicInfo);
                     }
@@ -134,6 +165,15 @@ public class KafkaPlugin extends AbstractPlugin {
                 startTime.remove();
                 log.warn("[KAFKA-CONSUMER-ERROR] {}.{} threw: {}", inv.getTargetClass().getSimpleName(), inv.getMethodName(),
                         inv.getThrowable() != null ? inv.getThrowable().getMessage() : "unknown");
+                InterceptorEventPublisher.getInstance().publish(
+                        InterceptorEvent.builder()
+                                .type("kafka-error")
+                                .plugin("kafka")
+                                .className(inv.getTargetClass().getSimpleName())
+                                .methodName(inv.getMethodName())
+                                .attribute("error", inv.getThrowable() != null ? inv.getThrowable().getMessage() : "unknown")
+                                .build()
+                );
             }
         };
 

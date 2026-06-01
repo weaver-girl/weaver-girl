@@ -26,6 +26,12 @@ jobs:
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2-
 
+      - name: Set version from tag
+        run: |
+          TAG_VERSION=${GITHUB_REF_NAME#v}
+          echo "Setting Maven version to $TAG_VERSION"
+          mvn versions:set -DnewVersion=$TAG_VERSION -B
+
       - name: Build and test
         run: mvn clean install -B -V -e
 
