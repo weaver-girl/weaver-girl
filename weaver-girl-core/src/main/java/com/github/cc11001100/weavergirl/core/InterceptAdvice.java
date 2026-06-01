@@ -5,6 +5,7 @@ import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.interceptor.MethodInvocationPool;
+import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.implementation.bytecode.assign.Assigner;
@@ -45,6 +46,11 @@ public class InterceptAdvice {
                 return null;
             }
 
+            // Sampling check: skip interception if not sampled this invocation
+            if (!SamplingController.getInstance().shouldSample()) {
+                return null;
+            }
+
             String className = targetClass.getName();
             String methodName = method.getName();
             MethodInvocation invocation = MethodInvocationPool.acquire(targetClass, methodName, method, target, arguments);
@@ -59,9 +65,11 @@ public class InterceptAdvice {
                         def.getInterceptor().before(invocation);
                         InterceptorHolder.recordInterceptorSuccess(def.getName());
                         AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true);
-                    } catch (Exception e) {
+                    } catch (Throwable e) {
+                        // Catch Throwable (not just Exception) to prevent OutOfMemoryError
+                        // and StackOverflowError from plugins crashing the target application.
                         // If this interceptor called skipMethod and then failed,
-                        // don't let its skip decision stand
+                        // don't let its skip decision stand.
                         invocation.setSkipMethod(false);
                         InterceptorHolder.logInterceptorError(def.getName(), "before", e);
                         InterceptorHolder.recordInterceptorFailure(def.getName());
@@ -80,7 +88,8 @@ public class InterceptAdvice {
             // a fresh MethodInvocation from the pool using the available parameters.
             MethodInvocationPool.release(invocation);
             return null;
-        } catch (Exception e) {
+        } catch (Throwable e) {
+            // Never let any error (including OOM, StackOverflow) escape the advice
             return null;
         }
     }
@@ -136,7 +145,9 @@ public class InterceptAdvice {
                         }
                         InterceptorHolder.recordInterceptorSuccess(def.getName());
                         AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true);
-                    } catch (Exception e) {
+                    } catch (Throwable e) {
+                        // Catch Throwable to prevent OOM/StackOverflow from plugins
+                        // crashing the target application
                         InterceptorHolder.logInterceptorError(def.getName(),
                                 throwable != null ? "onException" : "after", e);
                         InterceptorHolder.recordInterceptorFailure(def.getName());
@@ -162,8 +173,12 @@ public class InterceptAdvice {
 
             // Return the MethodInvocation to the pool for reuse.
             MethodInvocationPool.release(context);
-        } catch (Exception e) {
-            // Never crash the target application
+        } catch (Throwable e) {
+            // Never let any error (including OOM, StackOverflow) crash the target application
+            // If we have a pooled invocation, release it to prevent pool leak
+            if (invocation != null) {
+                try { MethodInvocationPool.release(invocation); } catch (Throwable ignored) {}
+            }
         }
     }
 }

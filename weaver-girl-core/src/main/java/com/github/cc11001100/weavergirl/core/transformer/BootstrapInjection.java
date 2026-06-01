@@ -16,17 +16,16 @@ import java.util.jar.JarFile;
  * must be visible to the Bootstrap ClassLoader. This class appends the agent JAR
  * (or a dedicated helper JAR) to the bootstrap class search path.</p>
  *
- * <p>Usage:</p>
- * <pre>
- *   BootstrapInjection injection = new BootstrapInjection();
- *   injection.inject(instrumentation);
- * </pre>
+ * <p><strong>Important:</strong> The JarFile reference is kept open for the lifetime
+ * of the agent. Closing it prematurely would cause {@code ZipFile closed} errors
+ * when the bootstrap classloader tries to load classes from the JAR.</p>
  */
 public class BootstrapInjection {
 
     private static final Logger log = LoggerFactory.getLogger(BootstrapInjection.class);
 
-    private boolean injected = false;
+    private volatile boolean injected = false;
+    private JarFile jarFileRef; // kept open for JVM lifetime
 
     /**
      * Inject the agent JAR into the Bootstrap ClassLoader's search path.
@@ -48,9 +47,10 @@ public class BootstrapInjection {
                 return;
             }
 
-            JarFile jarFile = new JarFile(new File(agentJarPath));
-            instrumentation.appendToBootstrapClassLoaderSearch(jarFile);
-            jarFile.close();
+            jarFileRef = new JarFile(new File(agentJarPath));
+            instrumentation.appendToBootstrapClassLoaderSearch(jarFileRef);
+            // Do NOT close jarFileRef — the JVM needs it open for the lifetime
+            // of the agent. Closing it causes ZipFile closed errors on some JVMs.
             injected = true;
             log.info("Injected agent JAR into Bootstrap ClassLoader: {}", agentJarPath);
         } catch (IOException e) {

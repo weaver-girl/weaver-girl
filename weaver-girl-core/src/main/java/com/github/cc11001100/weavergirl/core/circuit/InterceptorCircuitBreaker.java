@@ -21,6 +21,10 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>After cooldown expires, the circuit transitions back to CLOSED
  * and gives the interceptor another chance.</p>
+ *
+ * <p>Thread safety: State transitions are guarded by per-interceptor
+ * synchronization to prevent race conditions between shouldInvoke()
+ * and recordFailure().</p>
  */
 public class InterceptorCircuitBreaker {
 
@@ -48,18 +52,20 @@ public class InterceptorCircuitBreaker {
         if (state == null) {
             return true; // no state = never failed = allow
         }
-        if (state.open) {
-            // Check if cooldown has expired
-            if (System.currentTimeMillis() - state.openedAt > cooldownMillis) {
-                // Half-open: give it another chance
-                state.open = false;
-                state.failures.set(0);
-                log.info("Circuit breaker for '{}' reset after cooldown", interceptorName);
-                return true;
+        synchronized (state) {
+            if (state.open) {
+                // Check if cooldown has expired
+                if (System.currentTimeMillis() - state.openedAt > cooldownMillis) {
+                    // Half-open: give it another chance
+                    state.open = false;
+                    state.failures.set(0);
+                    log.info("Circuit breaker for '{}' reset after cooldown", interceptorName);
+                    return true;
+                }
+                return false; // still in cooldown
             }
-            return false; // still in cooldown
+            return true;
         }
-        return true;
     }
 
     /**
@@ -68,7 +74,9 @@ public class InterceptorCircuitBreaker {
     public void recordSuccess(String interceptorName) {
         State state = states.get(interceptorName);
         if (state != null) {
-            state.failures.set(0);
+            synchronized (state) {
+                state.failures.set(0);
+            }
         }
     }
 
@@ -77,12 +85,14 @@ public class InterceptorCircuitBreaker {
      */
     public void recordFailure(String interceptorName) {
         State state = states.computeIfAbsent(interceptorName, k -> new State());
-        int failures = state.failures.incrementAndGet();
-        if (failures >= failureThreshold && !state.open) {
-            state.open = true;
-            state.openedAt = System.currentTimeMillis();
-            log.warn("Circuit breaker OPEN for interceptor '{}' after {} failures (cooldown: {}ms)",
-                    interceptorName, failures, cooldownMillis);
+        synchronized (state) {
+            int failures = state.failures.incrementAndGet();
+            if (failures >= failureThreshold && !state.open) {
+                state.open = true;
+                state.openedAt = System.currentTimeMillis();
+                log.warn("Circuit breaker OPEN for interceptor '{}' after {} failures (cooldown: {}ms)",
+                        interceptorName, failures, cooldownMillis);
+            }
         }
     }
 

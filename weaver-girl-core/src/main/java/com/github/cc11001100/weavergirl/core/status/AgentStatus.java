@@ -188,16 +188,16 @@ public class AgentStatus {
      * Per-interceptor invocation metrics.
      */
     public static class InterceptorMetrics {
-        private volatile long invocations = 0;
-        private volatile long errors = 0;
+        private final AtomicLong invocations = new AtomicLong(0);
+        private final AtomicLong errors = new AtomicLong(0);
 
         void record(boolean success) {
-            invocations++;
-            if (!success) errors++;
+            invocations.incrementAndGet();
+            if (!success) errors.incrementAndGet();
         }
 
-        public long getInvocations() { return invocations; }
-        public long getErrors() { return errors; }
+        public long getInvocations() { return invocations.get(); }
+        public long getErrors() { return errors.get(); }
     }
 
     /**

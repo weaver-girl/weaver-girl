@@ -23,7 +23,7 @@ public class InterceptorHolder {
     private static volatile InterceptorRegistry registry;
     private static final InterceptorCircuitBreaker circuitBreaker = new InterceptorCircuitBreaker();
 
-    public static void logInterceptorError(String interceptorName, String phase, Exception e) {
+    public static void logInterceptorError(String interceptorName, String phase, Throwable e) {
         LOG.warn("Interceptor '{}' failed in {}: {}", interceptorName, phase, e.getMessage());
     }
 

@@ -129,6 +129,23 @@ public class MethodInvocation {
     }
 
     /**
+     * Clear all object references to prevent memory leaks when pooled.
+     * Called when returning to the pool to avoid retaining strong references
+     * to target objects and arguments in idle thread pools.
+     */
+    public void clear() {
+        this.targetClass = null;
+        this.target = null;
+        this.arguments = null;
+        this.method = null;
+        this.returnValue = null;
+        this.throwable = null;
+        this.isSkipped = false;
+        this.returnOverridden = false;
+        this.exceptionSuppressed = false;
+    }
+
+    /**
      * Returns the class that declares the intercepted method.
      *
      * @return the target class, never null

@@ -53,13 +53,15 @@ public final class MethodInvocationPool {
 
     /**
      * Return a MethodInvocation to the pool for reuse.
-     * Only returns the instance if it hasn't been suppressed or skipped,
-     * to avoid carrying over state from exceptional cases.
+     * Clears object references before pooling to prevent memory leaks
+     * in idle thread pools (where pooled instances would otherwise retain
+     * strong references to target objects and arguments).
      *
      * @param inv the MethodInvocation to return, may be null
      */
     public static void release(MethodInvocation inv) {
         if (inv != null) {
+            inv.clear(); // Release strong references to prevent GC retention
             POOL.set(inv);
         }
     }
