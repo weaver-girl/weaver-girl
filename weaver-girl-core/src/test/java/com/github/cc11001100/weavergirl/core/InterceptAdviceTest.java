@@ -128,11 +128,27 @@ class InterceptAdviceTest {
     // --- onMethodExit tests ---
 
     @Test
-    void onMethodExit_nullInvocation_returnsEarlyWithoutError() {
-        // Should not throw
-        assertDoesNotThrow(() -> InterceptAdvice.onMethodExit(
-                null, SampleClass.class, SampleClass.class.getMethod("greet"),
-                null, "hello"));
+    void onMethodExit_nullInvocation_createsNewContextAndCallsAfter() throws Exception {
+        // When invocation is null (no skip), onMethodExit should create a fresh context
+        boolean[] afterCalled = {false};
+        Interceptor interceptor = new Interceptor() {
+            @Override
+            public void after(MethodInvocation inv) {
+                afterCalled[0] = true;
+                assertEquals("hello", inv.getReturnValue(), "Return value should be set on invocation");
+            }
+        };
+        registry.register(new InterceptorDefinition(
+                "after-test",
+                new Pointcut(ClassMatcher.byName(SampleClass.class.getName()), MethodMatcher.byName("greet")),
+                interceptor
+        ));
+
+        Method method = SampleClass.class.getMethod("greet");
+        // New signature: (invocation, class, method, target, args, throwable, returnValue)
+        InterceptAdvice.onMethodExit(null, SampleClass.class, method, new SampleClass(), new Object[0], null, "hello");
+
+        assertTrue(afterCalled[0], "after() should have been called even when invocation is null");
     }
 
     @Test
@@ -154,7 +170,7 @@ class InterceptAdviceTest {
         ));
 
         Method method = SampleClass.class.getMethod("greet");
-        InterceptAdvice.onMethodExit(invocation, SampleClass.class, method, null, "hello");
+        InterceptAdvice.onMethodExit(invocation, SampleClass.class, method, new SampleClass(), new Object[0], null, "hello");
 
         assertTrue(afterCalled[0], "after() should have been called");
         assertEquals("hello", invocation.getReturnValue(), "ReturnValue should be set on invocation");
@@ -181,7 +197,7 @@ class InterceptAdviceTest {
         ));
 
         Method method = SampleClass.class.getMethod("greet");
-        InterceptAdvice.onMethodExit(invocation, SampleClass.class, method, testException, null);
+        InterceptAdvice.onMethodExit(invocation, SampleClass.class, method, new SampleClass(), new Object[0], testException, null);
 
         assertTrue(onExceptionCalled[0], "onException() should have been called");
         assertEquals(testException, invocation.getThrowable(), "Throwable should be set on invocation");
