@@ -41,30 +41,28 @@
 
 ## ✅ P3 生产就绪（已完成）
 
-- [x] **已加载类重转换** — agentmain attach 时 retransformClasses 已加载类
-- [x] **值对象不可变** — 所有字段 private final，无 setter
-- [x] **ClassLoader 隔离** — PluginClassLoader child-first + PluginJarScanner + loadPluginsFromDirectory
-- [x] **配置动态重载** — ConfigWatcher + watch=true agent 参数
-- [x] **跨线程上下文传播** — ThreadContext + ContextRunnable + ContextCallable
-- [x] **Bootstrap 类注入** — BootstrapInjection + InjectionStrategy.UsingInstrumentation
-- [x] **API Javadoc** — 13 个 public API 类完整 Javadoc + @since 标签
+- [x] 已加载类重转换 — agentmain attach 时 retransformClasses 已加载类
+- [x] 值对象不可变 — 所有字段 private final，无 setter
+- [x] ClassLoader 隔离 — PluginClassLoader child-first + PluginJarScanner + loadPluginsFromDirectory
+- [x] 配置动态重载 — ConfigWatcher + watch=true agent 参数
+- [x] 跨线程上下文传播 — ThreadContext + ContextRunnable + ContextCallable
+- [x] Bootstrap 类注入 — BootstrapInjection + InjectionStrategy.UsingInstrumentation
+- [x] API Javadoc — 13 个 public API 类完整 Javadoc + @since 标签
 
 ## 🔧 P4 企业级能力（当前批次）
 
-- [ ] **条件化增强** — 仅在目标类/方法实际存在时增强（避免 NoClassDefFoundError）
-- [ ] **健康检查 / 状态报告** — 活跃插件数、转换次数、错误计数
+- [x] **条件化增强** — TypeExistenceChecker 跳过不存在类的拦截器
+- [x] **健康检查 / 状态报告** — AgentStatus 单例 + 转换/调用/错误计数 + getReport()
+- [x] **插件依赖解析** — WeaverPlugin.depends() + PluginDependencyResolver 拓扑排序
 - [ ] **Agent 自诊断** — JMX MBean 暴露 agent 状态
-- [ ] **插件依赖解析** — 插件间依赖的有序加载
-- [ ] **性能基准测试** — JMH 微基准测试拦截开销
 - [ ] **自适应采样** — 负载过高时降低拦截开销
+- [ ] **性能基准测试** — JMH 微基准测试拦截开销
 - [ ] **多 Agent 共存测试** — 与 SkyWalking/OpenTelemetry 共存无冲突
 
-## 🚀 P4 企业级能力（远期）
+## 📊 统计
 
-- [ ] **性能基准测试** — JMH 微基准测试拦截开销
-- [ ] **健康检查 / 状态报告** — 活跃插件数、转换次数、错误计数
-- [ ] **自适应采样** — 负载过高时降低拦截开销
-- [ ] **多 Agent 共存测试** — 与 SkyWalking/OpenTelemetry 共存无冲突
-- [ ] **插件依赖解析** — 插件间依赖的有序加载
-- [ ] **条件化增强** — 仅在目标类/方法实际存在时增强（避免 NoClassDefFoundError）
-- [ ] **Agent 自诊断** — JMX MBean 或 HTTP 端点暴露 agent 状态
+- **源文件**: 36 个 Java 文件
+- **测试文件**: 17+ 个
+- **测试总数**: 80+ 个，全部通过
+- **提交总数**: 30+ 个
+- **模块**: 5 个 Maven 模块 (api, core, annotation, agent, sample)
