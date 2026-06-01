@@ -56,11 +56,21 @@ class AgentIntegrationTest {
         }
     }
 
+    /** Separate target class for static method return-value override test. */
+    public static class StaticOverrideTarget {
+        public static String compute(String input) {
+            return "Original: " + input;
+        }
+    }
+
     private static final String TARGET_CLASS =
             "com.github.cc11001100.weavergirl.core.integration.AgentIntegrationTest$TargetService";
 
     private static final String STATIC_TARGET_CLASS =
             "com.github.cc11001100.weavergirl.core.integration.AgentIntegrationTest$StaticTargetService";
+
+    private static final String STATIC_OVERRIDE_TARGET_CLASS =
+            "com.github.cc11001100.weavergirl.core.integration.AgentIntegrationTest$StaticOverrideTarget";
 
     private static Instrumentation instrumentation;
     private DefaultInterceptorRegistry registry;
@@ -293,6 +303,35 @@ class AgentIntegrationTest {
         assertTrue(afterCalled.get(), "after() should be called for static methods");
         assertEquals("Static Hello, World", capturedReturn.get(), "Return value should be captured");
         assertEquals("Static Hello, World", result, "Original return value should be preserved");
+    }
+
+    @Test
+    void staticMethodInterception_returnValueCanBeOverridden() {
+        AtomicReference<Object> capturedOriginalReturn = new AtomicReference<>();
+        AtomicReference<String> capturedMethodName = new AtomicReference<>();
+
+        Interceptor interceptor = new Interceptor() {
+            @Override
+            public void before(MethodInvocation inv) {
+                capturedMethodName.set(inv.getMethodName());
+            }
+
+            @Override
+            public void after(MethodInvocation inv) {
+                capturedOriginalReturn.set(inv.getReturnValue());
+            }
+        };
+
+        registry.register(new InterceptorDefinition("test-static-override",
+                new Pointcut(ClassMatcher.byName(STATIC_OVERRIDE_TARGET_CLASS), MethodMatcher.byName("compute")),
+                interceptor));
+
+        installTransformer();
+
+        String result = StaticOverrideTarget.compute("test");
+        assertEquals("compute", capturedMethodName.get(), "Method name should be captured for static method");
+        assertEquals("Original: test", capturedOriginalReturn.get(), "Original return value should be captured in after()");
+        assertEquals("Original: test", result, "Original return value should be preserved");
     }
 
     private void installTransformer() {
