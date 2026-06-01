@@ -151,15 +151,22 @@ class DefaultInterceptorRegistryConcurrentTest {
         registry.register(def1);
         registry.register(def2);
 
-        // The registry uses CopyOnWriteArrayList, so registering the same name
-        // twice will add both. The test verifies the actual behavior.
+        // The registry replaces on duplicate name, so only one entry with that name
         List<InterceptorDefinition> all = registry.getAllDefinitions();
         long count = all.stream().filter(d -> "same-name".equals(d.getName())).count();
 
-        // Both entries are present (CopyOnWriteArrayList does not deduplicate by name)
-        assertEquals(2, count);
+        // Only the latest registration should remain (replaces on duplicate name)
+        assertEquals(1, count);
 
-        // Unregister by name should remove both entries with that name
+        // The remaining entry should be def2 (ServiceB), since it replaced def1
+        InterceptorDefinition remaining = all.stream()
+                .filter(d -> "same-name".equals(d.getName()))
+                .findFirst()
+                .orElse(null);
+        assertNotNull(remaining);
+        assertEquals("com.example.ServiceB", remaining.getPointcut().getClassMatcher().getPattern());
+
+        // Unregister by name should remove the entry
         assertTrue(registry.unregister("same-name"));
         assertEquals(0, registry.getAllDefinitions().size());
     }

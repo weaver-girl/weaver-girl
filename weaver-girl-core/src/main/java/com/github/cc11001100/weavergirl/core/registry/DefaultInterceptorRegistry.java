@@ -68,7 +68,7 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
      */
     public void clear() {
         definitions.clear();
-        classIndex.clear();
+        classIndex = new ConcurrentHashMap<>();
         indexDirty = true;
     }
 
@@ -76,17 +76,16 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
         if (!indexDirty) {
             return;
         }
-        ConcurrentHashMap<String, List<InterceptorDefinition>> newIndex = new ConcurrentHashMap<>();
+        Map<String, List<InterceptorDefinition>> newIndex = new ConcurrentHashMap<>();
         for (InterceptorDefinition def : definitions) {
             String pattern = def.getPointcut().getClassMatcher().getPattern();
-            newIndex.computeIfAbsent(pattern, k -> new ArrayList<>()).add(def);
+            newIndex.computeIfAbsent(pattern, k -> new CopyOnWriteArrayList<>()).add(def);
         }
         // Sort each list by priority
         for (List<InterceptorDefinition> list : newIndex.values()) {
             list.sort(Comparator.comparingInt(InterceptorDefinition::getPriority));
         }
-        classIndex.clear();
-        classIndex.putAll(newIndex);
+        classIndex = newIndex;  // atomic swap
         indexDirty = false;
     }
 }

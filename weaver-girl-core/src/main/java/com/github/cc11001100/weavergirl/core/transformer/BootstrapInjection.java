@@ -51,6 +51,7 @@ public class BootstrapInjection {
 
             JarFile jarFile = new JarFile(new File(agentJarPath));
             instrumentation.appendToBootstrapClassLoaderSearch(jarFile);
+            jarFile.close();
             injected = true;
             log.info("Injected agent JAR into Bootstrap ClassLoader: {}", agentJarPath);
         } catch (IOException e) {

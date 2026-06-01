@@ -28,6 +28,16 @@ public class DefaultPluginContext implements PluginContext {
 
     @Override
     public String getConfig(String key) {
+        // Check namespaced system property first
+        String namespacedKey = "weavergirl.plugin." + pluginName + "." + key;
+        String value = System.getProperty(namespacedKey);
+        if (value != null) return value;
+
+        // Check plain system property
+        value = System.getProperty(key);
+        if (value != null) return value;
+
+        // Check config map
         return config.get(key);
     }
 

@@ -1,5 +1,7 @@
 package com.github.cc11001100.weavergirl.api.interceptor;
 
+import java.lang.reflect.Method;
+
 /**
  * Context object passed to {@link Interceptor} callbacks at runtime, encapsulating
  * all information about the intercepted method call.
@@ -10,6 +12,7 @@ package com.github.cc11001100.weavergirl.api.interceptor;
  *   <li>Override the return value via {@link #setReturnValue(Object)}</li>
  *   <li>Skip original method execution via {@link #skipMethod()}</li>
  *   <li>Access the thrown exception in {@link Interceptor#onException(MethodInvocation)}</li>
+ *   <li>Suppress the thrown exception via {@link #suppressException()}</li>
  * </ul>
  *
  * <h3>Return value override mechanism</h3>
@@ -19,6 +22,12 @@ package com.github.cc11001100.weavergirl.api.interceptor;
  * supplied value and the original method return. In contrast, {@link #initReturnValue(Object)}
  * stores the original return value <em>without</em> marking it as overridden; this is an
  * internal framework method and should not be called by interceptors.</p>
+ *
+ * <h3>Exception suppression mechanism</h3>
+ * <p>Call {@link #suppressException()} from {@link Interceptor#onException(MethodInvocation)}
+ * to prevent the exception from propagating to the caller. When suppressed, the return value
+ * (if set via {@link #setReturnValue(Object)}) or {@code null} will be returned instead.
+ * This enables circuit-breaker and fallback patterns.</p>
  *
  * <h3>Thread safety</h3>
  * <p>Each intercepted method invocation creates a fresh {@code MethodInvocation} instance.
@@ -53,12 +62,14 @@ public class MethodInvocation {
 
     private final Class<?> targetClass;
     private final String methodName;
+    private final Method method;
     private final Object target;
     private final Object[] arguments;
     private Object returnValue;
     private Throwable throwable;
     private boolean isSkipped;
     private boolean returnOverridden;
+    private boolean exceptionSuppressed;
 
     /**
      * Constructs a new MethodInvocation.
@@ -70,8 +81,23 @@ public class MethodInvocation {
      */
     public MethodInvocation(Class<?> targetClass, String methodName,
                             Object target, Object[] arguments) {
+        this(targetClass, methodName, null, target, arguments);
+    }
+
+    /**
+     * Constructs a new MethodInvocation with a {@link Method} reference.
+     *
+     * @param targetClass the class declaring the intercepted method
+     * @param methodName  the name of the intercepted method
+     * @param method      the reflective {@link Method} object, may be null
+     * @param target      the object instance on which the method is invoked (null for static methods)
+     * @param arguments   the arguments passed to the method; defensively copied
+     */
+    public MethodInvocation(Class<?> targetClass, String methodName,
+                            Method method, Object target, Object[] arguments) {
         this.targetClass = targetClass;
         this.methodName = methodName;
+        this.method = method;
         this.target = target;
         this.arguments = arguments != null ? arguments.clone() : new Object[0];
         this.isSkipped = false;
@@ -93,6 +119,19 @@ public class MethodInvocation {
      */
     public String getMethodName() {
         return methodName;
+    }
+
+    /**
+     * Returns the reflective {@link Method} object for the intercepted method.
+     *
+     * <p>This provides access to the full method signature, return type, parameter types,
+     * and declared annotations. May return {@code null} if the method reference is not
+     * available (e.g., in certain instrumentation contexts).</p>
+     *
+     * @return the Method object, or null if not available
+     */
+    public Method getMethod() {
+        return method;
     }
 
     /**
@@ -126,6 +165,30 @@ public class MethodInvocation {
                     "Argument index " + index + " out of bounds for " + arguments.length + " arguments");
         }
         return arguments[index];
+    }
+
+    /**
+     * Returns the parameter types of the intercepted method.
+     *
+     * <p>This is a convenience method that delegates to {@link Method#getParameterTypes()}.
+     * Returns an empty array if the {@link Method} reference is not available.</p>
+     *
+     * @return the parameter types, or an empty array if the method reference is null
+     */
+    public Class<?>[] getParameterTypes() {
+        return method != null ? method.getParameterTypes() : new Class<?>[0];
+    }
+
+    /**
+     * Returns the return type of the intercepted method.
+     *
+     * <p>This is a convenience method that delegates to {@link Method#getReturnType()}.
+     * Returns {@code void.class} if the {@link Method} reference is not available.</p>
+     *
+     * @return the return type, or {@code void.class} if the method reference is null
+     */
+    public Class<?> getReturnType() {
+        return method != null ? method.getReturnType() : void.class;
     }
 
     /**
@@ -245,5 +308,24 @@ public class MethodInvocation {
      */
     public boolean isReturnOverridden() {
         return returnOverridden;
+    }
+
+    /**
+     * Suppress the exception thrown by the target method.
+     * When called from onException(), the exception will not propagate
+     * to the caller. Instead, the return value (if set via setReturnValue)
+     * or null will be returned.
+     */
+    public void suppressException() {
+        this.exceptionSuppressed = true;
+    }
+
+    /**
+     * Returns whether the exception has been suppressed via {@link #suppressException()}.
+     *
+     * @return true if the exception should not propagate to the caller
+     */
+    public boolean isExceptionSuppressed() {
+        return exceptionSuppressed;
     }
 }

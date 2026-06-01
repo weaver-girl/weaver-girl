@@ -27,6 +27,8 @@ public class ConfigWatcher {
     private final InterceptorRegistry registry;
     private final YamlConfigLoader configLoader;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private volatile long lastReloadTime = 0;
+    private static final long DEBOUNCE_MILLIS = 2000;
     private Thread watcherThread;
 
     public ConfigWatcher(String configPath, InterceptorRegistry registry) {
@@ -63,6 +65,11 @@ public class ConfigWatcher {
                     for (WatchEvent<?> event : key.pollEvents()) {
                         Path changedFile = (Path) event.context();
                         if (changedFile.toString().equals(file.getName())) {
+                            long now = System.currentTimeMillis();
+                            if (now - lastReloadTime < DEBOUNCE_MILLIS) {
+                                continue; // skip duplicate event
+                            }
+                            lastReloadTime = now;
                             log.info("Config file changed, reloading: {}", configPath);
                             try {
                                 // Unregister all YAML interceptors first

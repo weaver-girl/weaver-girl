@@ -46,7 +46,7 @@ public class InterceptAdvice {
 
             String className = targetClass.getName();
             String methodName = method.getName();
-            MethodInvocation invocation = new MethodInvocation(targetClass, methodName, target, arguments);
+            MethodInvocation invocation = new MethodInvocation(targetClass, methodName, method, target, arguments);
 
             List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
             for (InterceptorDefinition def : defs) {
@@ -98,7 +98,7 @@ public class InterceptAdvice {
             if (invocation != null) {
                 context = invocation;
             } else {
-                context = new MethodInvocation(targetClass, method.getName(), target, arguments);
+                context = new MethodInvocation(targetClass, method.getName(), method, target, arguments);
             }
 
             // Store the original return value / throwable into the invocation context.
@@ -136,6 +136,15 @@ public class InterceptAdvice {
                                 throwable != null ? "onException" : "after", e);
                         InterceptorHolder.recordInterceptorFailure(def.getName());
                     }
+                }
+            }
+
+            // Handle exception suppression: if an interceptor called suppressException()
+            // and there was a throwable, clear it so it doesn't propagate.
+            if (context.isExceptionSuppressed() && throwable != null) {
+                throwable = null;  // Clear the throwable so it doesn't propagate
+                if (context.isReturnOverridden()) {
+                    returnValue = context.getReturnValue();
                 }
             }
 

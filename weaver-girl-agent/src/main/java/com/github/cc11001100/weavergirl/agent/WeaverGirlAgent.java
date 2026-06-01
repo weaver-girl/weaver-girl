@@ -48,10 +48,10 @@ public class WeaverGirlAgent {
         try {
             log.info("WeaverGirl agent initializing...");
 
-            WeaverGirl weaverGirl = WeaverGirl.bootstrap(instrumentation);
-
             // Parse agent arguments
             Map<String, String> args = parseAgentArgs(agentArgs);
+
+            WeaverGirl weaverGirl = WeaverGirl.bootstrap(instrumentation, args);
 
             // Load YAML config if specified via agent arguments
             String configPath = args.get("config");

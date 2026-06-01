@@ -103,10 +103,11 @@ public class ThreadContext {
     }
 
     /**
-     * Clear all values from the current thread's context.
+     * Clear all values from the current thread's context and remove the ThreadLocal entry
+     * to prevent memory leaks in thread pool environments.
      */
     public static void clear() {
-        CONTEXT.get().clear();
+        CONTEXT.remove();
     }
 
     /**
