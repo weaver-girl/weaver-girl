@@ -54,15 +54,15 @@
 - [x] **条件化增强** — TypeExistenceChecker 跳过不存在类的拦截器
 - [x] **健康检查 / 状态报告** — AgentStatus 单例 + 转换/调用/错误计数 + getReport()
 - [x] **插件依赖解析** — WeaverPlugin.depends() + PluginDependencyResolver 拓扑排序
-- [ ] **Agent 自诊断** — JMX MBean 暴露 agent 状态
-- [ ] **自适应采样** — 负载过高时降低拦截开销
+- [x] **Agent 自诊断** — WeaverGirlMBean + AgentStatusMonitor + JmxRegistrar
+- [x] **自适应采样** — SamplingController + SamplingMonitor + daemon 调度
 - [ ] **性能基准测试** — JMH 微基准测试拦截开销
 - [ ] **多 Agent 共存测试** — 与 SkyWalking/OpenTelemetry 共存无冲突
 
 ## 📊 统计
 
-- **源文件**: 36 个 Java 文件
-- **测试文件**: 17+ 个
-- **测试总数**: 80+ 个，全部通过
-- **提交总数**: 30+ 个
+- **源文件**: 45 个 Java 文件
+- **测试文件**: 21 个
+- **测试总数**: 280 个，全部通过
+- **提交总数**: 35+ 个
 - **模块**: 5 个 Maven 模块 (api, core, annotation, agent, sample)
