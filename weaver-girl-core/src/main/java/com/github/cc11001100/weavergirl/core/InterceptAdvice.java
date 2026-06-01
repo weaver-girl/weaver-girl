@@ -5,6 +5,7 @@ import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.interceptor.MethodInvocationPool;
+import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.implementation.bytecode.assign.Assigner;
 
@@ -57,12 +58,14 @@ public class InterceptAdvice {
                     try {
                         def.getInterceptor().before(invocation);
                         InterceptorHolder.recordInterceptorSuccess(def.getName());
+                        AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true);
                     } catch (Exception e) {
                         // If this interceptor called skipMethod and then failed,
                         // don't let its skip decision stand
                         invocation.setSkipMethod(false);
                         InterceptorHolder.logInterceptorError(def.getName(), "before", e);
                         InterceptorHolder.recordInterceptorFailure(def.getName());
+                        AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false);
                     }
                 }
             }
@@ -132,10 +135,12 @@ public class InterceptAdvice {
                             interceptor.after(context);
                         }
                         InterceptorHolder.recordInterceptorSuccess(def.getName());
+                        AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true);
                     } catch (Exception e) {
                         InterceptorHolder.logInterceptorError(def.getName(),
                                 throwable != null ? "onException" : "after", e);
                         InterceptorHolder.recordInterceptorFailure(def.getName());
+                        AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false);
                     }
                 }
             }

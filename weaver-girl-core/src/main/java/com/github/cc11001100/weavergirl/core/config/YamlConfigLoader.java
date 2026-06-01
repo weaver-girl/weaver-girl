@@ -190,12 +190,13 @@ public class YamlConfigLoader {
             Interceptor advice = adviceCache.computeIfAbsent(adviceClassName, name -> {
                 try {
                     Class<?> adviceClass = Class.forName(name);
-                    Object instance = adviceClass.getDeclaredConstructor().newInstance();
-                    if (instance instanceof Interceptor) {
-                        return (Interceptor) instance;
+                    // Validate BEFORE instantiation to prevent arbitrary class instantiation
+                    if (!Interceptor.class.isAssignableFrom(adviceClass)) {
+                        log.warn("Advice class {} does not implement Interceptor interface — rejected for safety", name);
+                        return null;
                     }
-                    log.warn("Advice class {} does not implement Interceptor", name);
-                    return null;
+                    Object instance = adviceClass.getDeclaredConstructor().newInstance();
+                    return (Interceptor) instance;
                 } catch (Exception e) {
                     log.warn("Failed to instantiate advice class {}: {}", name, e.getMessage());
                     return null;

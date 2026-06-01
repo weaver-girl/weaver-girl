@@ -4,6 +4,7 @@ import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.WeaverGirl;
+import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,13 +59,27 @@ public class PluginLoader {
                 plugin.registerInterceptors(registry);
 
                 loadedPlugins.add(plugin);
+                AgentStatus.getInstance().recordPluginStatus(plugin.name(), true, null);
                 log.info("Plugin {} loaded successfully", plugin.name());
             } catch (Throwable e) {
+                String errorMsg = e.getClass().getSimpleName() + ": " + e.getMessage();
+                AgentStatus.getInstance().recordPluginStatus(plugin.name(), false, errorMsg);
                 log.error("Failed to load plugin {}: {}", plugin.name(), e.getMessage(), e);
             }
         }
 
-        log.info("Loaded {} plugins total", loadedPlugins.size());
+        // Summary report
+        int total = sorted.size();
+        int succeeded = loadedPlugins.size();
+        int failed = total - succeeded;
+        log.info("Loaded {} plugins ({} succeeded, {} failed) out of {} discovered",
+                succeeded, succeeded, failed, total);
+        if (failed > 0) {
+            log.warn("Failed plugins: {}", sorted.stream()
+                    .filter(p -> !loadedPlugins.contains(p))
+                    .map(WeaverPlugin::name)
+                    .collect(java.util.stream.Collectors.joining(", ")));
+        }
         return Collections.unmodifiableList(loadedPlugins);
     }
 

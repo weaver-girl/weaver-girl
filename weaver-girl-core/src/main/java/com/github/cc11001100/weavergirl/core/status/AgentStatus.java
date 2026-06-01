@@ -25,6 +25,8 @@ public class AgentStatus {
     private final AtomicLong interceptorErrorCount = new AtomicLong(0);
     private final ConcurrentHashMap<String, String> customMetrics = new ConcurrentHashMap<>();
     private final CopyOnWriteArrayList<String> transformedClasses = new CopyOnWriteArrayList<>();
+    private final ConcurrentHashMap<String, InterceptorMetrics> interceptorMetrics = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, PluginStatus> pluginStatuses = new ConcurrentHashMap<>();
 
     private volatile long startTime = System.currentTimeMillis();
     private volatile int activePluginCount = 0;
@@ -92,6 +94,38 @@ public class AgentStatus {
         return (System.currentTimeMillis() - startTime) / 1000;
     }
 
+    // --- Per-interceptor metrics ---
+
+    /**
+     * Record an interceptor invocation (success or failure).
+     */
+    public void recordInterceptorInvocation(String name, boolean success) {
+        interceptorMetrics.computeIfAbsent(name, k -> new InterceptorMetrics()).record(success);
+    }
+
+    /**
+     * Get per-interceptor metrics.
+     */
+    public Map<String, InterceptorMetrics> getInterceptorMetrics() {
+        return Collections.unmodifiableMap(interceptorMetrics);
+    }
+
+    // --- Plugin status tracking ---
+
+    /**
+     * Record plugin load result.
+     */
+    public void recordPluginStatus(String name, boolean loaded, String error) {
+        pluginStatuses.put(name, new PluginStatus(loaded, error));
+    }
+
+    /**
+     * Get plugin statuses.
+     */
+    public Map<String, PluginStatus> getPluginStatuses() {
+        return Collections.unmodifiableMap(pluginStatuses);
+    }
+
     /**
      * Generate a human-readable status report.
      */
@@ -109,6 +143,24 @@ public class AgentStatus {
             sb.append("Custom Metrics:\n");
             customMetrics.forEach((k, v) -> sb.append("  ").append(k).append(": ").append(v).append("\n"));
         }
+        if (!pluginStatuses.isEmpty()) {
+            sb.append("Plugins:\n");
+            pluginStatuses.forEach((name, status) -> {
+                sb.append("  ").append(name).append(": ");
+                if (status.loaded) {
+                    sb.append("LOADED");
+                } else {
+                    sb.append("FAILED (").append(status.error).append(")");
+                }
+                sb.append("\n");
+            });
+        }
+        if (!interceptorMetrics.isEmpty()) {
+            sb.append("Interceptor Metrics:\n");
+            interceptorMetrics.forEach((name, m) ->
+                sb.append("  ").append(name).append(": invocations=").append(m.invocations)
+                  .append(", errors=").append(m.errors).append("\n"));
+        }
         sb.append("================================");
         return sb.toString();
     }
@@ -125,6 +177,42 @@ public class AgentStatus {
         registeredInterceptorCount = 0;
         customMetrics.clear();
         transformedClasses.clear();
+        interceptorMetrics.clear();
+        pluginStatuses.clear();
         startTime = System.currentTimeMillis();
+    }
+
+    // --- Inner classes ---
+
+    /**
+     * Per-interceptor invocation metrics.
+     */
+    public static class InterceptorMetrics {
+        private volatile long invocations = 0;
+        private volatile long errors = 0;
+
+        void record(boolean success) {
+            invocations++;
+            if (!success) errors++;
+        }
+
+        public long getInvocations() { return invocations; }
+        public long getErrors() { return errors; }
+    }
+
+    /**
+     * Plugin load status.
+     */
+    public static class PluginStatus {
+        private final boolean loaded;
+        private final String error;
+
+        PluginStatus(boolean loaded, String error) {
+            this.loaded = loaded;
+            this.error = error;
+        }
+
+        public boolean isLoaded() { return loaded; }
+        public String getError() { return error; }
     }
 }
