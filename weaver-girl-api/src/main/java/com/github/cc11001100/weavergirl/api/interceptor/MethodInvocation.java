@@ -27,7 +27,7 @@ public class MethodInvocation {
         this.targetClass = targetClass;
         this.methodName = methodName;
         this.target = target;
-        this.arguments = arguments != null ? arguments : new Object[0];
+        this.arguments = arguments != null ? arguments.clone() : new Object[0];
         this.isSkipped = false;
     }
 
