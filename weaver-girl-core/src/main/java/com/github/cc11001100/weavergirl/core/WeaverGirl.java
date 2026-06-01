@@ -31,6 +31,7 @@ public class WeaverGirl {
     private final InterceptorRegistry registry;
     private final PluginLoader pluginLoader;
     private Instrumentation instrumentation;
+    private WeaverTransformer transformer;
 
     private WeaverGirl() {
         this.registry = new DefaultInterceptorRegistry();
@@ -56,6 +57,7 @@ public class WeaverGirl {
 
         WeaverTransformer transformer = new WeaverTransformer(weaverGirl.registry);
         transformer.install(instrumentation);
+        weaverGirl.transformer = transformer;
 
         log.info("WeaverGirl agent started with {} interceptor definitions",
                 weaverGirl.registry.getAllDefinitions().size());
@@ -100,6 +102,7 @@ public class WeaverGirl {
         InterceptorHolder.setRegistry(this.registry);
         WeaverTransformer transformer = new WeaverTransformer(this.registry);
         transformer.install(instrumentation);
+        this.transformer = transformer;
         return this;
     }
 
@@ -112,6 +115,20 @@ public class WeaverGirl {
 
     public InterceptorRegistry getRegistry() {
         return registry;
+    }
+
+    /**
+     * Retransform already-loaded classes that match any registered interceptor.
+     * This is needed when the agent is attached dynamically via agentmain,
+     * because classes loaded before the agent started would not be transformed.
+     *
+     * @return the number of classes that were retransformed
+     */
+    public int retransformLoadedClasses() {
+        if (transformer == null) {
+            return 0;
+        }
+        return transformer.retransformLoadedClasses();
     }
 
     /**

@@ -27,17 +27,17 @@ public class WeaverGirlAgent {
      * Premain entry — called before application main() when using -javaagent flag.
      */
     public static void premain(String agentArgs, Instrumentation instrumentation) {
-        init(agentArgs, instrumentation);
+        init(agentArgs, instrumentation, false);
     }
 
     /**
      * Agentmain entry — called when dynamically attaching to a running JVM.
      */
     public static void agentmain(String agentArgs, Instrumentation instrumentation) {
-        init(agentArgs, instrumentation);
+        init(agentArgs, instrumentation, true);
     }
 
-    private static void init(String agentArgs, Instrumentation instrumentation) {
+    private static void init(String agentArgs, Instrumentation instrumentation, boolean isAttach) {
         try {
             log.info("WeaverGirl agent initializing...");
 
@@ -50,6 +50,12 @@ public class WeaverGirlAgent {
                     YamlConfigLoader configLoader = new YamlConfigLoader();
                     configLoader.loadFromFile(configPath, weaverGirl.getRegistry());
                 }
+            }
+
+            // If dynamically attached, retransform already-loaded classes
+            if (isAttach) {
+                int retransformed = weaverGirl.retransformLoadedClasses();
+                log.info("Retransformed {} already-loaded classes for dynamic attach", retransformed);
             }
 
             // Register shutdown hook to cleanly destroy plugins

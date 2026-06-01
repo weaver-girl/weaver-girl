@@ -14,6 +14,8 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.instrument.Instrumentation;
 import java.security.ProtectionDomain;
+import java.util.ArrayList;
+import java.util.List;
 
 import static net.bytebuddy.matcher.ElementMatchers.*;
 
@@ -26,6 +28,7 @@ public class WeaverTransformer {
     private static final Logger log = LoggerFactory.getLogger(WeaverTransformer.class);
 
     private final InterceptorRegistry registry;
+    private Instrumentation instrumentation;
 
     public WeaverTransformer(InterceptorRegistry registry) {
         this.registry = registry;
@@ -35,6 +38,8 @@ public class WeaverTransformer {
      * Install this transformer onto the given Instrumentation instance.
      */
     public void install(Instrumentation instrumentation) {
+        this.instrumentation = instrumentation;
+
         AgentBuilder agentBuilder = new AgentBuilder.Default()
                 .disableClassFormatChanges()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
@@ -67,6 +72,52 @@ public class WeaverTransformer {
 
         agentBuilder.installOn(instrumentation);
         log.info("WeaverTransformer installed with {} interceptor definitions", registry.getAllDefinitions().size());
+    }
+
+    /**
+     * Retransform already-loaded classes that match any registered interceptor.
+     * This is needed when the agent is attached dynamically via agentmain,
+     * because classes loaded before the agent started would not be transformed.
+     *
+     * @return the number of classes that were retransformed
+     */
+    public int retransformLoadedClasses() {
+        if (instrumentation == null) {
+            return 0;
+        }
+        if (!instrumentation.isRetransformClassesSupported()) {
+            log.warn("JVM does not support class retransformation");
+            return 0;
+        }
+
+        Class<?>[] allLoaded = instrumentation.getAllLoadedClasses();
+        List<Class<?>> toRetransform = new ArrayList<>();
+
+        for (Class<?> clazz : allLoaded) {
+            String className = clazz.getName();
+            if (registry.getInterceptorsForClass(className).isEmpty()) {
+                continue;
+            }
+            // Skip array types, primitive types, and JDK internal classes
+            if (clazz.isArray() || clazz.isPrimitive() || clazz.getName().startsWith("java.")) {
+                continue;
+            }
+            // Only retransform if the class can be retransformed
+            if (instrumentation.isModifiableClass(clazz)) {
+                toRetransform.add(clazz);
+            }
+        }
+
+        if (!toRetransform.isEmpty()) {
+            try {
+                instrumentation.retransformClasses(toRetransform.toArray(new Class<?>[0]));
+                log.info("Retransformed {} already-loaded classes", toRetransform.size());
+            } catch (Exception e) {
+                log.error("Failed to retransform classes: {}", e.getMessage());
+            }
+        }
+
+        return toRetransform.size();
     }
 
     private net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> buildTypeMatcher(ClassMatcher classMatcher) {
