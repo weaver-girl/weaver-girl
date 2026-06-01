@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import java.lang.management.ManagementFactory;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
+import javax.management.StandardMBean;
 
 /**
  * Registers the weaver-girl agent MBean with the platform MBean server.
@@ -24,7 +25,8 @@ public class JmxRegistrar {
             MBeanServer server = ManagementFactory.getPlatformMBeanServer();
             ObjectName name = new ObjectName(OBJECT_NAME);
             if (!server.isRegistered(name)) {
-                server.registerMBean(new WeaverGirlMXBean(), name);
+                StandardMBean mbean = new StandardMBean(new AgentStatusMonitor(), WeaverGirlMBean.class);
+                server.registerMBean(mbean, name);
                 log.info("Registered JMX MBean: {}", OBJECT_NAME);
             }
         } catch (Exception e) {

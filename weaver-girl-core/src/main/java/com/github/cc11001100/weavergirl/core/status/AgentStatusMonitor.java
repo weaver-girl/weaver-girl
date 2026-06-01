@@ -1,15 +1,15 @@
 package com.github.cc11001100.weavergirl.core.status;
 
 /**
- * JMX MXBean implementation that delegates to AgentStatus.
- * Register with: MBeanServerFactory.findMBeanServer(null).get(0)
- *   .registerMBean(new WeaverGirlMXBean(), new ObjectName("com.github.cc11001100.weavergirl:type=Agent"));
+ * JMX MBean implementation that delegates to AgentStatus.
+ * Named without the "MBean" suffix so it can be registered via
+ * StandardMBean with an explicit interface, avoiding JMX naming convention conflicts.
  */
-public class WeaverGirlMXBean implements WeaverGirlMBean {
+public class AgentStatusMonitor implements WeaverGirlMBean {
 
     private final AgentStatus status;
 
-    public WeaverGirlMXBean() {
+    public AgentStatusMonitor() {
         this.status = AgentStatus.getInstance();
     }
 
