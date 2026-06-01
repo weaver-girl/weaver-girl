@@ -2,6 +2,8 @@ package com.github.cc11001100.weavergirl.api.interceptor;
 
 import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
 
+import java.util.Objects;
+
 /**
  * A complete interceptor definition that binds a Pointcut to an Interceptor.
  * This is the fundamental unit registered with the InterceptorRegistry.
@@ -28,6 +30,21 @@ public class InterceptorDefinition {
     public Pointcut getPointcut() { return pointcut; }
     public Interceptor getInterceptor() { return interceptor; }
     public int getPriority() { return priority; }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof InterceptorDefinition)) return false;
+        InterceptorDefinition that = (InterceptorDefinition) o;
+        return priority == that.priority
+                && Objects.equals(name, that.name)
+                && Objects.equals(pointcut, that.pointcut);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(name, pointcut, priority);
+    }
 
     @Override
     public String toString() {

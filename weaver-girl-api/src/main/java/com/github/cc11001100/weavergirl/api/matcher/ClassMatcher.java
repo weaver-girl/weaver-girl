@@ -70,6 +70,19 @@ public class ClassMatcher {
     }
 
     @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof ClassMatcher)) return false;
+        ClassMatcher that = (ClassMatcher) o;
+        return pattern.equals(that.pattern) && matchType == that.matchType;
+    }
+
+    @Override
+    public int hashCode() {
+        return pattern.hashCode() * 31 + matchType.hashCode();
+    }
+
+    @Override
     public String toString() {
         return "ClassMatcher{" + matchType + ": " + pattern + "}";
     }
