@@ -40,9 +40,16 @@ public class WeaverTransformer {
     public void install(Instrumentation instrumentation) {
         this.instrumentation = instrumentation;
 
+        // Inject helper classes into Bootstrap ClassLoader so advice code
+        // is visible when instrumenting java.* / javax.* classes
+        BootstrapInjection bootstrapInjection = new BootstrapInjection();
+        bootstrapInjection.inject(instrumentation);
+
         AgentBuilder agentBuilder = new AgentBuilder.Default()
                 .disableClassFormatChanges()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+                .with(new AgentBuilder.InjectionStrategy.UsingInstrumentation(instrumentation,
+                        new java.io.File(System.getProperty("java.io.tmpdir"))))
                 .with(new AgentBuilder.Listener.Adapter() {
                     @Override
                     public void onTransformation(TypeDescription typeDescription, ClassLoader classLoader,
@@ -98,8 +105,8 @@ public class WeaverTransformer {
             if (registry.getInterceptorsForClass(className).isEmpty()) {
                 continue;
             }
-            // Skip array types, primitive types, and JDK internal classes
-            if (clazz.isArray() || clazz.isPrimitive() || clazz.getName().startsWith("java.")) {
+            // Skip array types and primitive types
+            if (clazz.isArray() || clazz.isPrimitive()) {
                 continue;
             }
             // Only retransform if the class can be retransformed
