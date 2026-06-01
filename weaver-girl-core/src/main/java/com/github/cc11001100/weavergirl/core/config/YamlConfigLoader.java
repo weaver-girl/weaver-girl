@@ -18,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -149,6 +148,11 @@ public class YamlConfigLoader {
     /**
      * Validates the loaded configuration, removing invalid interceptor entries
      * and logging warnings for each skipped entry.
+     *
+     * <p>Structural validation only: checks that required fields are present.
+     * Does NOT validate that advice classes exist on the classpath — that is
+     * checked lazily at invocation time, because the class may be loaded by
+     * a different ClassLoader or may not be available during agent init.</p>
      */
     private void validate(WeaverConfig config) {
         List<WeaverConfig.InterceptorConfig> valid = new ArrayList<>();
@@ -158,27 +162,10 @@ public class YamlConfigLoader {
                     && (ic.getClassPattern() == null || ic.getClassPattern().isEmpty())) {
                 errors.add("no className or classPattern specified");
             }
-            if ((ic.getMethod() == null || ic.getMethod().isEmpty())
-                    && (ic.getMethodPattern() == null || ic.getMethodPattern().isEmpty())) {
-                // Method is optional — defaults to "*" (all methods). Not an error.
-            }
             if ((ic.getBefore() == null || ic.getBefore().isEmpty())
                     && (ic.getAfter() == null || ic.getAfter().isEmpty())
                     && (ic.getAround() == null || ic.getAround().isEmpty())) {
                 errors.add("no before, after, or around advice class specified");
-            }
-            // Validate advice classes exist and implement Interceptor
-            for (String adviceClass : Arrays.asList(ic.getBefore(), ic.getAfter(), ic.getAround())) {
-                if (adviceClass != null && !adviceClass.isEmpty()) {
-                    try {
-                        Class<?> clazz = Class.forName(adviceClass);
-                        if (!Interceptor.class.isAssignableFrom(clazz)) {
-                            errors.add("advice class " + adviceClass + " does not implement Interceptor");
-                        }
-                    } catch (ClassNotFoundException e) {
-                        errors.add("advice class " + adviceClass + " not found");
-                    }
-                }
             }
 
             if (errors.isEmpty()) {
