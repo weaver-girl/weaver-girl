@@ -39,15 +39,25 @@
 - [x] Pointcut 组合 — Pointcut.and() / .or() + matches(String, String)
 - [x] equals/hashCode — ClassMatcher/MethodMatcher/Pointcut/InterceptorDefinition
 
-## 🔧 P3 生产就绪（当前批次）
+## ✅ P3 生产就绪（已完成）
 
 - [x] **已加载类重转换** — agentmain attach 时 retransformClasses 已加载类
 - [x] **值对象不可变** — 所有字段 private final，无 setter
 - [x] **ClassLoader 隔离** — PluginClassLoader child-first + PluginJarScanner + loadPluginsFromDirectory
 - [x] **配置动态重载** — ConfigWatcher + watch=true agent 参数
 - [x] **跨线程上下文传播** — ThreadContext + ContextRunnable + ContextCallable
-- [ ] **Bootstrap 类注入** — 支持拦截 java.* / javax.* 类
-- [ ] **API Javadoc** — 所有 public API 完整 Javadoc
+- [x] **Bootstrap 类注入** — BootstrapInjection + InjectionStrategy.UsingInstrumentation
+- [x] **API Javadoc** — 13 个 public API 类完整 Javadoc + @since 标签
+
+## 🔧 P4 企业级能力（当前批次）
+
+- [ ] **条件化增强** — 仅在目标类/方法实际存在时增强（避免 NoClassDefFoundError）
+- [ ] **健康检查 / 状态报告** — 活跃插件数、转换次数、错误计数
+- [ ] **Agent 自诊断** — JMX MBean 暴露 agent 状态
+- [ ] **插件依赖解析** — 插件间依赖的有序加载
+- [ ] **性能基准测试** — JMH 微基准测试拦截开销
+- [ ] **自适应采样** — 负载过高时降低拦截开销
+- [ ] **多 Agent 共存测试** — 与 SkyWalking/OpenTelemetry 共存无冲突
 
 ## 🚀 P4 企业级能力（远期）
 
