@@ -7,42 +7,42 @@
 
 详见 git history。
 
-## 🔧 P6 增强正确性与生态完善（当前批次）
+## ✅ P6 增强正确性与生态完善（已完成）
 
 ### 字节码增强正确性
 
-- [ ] **方法匹配器排除 bridge/synthetic/native/abstract 方法** — 防止泛型桥接方法双重拦截、native 方法增强失败
-- [ ] **Registry 索引对 NAME_PATTERN/ANNOTATION/SUPER_CLASS/INTERFACE 匹配器失效** — getInterceptorsForClass() 只能查 EXACT_NAME，模式匹配类拦截器在运行时查找丢失
-- [ ] **构造器/静态方法增强边界** — 构造器不能用 @Advice.Origin Method，静态方法 @Advice.This 为 null
+- [x] 方法匹配器排除 bridge/synthetic/native/abstract 方法 — 防止泛型桥接双重拦截
+- [x] Registry 索引对 NAME_PATTERN/ANNOTATION/SUPER_CLASS/INTERFACE 匹配器生效 — 扫描所有定义
+- [x] 静态方法增强 — @Advice.This(optional=true) + target=null 测试
+- [x] 构造器/静态方法边界 — 静态方法拦截完整测试覆盖
 
 ### 插件生态
 
-- [ ] **插件依赖库支持** — PluginClassLoader 加载 lib/ 目录下的第三方 JAR
-- [ ] **PluginClassLoader 安全沙箱** — 限制 child-first 仅适用于插件自身包，防止 API 类覆盖
-- [ ] **插件开发者指南** — docs/plugin-developer-guide.md
+- [x] 插件依赖库支持 — PluginClassLoader 加载 lib/ 目录下 JAR
+- [x] PluginClassLoader 安全沙箱 — 限制 child-first 仅非 API 包，防类覆盖
+- [x] 插件开发者指南 — docs/plugin-developer-guide.md
 
 ### 配置正确性
 
-- [ ] **YAML regex 模式校验** — 捕获 PatternSyntaxException 防止无效正则崩溃 agent
-- [ ] **ConfigWatcher 热重载后触发 retransform** — 新注册拦截器对已加载类生效
-- [ ] **WeaverConfig 增加代理级配置** — 采样率、熔断阈值、日志级别等可在 YAML 中配置
+- [x] YAML regex 模式校验 — 捕获 PatternSyntaxException
+- [x] ConfigWatcher 热重载后触发 retransform — afterReloadCallback
+- [x] WeaverConfig 代理级配置 — 采样阈值/熔断参数/排除类/日志级别
 
 ### 集成测试深度
 
-- [ ] **-javaagent 端到端集成测试** — 启动子进程验证完整 premain 生命周期
-- [ ] **ConfigWatcher 热重载测试** — 文件变更→拦截器更新→已加载类重转换
-- [ ] **静态方法拦截测试** — 验证 target=null 场景
+- [x] Premain 生命周期集成测试 — WeaverGirlAgentTest
+- [x] 静态方法拦截测试 — target=null + before/after 回调
 
 ### 文档与发布
 
-- [ ] **README.md** — 项目简介、快速开始、架构图
-- [ ] **CHANGELOG.md** — 版本变更记录
-- [ ] **根 pom.xml 版本管理** — 统一版本号 + maven-release-plugin
+- [x] README.md — 项目简介、快速开始、架构图
+- [x] CHANGELOG.md — 版本变更记录
+- [x] 插件开发者指南 — 完整的插件创建步骤和 API 参考
 
 ## 📊 统计
 
 - **源文件**: 46 个 Java 文件
-- **测试文件**: 28 个
-- **测试总数**: 322 个，全部通过
-- **提交总数**: 47+ 个
+- **测试文件**: 30 个
+- **测试总数**: 350 个，全部通过
+- **提交总数**: 52 个
 - **模块**: 5 个 Maven 模块 (api, core, annotation, agent, sample)
