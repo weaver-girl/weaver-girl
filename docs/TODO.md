@@ -25,18 +25,22 @@
 - [x] InterceptorRegistry.unregister(name)
 - [x] .gitignore
 
-## 🔧 P2 生产加固（当前批次）
+## ✅ P2 生产加固（已完成）
 
-- [ ] **MethodMatcher 测试** — ANNOTATION 和 NAME_PATTERN 匹配类型无测试覆盖
+- [x] **MethodMatcher 测试** — 12 个测试覆盖 byName/any/byNamePattern/byAnnotation
+- [x] **MethodInvocation 测试** — 11 个测试覆盖防御性拷贝/skipMethod/返回值/边界
+- [x] **Agent shutdown hook** — Runtime.addShutdownHook 调用 WeaverGirl.shutdown()
+- [x] **Agent 初始化容错** — try-catch(Throwable) 防止目标 JVM 崩溃
+- [x] **YAML 配置校验** — 结构性校验（className + advice 必填），advice 类存在性延迟校验
+- [x] **InterceptorRegistry.unregister()** — 按名称移除定义
+
+## 🔧 P2 续 — 补充能力（当前批次）
+
 - [ ] **WeaverGirl/InterceptBuilder 测试** — programmatic API 零测试
-- [ ] **MethodInvocation 测试** — 防御性拷贝、setReturnValue/isReturnOverridden、skipMethod、getArgument 边界
 - [ ] **AnnotationPluginLoader 测试** — 注解扫描 + 反射拦截器创建无测试
 - [ ] **方法签名匹配** — MethodMatcher 支持按参数类型匹配（不只是方法名）
 - [ ] **Pointcut 组合** — 支持 AND/OR/NOT 逻辑组合
 - [ ] **equals/hashCode** — 值对象实现 equals/hashCode
-- [ ] **Agent shutdown hook** — 注册 Runtime.getRuntime().addShutdownHook() 调用 WeaverGirl.shutdown()
-- [ ] **Agent 初始化容错** — Agent 初始化失败不影响目标 JVM 启动
-- [ ] **YAML 配置校验** — 启动时校验必填字段，报错而非静默失败
 
 ## 🏗️ P3 生产就绪（下一批次）
 
