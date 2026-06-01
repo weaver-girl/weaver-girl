@@ -91,32 +91,47 @@ public class YamlConfigLoader {
         return new Interceptor() {
             @Override
             public void before(MethodInvocation invocation) {
-                invokeAdviceClass(ic.getBefore(), invocation);
-                invokeAdviceClass(ic.getAround(), invocation);
+                invokeAdviceClass(ic.getBefore(), invocation, AdvicePhase.BEFORE);
+                invokeAdviceClass(ic.getAround(), invocation, AdvicePhase.BEFORE);
             }
 
             @Override
             public void after(MethodInvocation invocation) {
-                invokeAdviceClass(ic.getAfter(), invocation);
+                invokeAdviceClass(ic.getAround(), invocation, AdvicePhase.AFTER);
+                invokeAdviceClass(ic.getAfter(), invocation, AdvicePhase.AFTER);
             }
 
             @Override
             public void onException(MethodInvocation invocation) {
-                invokeAdviceClass(ic.getAround(), invocation);
+                invokeAdviceClass(ic.getAround(), invocation, AdvicePhase.ON_EXCEPTION);
             }
         };
     }
 
-    private void invokeAdviceClass(String adviceClassName, MethodInvocation invocation) {
+    private enum AdvicePhase {
+        BEFORE, AFTER, ON_EXCEPTION
+    }
+
+    private void invokeAdviceClass(String adviceClassName, MethodInvocation invocation, AdvicePhase phase) {
         if (adviceClassName == null || adviceClassName.isEmpty()) {
             return;
         }
         try {
             Class<?> adviceClass = Class.forName(adviceClassName);
-            Object instance = adviceClass.newInstance();
+            Object instance = adviceClass.getDeclaredConstructor().newInstance();
             if (instance instanceof Interceptor) {
                 Interceptor advice = (Interceptor) instance;
-                advice.before(invocation);
+                switch (phase) {
+                    case BEFORE:
+                        advice.before(invocation);
+                        break;
+                    case AFTER:
+                        advice.after(invocation);
+                        break;
+                    case ON_EXCEPTION:
+                        advice.onException(invocation);
+                        break;
+                }
             }
         } catch (Exception e) {
             log.warn("Failed to invoke advice class {}: {}", adviceClassName, e.getMessage());
