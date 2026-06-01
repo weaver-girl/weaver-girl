@@ -23,14 +23,14 @@ public class InterceptAdvice {
             @Advice.This Object target,
             @Advice.AllArguments Object[] arguments) {
         try {
+            InterceptorRegistry registry = InterceptorHolder.getRegistry();
+            if (registry == null) {
+                return null;
+            }
+
             String className = targetClass.getName();
             String methodName = method.getName();
             MethodInvocation invocation = new MethodInvocation(targetClass, methodName, target, arguments);
-
-            InterceptorRegistry registry = InterceptorHolder.getRegistry();
-            if (registry == null) {
-                return invocation;
-            }
 
             List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
             for (InterceptorDefinition def : defs) {
@@ -42,7 +42,14 @@ public class InterceptAdvice {
                     }
                 }
             }
-            return invocation;
+
+            // If any interceptor called skipMethod(), return the invocation to trigger ByteBuddy skipOn
+            // — the original method body will NOT execute, and onMethodExit will still be called
+            if (invocation.isSkipped()) {
+                return invocation;
+            }
+            // Not skipped — return null so the original method body executes normally
+            return null;
         } catch (Exception e) {
             return null;
         }
