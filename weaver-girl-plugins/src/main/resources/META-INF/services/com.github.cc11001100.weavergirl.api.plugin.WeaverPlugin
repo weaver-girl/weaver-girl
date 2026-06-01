@@ -8,3 +8,5 @@ com.github.cc11001100.weavergirl.plugins.redis.RedisPlugin
 com.github.cc11001100.weavergirl.plugins.httpclient.HttpClientPlugin
 com.github.cc11001100.weavergirl.plugins.grpc.GrpcPlugin
 com.github.cc11001100.weavergirl.plugins.kafka.KafkaPlugin
+com.github.cc11001100.weavergirl.plugins.mongo.MongoPlugin
+com.github.cc11001100.weavergirl.plugins.logging.LoggingPlugin

@@ -26,6 +26,10 @@
             <groupId>com.github.cc11001100</groupId>
             <artifactId>weaver-girl-annotation</artifactId>
         </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugins</artifactId>
+        </dependency>
 
         <!-- Logging -->
         <dependency>
