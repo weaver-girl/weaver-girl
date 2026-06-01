@@ -21,6 +21,7 @@ import java.util.Map;
  *   java -javaagent:weaver-girl-agent.jar -jar app.jar
  *   java -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml -jar app.jar
  *   java -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml,watch=true -jar app.jar
+ *   java -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml,plugins=/path/to/plugins -jar app.jar
  * </pre>
  */
 public class WeaverGirlAgent {
@@ -68,6 +69,14 @@ public class WeaverGirlAgent {
                     configWatcher = new ConfigWatcher(configPath, weaverGirl.getRegistry());
                     configWatcher.start();
                 }
+            }
+
+            // Load plugins from plugin directory if specified
+            String pluginDir = args.get("plugins");
+            if (pluginDir != null) {
+                PluginLoader pluginLoader = new PluginLoader();
+                pluginLoader.loadPluginsFromDirectory(pluginDir, weaverGirl.getRegistry(), args);
+                log.info("Plugins loaded from directory: {}", pluginDir);
             }
 
             // If dynamically attached, retransform already-loaded classes
