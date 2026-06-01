@@ -54,12 +54,10 @@ public class JdbcPlugin extends AbstractPlugin {
 
     @Override
     public void init(PluginContext context) {
-        String thresholdStr = context.getConfig("slowQueryThreshold", "1000");
-        try { slowQueryThresholdMs = Long.parseLong(thresholdStr); } catch (NumberFormatException e) { slowQueryThresholdMs = 1000; }
-        logSql = "true".equalsIgnoreCase(context.getConfig("logSql", "true"));
-        String maxLenStr = context.getConfig("maxSqlLength", "200");
-        try { maxSqlLength = Integer.parseInt(maxLenStr); } catch (NumberFormatException e) { maxSqlLength = 200; }
-        enabled = "true".equalsIgnoreCase(context.getConfig("enabled", "true"));
+        slowQueryThresholdMs = context.getConfigLong("slowQueryThreshold", 1000);
+        logSql = context.getConfigBoolean("logSql", true);
+        maxSqlLength = context.getConfigInt("maxSqlLength", 200);
+        enabled = context.getConfigBoolean("enabled", true);
     }
 
     @Override

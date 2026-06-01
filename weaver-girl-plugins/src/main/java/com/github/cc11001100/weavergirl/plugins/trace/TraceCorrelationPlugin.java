@@ -46,7 +46,7 @@ public class TraceCorrelationPlugin extends AbstractPlugin {
         headerName = context.getConfig("headerName", "X-Trace-Id");
         entryPointPattern = context.getConfig("entryPointPattern", ".*Servlet$|.*Controller$|.*Filter$");
         mdcKey = context.getConfig("mdcKey", "traceId");
-        enabled = "true".equalsIgnoreCase(context.getConfig("enabled", "true"));
+        enabled = context.getConfigBoolean("enabled", true);
     }
 
     @Override

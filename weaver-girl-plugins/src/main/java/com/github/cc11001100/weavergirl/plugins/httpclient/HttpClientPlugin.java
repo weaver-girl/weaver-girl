@@ -52,11 +52,10 @@ public class HttpClientPlugin extends AbstractPlugin {
 
     @Override
     public void init(PluginContext context) {
-        String thresholdStr = context.getConfig("slowThreshold", "3000");
-        try { slowThresholdMs = Long.parseLong(thresholdStr); } catch (NumberFormatException e) { slowThresholdMs = 3000; }
-        propagateTrace = "true".equalsIgnoreCase(context.getConfig("propagateTrace", "true"));
+        slowThresholdMs = context.getConfigLong("slowThreshold", 3000);
+        propagateTrace = context.getConfigBoolean("propagateTrace", true);
         traceHeaderName = context.getConfig("traceHeaderName", "X-Trace-Id");
-        enabled = "true".equalsIgnoreCase(context.getConfig("enabled", "true"));
+        enabled = context.getConfigBoolean("enabled", true);
     }
 
     @Override

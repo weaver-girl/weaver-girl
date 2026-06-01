@@ -47,10 +47,9 @@ public class ExceptionMonitorPlugin extends AbstractPlugin {
     @Override
     public void init(PluginContext context) {
         classPattern = context.getConfig("classPattern", null);
-        alertOnNewException = "true".equalsIgnoreCase(context.getConfig("alertOnNewException", "true"));
-        String maxDepthStr = context.getConfig("maxStackTraceDepth", "5");
-        try { maxStackTraceDepth = Integer.parseInt(maxDepthStr); } catch (NumberFormatException e) { maxStackTraceDepth = 5; }
-        enabled = "true".equalsIgnoreCase(context.getConfig("enabled", "true"));
+        alertOnNewException = context.getConfigBoolean("alertOnNewException", true);
+        maxStackTraceDepth = context.getConfigInt("maxStackTraceDepth", 5);
+        enabled = context.getConfigBoolean("enabled", true);
     }
 
     @Override

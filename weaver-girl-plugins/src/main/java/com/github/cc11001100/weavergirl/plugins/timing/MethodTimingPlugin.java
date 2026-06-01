@@ -40,12 +40,11 @@ public class MethodTimingPlugin extends AbstractPlugin {
 
     @Override
     public void init(PluginContext context) {
-        String thresholdStr = context.getConfig("slowThreshold", "1000");
-        try { slowThresholdMs = Long.parseLong(thresholdStr); } catch (NumberFormatException e) { slowThresholdMs = 1000; }
+        slowThresholdMs = context.getConfigLong("slowThreshold", 1000);
         classPattern = context.getConfig("classPattern", null);
         methodPattern = context.getConfig("methodPattern", ".*");
-        logLevelStr = context.getConfig("logLevel", "INFO");
-        enabled = "true".equalsIgnoreCase(context.getConfig("enabled", "true"));
+        logLevelStr = context.getConfigEnum("logLevel", "INFO", "DEBUG", "INFO", "WARN");
+        enabled = context.getConfigBoolean("enabled", true);
     }
 
     @Override

@@ -93,4 +93,81 @@ public interface PluginContext {
      * @return the plugin name, never null
      */
     String getPluginName();
+
+    /**
+     * Get a configuration value as a long, with validation.
+     * If the value cannot be parsed, logs a warning and returns the default.
+     *
+     * @param key          the configuration key
+     * @param defaultValue the value to return if the key is not set or invalid
+     * @return the parsed long value, or defaultValue if invalid or missing
+     */
+    default long getConfigLong(String key, long defaultValue) {
+        String value = getConfig(key);
+        if (value == null) return defaultValue;
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            System.err.println("[weaver-girl] WARNING: Invalid config '" + key + "=" + value
+                    + "' for plugin '" + getPluginName() + "': expected integer, using default " + defaultValue);
+            return defaultValue;
+        }
+    }
+
+    /**
+     * Get a configuration value as an int, with validation.
+     * If the value cannot be parsed, logs a warning and returns the default.
+     *
+     * @param key          the configuration key
+     * @param defaultValue the value to return if the key is not set or invalid
+     * @return the parsed int value, or defaultValue if invalid or missing
+     */
+    default int getConfigInt(String key, int defaultValue) {
+        return (int) getConfigLong(key, defaultValue);
+    }
+
+    /**
+     * Get a configuration value as a boolean, with validation.
+     * Accepts "true"/"false" (case-insensitive). Invalid values log a warning
+     * and return the default.
+     *
+     * @param key          the configuration key
+     * @param defaultValue the value to return if the key is not set or invalid
+     * @return the parsed boolean value, or defaultValue if invalid or missing
+     */
+    default boolean getConfigBoolean(String key, boolean defaultValue) {
+        String value = getConfig(key);
+        if (value == null) return defaultValue;
+        if ("true".equalsIgnoreCase(value)) return true;
+        if ("false".equalsIgnoreCase(value)) return false;
+        System.err.println("[weaver-girl] WARNING: Invalid config '" + key + "=" + value
+                + "' for plugin '" + getPluginName() + "': expected true/false, using default " + defaultValue);
+        return defaultValue;
+    }
+
+    /**
+     * Get a configuration value, validating it against a set of allowed values.
+     * If the value is not in the allowed set, logs a warning and returns the default.
+     *
+     * @param key           the configuration key
+     * @param defaultValue  the value to return if the key is not set or invalid
+     * @param allowedValues the set of valid values
+     * @return the config value, or defaultValue if invalid or missing
+     */
+    default String getConfigEnum(String key, String defaultValue, String... allowedValues) {
+        String value = getConfig(key);
+        if (value == null) return defaultValue;
+        for (String allowed : allowedValues) {
+            if (allowed.equalsIgnoreCase(value)) return allowed;
+        }
+        StringBuilder allowedList = new StringBuilder();
+        for (int i = 0; i < allowedValues.length; i++) {
+            if (i > 0) allowedList.append(", ");
+            allowedList.append(allowedValues[i]);
+        }
+        System.err.println("[weaver-girl] WARNING: Invalid config '" + key + "=" + value
+                + "' for plugin '" + getPluginName() + "': expected one of [" + allowedList
+                + "], using default " + defaultValue);
+        return defaultValue;
+    }
 }

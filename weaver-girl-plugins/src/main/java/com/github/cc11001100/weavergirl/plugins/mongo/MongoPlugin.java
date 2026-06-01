@@ -46,12 +46,10 @@ public class MongoPlugin extends AbstractPlugin {
 
     @Override
     public void init(PluginContext context) {
-        String thresholdStr = context.getConfig("slowThreshold", "500");
-        try { slowThresholdMs = Long.parseLong(thresholdStr); } catch (NumberFormatException e) { slowThresholdMs = 500; }
-        logCollection = "true".equalsIgnoreCase(context.getConfig("logCollection", "true"));
-        String maxDocLenStr = context.getConfig("maxDocLength", "100");
-        try { maxDocLength = Integer.parseInt(maxDocLenStr); } catch (NumberFormatException e) { maxDocLength = 100; }
-        enabled = "true".equalsIgnoreCase(context.getConfig("enabled", "true"));
+        slowThresholdMs = context.getConfigLong("slowThreshold", 500);
+        logCollection = context.getConfigBoolean("logCollection", true);
+        maxDocLength = context.getConfigInt("maxDocLength", 100);
+        enabled = context.getConfigBoolean("enabled", true);
     }
 
     @Override

@@ -45,9 +45,8 @@ public class GrpcPlugin extends AbstractPlugin {
 
     @Override
     public void init(PluginContext context) {
-        String thresholdStr = context.getConfig("slowThreshold", "2000");
-        try { slowThresholdMs = Long.parseLong(thresholdStr); } catch (NumberFormatException e) { slowThresholdMs = 2000; }
-        enabled = "true".equalsIgnoreCase(context.getConfig("enabled", "true"));
+        slowThresholdMs = context.getConfigLong("slowThreshold", 2000);
+        enabled = context.getConfigBoolean("enabled", true);
     }
 
     @Override

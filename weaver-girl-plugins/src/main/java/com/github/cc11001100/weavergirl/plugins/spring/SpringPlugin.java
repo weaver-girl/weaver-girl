@@ -72,10 +72,9 @@ public class SpringPlugin extends AbstractPlugin {
 
     @Override
     public void init(PluginContext context) {
-        String thresholdStr = context.getConfig("slowThreshold", "3000");
-        try { slowThresholdMs = Long.parseLong(thresholdStr); } catch (NumberFormatException e) { slowThresholdMs = 3000; }
-        logArguments = "true".equalsIgnoreCase(context.getConfig("logArguments", "false"));
-        enabled = "true".equalsIgnoreCase(context.getConfig("enabled", "true"));
+        slowThresholdMs = context.getConfigLong("slowThreshold", 3000);
+        logArguments = context.getConfigBoolean("logArguments", false);
+        enabled = context.getConfigBoolean("enabled", true);
     }
 
     @Override

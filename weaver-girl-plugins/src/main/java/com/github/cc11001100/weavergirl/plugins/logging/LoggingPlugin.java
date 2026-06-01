@@ -43,7 +43,7 @@ public class LoggingPlugin extends AbstractPlugin {
         for (int i = 0; i < mdcKeys.length; i++) {
             mdcKeys[i] = mdcKeys[i].trim();
         }
-        enabled = "true".equalsIgnoreCase(context.getConfig("enabled", "true"));
+        enabled = context.getConfigBoolean("enabled", true);
     }
 
     @Override

@@ -56,10 +56,9 @@ public class ServletPlugin extends AbstractPlugin {
 
     @Override
     public void init(PluginContext context) {
-        String thresholdStr = context.getConfig("slowThreshold", "5000");
-        try { slowThresholdMs = Long.parseLong(thresholdStr); } catch (NumberFormatException e) { slowThresholdMs = 5000; }
-        logHeaders = "true".equalsIgnoreCase(context.getConfig("logHeaders", "false"));
-        enabled = "true".equalsIgnoreCase(context.getConfig("enabled", "true"));
+        slowThresholdMs = context.getConfigLong("slowThreshold", 5000);
+        logHeaders = context.getConfigBoolean("logHeaders", false);
+        enabled = context.getConfigBoolean("enabled", true);
     }
 
     @Override

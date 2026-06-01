@@ -50,10 +50,9 @@ public class KafkaPlugin extends AbstractPlugin {
 
     @Override
     public void init(PluginContext context) {
-        String thresholdStr = context.getConfig("slowThreshold", "1000");
-        try { slowThresholdMs = Long.parseLong(thresholdStr); } catch (NumberFormatException e) { slowThresholdMs = 1000; }
-        logTopic = "true".equalsIgnoreCase(context.getConfig("logTopic", "true"));
-        enabled = "true".equalsIgnoreCase(context.getConfig("enabled", "true"));
+        slowThresholdMs = context.getConfigLong("slowThreshold", 1000);
+        logTopic = context.getConfigBoolean("logTopic", true);
+        enabled = context.getConfigBoolean("enabled", true);
     }
 
     @Override

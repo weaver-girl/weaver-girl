@@ -46,12 +46,10 @@ public class RedisPlugin extends AbstractPlugin {
 
     @Override
     public void init(PluginContext context) {
-        String thresholdStr = context.getConfig("slowCommandThreshold", "100");
-        try { slowCommandThresholdMs = Long.parseLong(thresholdStr); } catch (NumberFormatException e) { slowCommandThresholdMs = 100; }
-        logKeys = "true".equalsIgnoreCase(context.getConfig("logKeys", "true"));
-        String maxKeyLenStr = context.getConfig("maxKeyLength", "50");
-        try { maxKeyLength = Integer.parseInt(maxKeyLenStr); } catch (NumberFormatException e) { maxKeyLength = 50; }
-        enabled = "true".equalsIgnoreCase(context.getConfig("enabled", "true"));
+        slowCommandThresholdMs = context.getConfigLong("slowCommandThreshold", 100);
+        logKeys = context.getConfigBoolean("logKeys", true);
+        maxKeyLength = context.getConfigInt("maxKeyLength", 50);
+        enabled = context.getConfigBoolean("enabled", true);
     }
 
     @Override
