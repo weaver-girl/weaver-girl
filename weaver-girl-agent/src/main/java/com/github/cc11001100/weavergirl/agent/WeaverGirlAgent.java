@@ -3,6 +3,8 @@ package com.github.cc11001100.weavergirl.agent;
 
 import com.github.cc11001100.weavergirl.core.WeaverGirl;
 import com.github.cc11001100.weavergirl.core.config.YamlConfigLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.instrument.Instrumentation;
 
@@ -18,6 +20,7 @@ import java.lang.instrument.Instrumentation;
  */
 public class WeaverGirlAgent {
 
+    private static final Logger log = LoggerFactory.getLogger(WeaverGirlAgent.class);
     private static final String CONFIG_PREFIX = "config=";
 
     /**
@@ -35,7 +38,7 @@ public class WeaverGirlAgent {
     }
 
     private static void init(String agentArgs, Instrumentation instrumentation) {
-        System.out.println("[weaver-girl] Agent initializing...");
+        log.info("WeaverGirl agent initializing...");
 
         WeaverGirl weaverGirl = WeaverGirl.bootstrap(instrumentation);
 
@@ -48,8 +51,8 @@ public class WeaverGirlAgent {
             }
         }
 
-        System.out.println("[weaver-girl] Agent initialized with " +
-                weaverGirl.getRegistry().getAllDefinitions().size() + " interceptor definitions");
+        log.info("WeaverGirl agent initialized with {} interceptor definitions",
+                weaverGirl.getRegistry().getAllDefinitions().size());
     }
 
     private static String parseConfigPath(String agentArgs) {
