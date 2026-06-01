@@ -19,3 +19,6 @@ Thumbs.db
 
 # Claude
 .claude/
+
+# Internal planning (superpowers)
+docs/superpowers/

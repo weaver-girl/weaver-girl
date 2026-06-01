@@ -1,0 +1,30 @@
+# Weaver-Girl Configuration Example
+# Place this file as weaver.yml and pass it to the agent:
+#   java -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml -jar your-app.jar
+
+# Agent-level settings
+# samplingThreshold: 100      # Invocations/second threshold for adaptive sampling
+# circuitBreakerFailures: 5   # Consecutive failures before circuit opens
+# circuitBreakerCooldown: 30000 # Cooldown in milliseconds after circuit opens
+# excludedClasses:            # Class name patterns to exclude from instrumentation
+#   - "com.example.internal.*"
+# onlyInterceptPackages: []   # Only instrument classes in these packages (empty = all)
+# maxTransformations: 10000   # Max number of classes to transform
+# logLevel: INFO              # TRACE, DEBUG, INFO, WARN, ERROR
+
+# Interceptor definitions
+interceptors:
+  # Example: intercept a specific method on a specific class
+  - className: com.example.Service
+    method: process
+    before: com.example.interceptor.ProcessBeforeAdvice
+
+  # Example: intercept all methods on a class using regex pattern
+  - classNamePattern: com\.example\..*Service
+    methodPattern: handle.*
+    after: com.example.interceptor.GenericAfterAdvice
+
+  # Example: intercept methods with a specific annotation
+  # - classAnnotation: org.springframework.web.bind.annotation.RestController
+  #   method: "*"
+  #   before: com.example.interceptor.RestControllerAdvice
