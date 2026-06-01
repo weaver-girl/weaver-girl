@@ -64,6 +64,21 @@ public class WeaverGirl {
     }
 
     /**
+     * Connect this WeaverGirl instance to the ByteBuddy transformation pipeline.
+     * Required for programmatic interceptors to actually take effect.
+     *
+     * @param instrumentation the JVM Instrumentation instance
+     * @return this WeaverGirl instance for chaining
+     */
+    public WeaverGirl withInstrumentation(Instrumentation instrumentation) {
+        this.instrumentation = instrumentation;
+        InterceptorHolder.setRegistry(this.registry);
+        WeaverTransformer transformer = new WeaverTransformer(this.registry);
+        transformer.install(instrumentation);
+        return this;
+    }
+
+    /**
      * Start a fluent interceptor definition for the given class name.
      */
     public InterceptBuilder intercept(String className) {
@@ -81,6 +96,7 @@ public class WeaverGirl {
         private final WeaverGirl weaverGirl;
         private final String className;
         private String methodName = "*";
+        private int priority = 0;
         private Interceptor interceptor;
 
         InterceptBuilder(WeaverGirl weaverGirl, String className) {
@@ -165,9 +181,14 @@ public class WeaverGirl {
                 interceptor = new Interceptor() {};
             }
             InterceptorDefinition definition = new InterceptorDefinition(
-                    "programmatic-" + className + "-" + methodName, pointcut, interceptor);
+                    "programmatic-" + className + "-" + methodName, pointcut, interceptor, priority);
             weaverGirl.registry.register(definition);
             return weaverGirl;
+        }
+
+        public InterceptBuilder priority(int priority) {
+            this.priority = priority;
+            return this;
         }
     }
 }
