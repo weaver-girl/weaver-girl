@@ -2,7 +2,10 @@
 package com.github.cc11001100.weavergirl.core;
 
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.core.circuit.InterceptorCircuitBreaker;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Global holder for the InterceptorRegistry instance.
@@ -16,7 +19,14 @@ import com.github.cc11001100.weavergirl.core.status.AgentStatus;
  */
 public class InterceptorHolder {
 
+    private static final Logger LOG = LoggerFactory.getLogger(InterceptorHolder.class);
+
     private static volatile InterceptorRegistry registry;
+    private static final InterceptorCircuitBreaker circuitBreaker = new InterceptorCircuitBreaker();
+
+    public static void logInterceptorError(String interceptorName, String phase, Exception e) {
+        LOG.warn("Interceptor '{}' failed in {}: {}", interceptorName, phase, e.getMessage());
+    }
 
     public static void setRegistry(InterceptorRegistry registry) {
         InterceptorHolder.registry = registry;
@@ -34,5 +44,19 @@ public class InterceptorHolder {
 
     public static void incrementInterceptorErrorCount() {
         AgentStatus.getInstance().incrementInterceptorErrorCount();
+    }
+
+    // --- Circuit breaker delegates ---
+
+    public static boolean shouldInvoke(String interceptorName) {
+        return circuitBreaker.shouldInvoke(interceptorName);
+    }
+
+    public static void recordInterceptorSuccess(String interceptorName) {
+        circuitBreaker.recordSuccess(interceptorName);
+    }
+
+    public static void recordInterceptorFailure(String interceptorName) {
+        circuitBreaker.recordFailure(interceptorName);
     }
 }

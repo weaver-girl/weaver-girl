@@ -51,10 +51,18 @@ public class InterceptAdvice {
             List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
             for (InterceptorDefinition def : defs) {
                 if (def.getPointcut().getMethodMatcher().matches(methodName)) {
+                    if (!InterceptorHolder.shouldInvoke(def.getName())) {
+                        continue; // circuit breaker is open
+                    }
                     try {
                         def.getInterceptor().before(invocation);
+                        InterceptorHolder.recordInterceptorSuccess(def.getName());
                     } catch (Exception e) {
-                        // Swallow interceptor errors to avoid crashing target app
+                        // If this interceptor called skipMethod and then failed,
+                        // don't let its skip decision stand
+                        invocation.setSkipMethod(false);
+                        InterceptorHolder.logInterceptorError(def.getName(), "before", e);
+                        InterceptorHolder.recordInterceptorFailure(def.getName());
                     }
                 }
             }
@@ -112,6 +120,9 @@ public class InterceptAdvice {
             List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
             for (InterceptorDefinition def : defs) {
                 if (def.getPointcut().getMethodMatcher().matches(methodName)) {
+                    if (!InterceptorHolder.shouldInvoke(def.getName())) {
+                        continue; // circuit breaker is open
+                    }
                     try {
                         Interceptor interceptor = def.getInterceptor();
                         if (throwable != null) {
@@ -119,8 +130,11 @@ public class InterceptAdvice {
                         } else {
                             interceptor.after(context);
                         }
+                        InterceptorHolder.recordInterceptorSuccess(def.getName());
                     } catch (Exception e) {
-                        // Swallow interceptor errors
+                        InterceptorHolder.logInterceptorError(def.getName(),
+                                throwable != null ? "onException" : "after", e);
+                        InterceptorHolder.recordInterceptorFailure(def.getName());
                     }
                 }
             }

@@ -209,6 +209,20 @@ public class MethodInvocation {
     }
 
     /**
+     * Sets whether the original method execution should be skipped.
+     *
+     * <p>This is used internally by the framework for error recovery — if an interceptor
+     * calls {@link #skipMethod()} but then throws an exception, the framework resets
+     * the skip flag so the method executes normally. Interceptors should prefer
+     * {@link #skipMethod()} over calling this directly.</p>
+     *
+     * @param skip true to skip the original method execution, false to allow it
+     */
+    public void setSkipMethod(boolean skip) {
+        this.isSkipped = skip;
+    }
+
+    /**
      * Prevents the original method from executing.
      *
      * <p>After calling this, the framework will not invoke the target method. If a

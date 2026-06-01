@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Loads interceptor definitions from YAML configuration files.
@@ -26,6 +27,8 @@ import java.util.List;
 public class YamlConfigLoader {
 
     private static final Logger log = LoggerFactory.getLogger(YamlConfigLoader.class);
+
+    private final ConcurrentHashMap<String, Interceptor> adviceCache = new ConcurrentHashMap<>();
 
     public WeaverConfig loadFromFile(String filePath, InterceptorRegistry registry) {
         Path path = Paths.get(filePath);
@@ -124,10 +127,21 @@ public class YamlConfigLoader {
             return;
         }
         try {
-            Class<?> adviceClass = Class.forName(adviceClassName);
-            Object instance = adviceClass.getDeclaredConstructor().newInstance();
-            if (instance instanceof Interceptor) {
-                Interceptor advice = (Interceptor) instance;
+            Interceptor advice = adviceCache.computeIfAbsent(adviceClassName, name -> {
+                try {
+                    Class<?> adviceClass = Class.forName(name);
+                    Object instance = adviceClass.getDeclaredConstructor().newInstance();
+                    if (instance instanceof Interceptor) {
+                        return (Interceptor) instance;
+                    }
+                    log.warn("Advice class {} does not implement Interceptor", name);
+                    return null;
+                } catch (Exception e) {
+                    log.warn("Failed to instantiate advice class {}: {}", name, e.getMessage());
+                    return null;
+                }
+            });
+            if (advice != null) {
                 switch (phase) {
                     case BEFORE:
                         advice.before(invocation);

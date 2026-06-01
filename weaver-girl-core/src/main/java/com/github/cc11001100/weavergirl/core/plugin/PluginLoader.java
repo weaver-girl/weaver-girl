@@ -60,7 +60,7 @@ public class PluginLoader {
 
                 loadedPlugins.add(plugin);
                 log.info("Plugin {} loaded successfully", plugin.name());
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 log.error("Failed to load plugin {}: {}", plugin.name(), e.getMessage(), e);
             }
         }

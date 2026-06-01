@@ -19,7 +19,7 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
     private static final Logger log = LoggerFactory.getLogger(DefaultInterceptorRegistry.class);
 
     private final List<InterceptorDefinition> definitions = new CopyOnWriteArrayList<>();
-    private final ConcurrentHashMap<String, List<InterceptorDefinition>> classIndex = new ConcurrentHashMap<>();
+    private volatile Map<String, List<InterceptorDefinition>> classIndex = new ConcurrentHashMap<>();
     private volatile boolean indexDirty = true;
 
     @Override
@@ -28,8 +28,11 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
             log.warn("Attempted to register null InterceptorDefinition, ignoring");
             return;
         }
-        definitions.add(definition);
-        indexDirty = true;
+        synchronized (this) {
+            definitions.removeIf(d -> d.getName().equals(definition.getName()));
+            definitions.add(definition);
+            indexDirty = true;
+        }
         log.info("Registered interceptor: {}", definition.getName());
     }
 
