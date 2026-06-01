@@ -6,6 +6,7 @@ import com.github.cc11001100.weavergirl.core.config.ConfigWatcher;
 import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
 import com.github.cc11001100.weavergirl.core.config.YamlConfigLoader;
 import com.github.cc11001100.weavergirl.core.event.JsonEventListener;
+import com.github.cc11001100.weavergirl.core.metrics.PrometheusExporter;
 import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,6 +71,23 @@ public class WeaverGirlAgent {
                 com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher.getInstance()
                         .addListener(new JsonEventListener());
                 log.info("Structured JSON event output enabled (jsonEvents=true)");
+            }
+
+            // Enable Prometheus metrics endpoint if metricsPort is specified
+            String metricsPortStr = args.get("metricsPort");
+            if (metricsPortStr != null) {
+                try {
+                    int metricsPort = Integer.parseInt(metricsPortStr);
+                    PrometheusExporter exporter = new PrometheusExporter();
+                    com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher.getInstance()
+                            .addListener(exporter);
+                    exporter.start(metricsPort);
+                    log.info("Prometheus metrics endpoint enabled on port {} (metricsPort={})", metricsPort, metricsPortStr);
+                } catch (NumberFormatException e) {
+                    log.warn("Invalid metricsPort value: {}, expected integer", metricsPortStr);
+                } catch (Exception e) {
+                    log.warn("Failed to start Prometheus metrics server: {}", e.getMessage());
+                }
             }
 
             // Determine YAML config path (before bootstrap so that
