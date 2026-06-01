@@ -5,6 +5,7 @@ import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.InterceptAdvice;
+import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.description.type.TypeDescription;
 import net.bytebuddy.dynamic.DynamicType;
@@ -54,12 +55,14 @@ public class WeaverTransformer {
                     @Override
                     public void onTransformation(TypeDescription typeDescription, ClassLoader classLoader,
                                                   JavaModule module, boolean loaded, DynamicType dynamicType) {
+                        AgentStatus.getInstance().incrementTransformationCount();
                         log.info("Transformed class: {}", typeDescription.getName());
                     }
 
                     @Override
                     public void onError(String typeName, ClassLoader classLoader,
                                         JavaModule module, boolean loaded, Throwable throwable) {
+                        AgentStatus.getInstance().incrementTransformationErrorCount();
                         log.warn("Error transforming class {}: {}", typeName, throwable.getMessage());
                     }
                 });

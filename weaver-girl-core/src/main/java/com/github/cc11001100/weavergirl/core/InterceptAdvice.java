@@ -38,6 +38,7 @@ public class InterceptAdvice {
             @Advice.This Object target,
             @Advice.AllArguments Object[] arguments) {
         try {
+            InterceptorHolder.incrementInterceptorInvocationCount();
             InterceptorRegistry registry = InterceptorHolder.getRegistry();
             if (registry == null) {
                 return null;
@@ -94,6 +95,7 @@ public class InterceptAdvice {
 
             // Store the original return value / throwable into the invocation context.
             if (throwable != null) {
+                InterceptorHolder.incrementInterceptorErrorCount();
                 context.setThrowable(throwable);
             } else {
                 context.initReturnValue(returnValue);
