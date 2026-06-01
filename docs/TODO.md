@@ -9,29 +9,42 @@
 
 ## ✅ P13 内置插件生态（已完成）
 
-### 7 个内置 Instrumentation 插件
+7 个插件: Servlet, JDBC, MethodTiming, TraceCorrelation, Spring, ExceptionMonitor, Redis
 
-| 插件 | 拦截目标 | 核心能力 |
-|------|---------|---------|
-| **ServletPlugin** | HttpServlet.service / Filter.doFilter | HTTP 请求计时、慢请求检测、traceId 传播 |
-| **JdbcPlugin** | Statement/PreparedStatement execute | SQL 计时、慢查询检测、SQL 日志 |
-| **MethodTimingPlugin** | 可配置 class/method pattern | 方法计时、慢方法检测、可配置日志级别 |
-| **TraceCorrelationPlugin** | Servlet/Controller/Filter 入口 | traceId 生成/传播、MDC 注入、跨线程 |
-| **SpringPlugin** | @Controller/@Service/@Repository/@Component | Spring Bean 方法计时、参数日志 |
-| **ExceptionMonitorPlugin** | 可配置 class pattern | 异常频率追踪、新异常告警、堆栈摘要 |
-| **RedisPlugin** | Jedis / Lettuce 命令 | Redis 命令计时、慢命令检测、key 日志 |
+## ✅ P14 扩展插件生态（已完成）
 
-### 设计特点
-- 无编译依赖 — 类名全部用字符串引用
-- 条件激活 — 目标类不在 classpath 则 no-op
-- PluginContext 配置 — 阈值、开关均可配置
-- SLF4J 输出 — 不用 System.out
-- ThreadContext 集成 — 跨插件 traceId 传播
+### 新增 5 个插件
+
+| 插件 | 拦截目标 | 行数 | 核心能力 |
+|------|---------|------|---------|
+| **HttpClientPlugin** | Apache HttpClient / OkHttp | 317 | HTTP 请求计时、traceId 传播、慢请求检测 |
+| **GrpcPlugin** | gRPC Server/Client | 159 | gRPC 调用计时、慢调用检测 |
+| **KafkaPlugin** | Kafka Producer/Consumer | 261 | 消息计时、topic 日志、traceId 头部传播 |
+| **MongoPlugin** | MongoDB Driver | 188 | 查询计时、collection 日志、慢查询检测 |
+| **LoggingPlugin** | SLF4J MDC | 93 | MDC traceId/spanId 注入，依赖 trace-correlation |
+
+### 完整插件列表（12 个）
+
+| # | 插件 | 行数 | 覆盖层 |
+|---|------|------|--------|
+| 1 | ServletPlugin | 148 | 🌐 Web |
+| 2 | SpringPlugin | 117 | 🌐 Web |
+| 3 | JdbcPlugin | 176 | 🗄️ 数据库 |
+| 4 | MongoPlugin | 188 | 🗄️ 数据库 |
+| 5 | RedisPlugin | 134 | 🗄️ 缓存 |
+| 6 | HttpClientPlugin | 317 | 🔗 远程调用 |
+| 7 | GrpcPlugin | 159 | 🔗 远程调用 |
+| 8 | KafkaPlugin | 261 | 📨 消息 |
+| 9 | MethodTimingPlugin | 97 | ⏱️ 通用 |
+| 10 | TraceCorrelationPlugin | 116 | 🔍 可观测性 |
+| 11 | ExceptionMonitorPlugin | 88 | ⚠️ 异常 |
+| 12 | LoggingPlugin | 93 | 📋 日志 |
 
 ## 📊 统计
 
-- **源代码**: 6,261 行 (55 文件)
-- **测试代码**: 5,236 行 (42 文件)
-- **测试总数**: 584 个，全部通过
-- **提交总数**: 72 个
-- **模块**: 6 个 Maven 模块 (api, core, annotation, plugins, agent, sample)
+- **源代码**: 7,279 行 (62 文件)
+- **测试代码**: 6,583 行 (48 文件)
+- **测试总数**: 768 个，全部通过
+- **提交总数**: 75 个
+- **模块**: 6 个 Maven 模块
+- **内置插件**: 12 个
