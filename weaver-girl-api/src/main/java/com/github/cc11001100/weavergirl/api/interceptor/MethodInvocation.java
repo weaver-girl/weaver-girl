@@ -30,10 +30,11 @@ import java.lang.reflect.Method;
  * This enables circuit-breaker and fallback patterns.</p>
  *
  * <h3>Thread safety</h3>
- * <p>Each intercepted method invocation creates a fresh {@code MethodInvocation} instance.
- * Within a single method call, callbacks are invoked sequentially (not concurrently) on the
- * same thread that called the target method. Therefore, no synchronization is needed when
- * accessing or mutating a {@code MethodInvocation} within interceptor callbacks.</p>
+ * <p>Each intercepted method invocation uses a {@code MethodInvocation} instance that may be
+ * obtained from a thread-local object pool. Within a single method call, callbacks are invoked
+ * sequentially (not concurrently) on the same thread that called the target method. Therefore,
+ * no synchronization is needed when accessing or mutating a {@code MethodInvocation} within
+ * interceptor callbacks.</p>
  *
  * <h3>Usage example</h3>
  * <pre>
@@ -60,11 +61,11 @@ import java.lang.reflect.Method;
  */
 public class MethodInvocation {
 
-    private final Class<?> targetClass;
-    private final String methodName;
-    private final Method method;
-    private final Object target;
-    private final Object[] arguments;
+    private Class<?> targetClass;
+    private String methodName;
+    private Method method;
+    private Object target;
+    private Object[] arguments;
     private Object returnValue;
     private Throwable throwable;
     private boolean isSkipped;
@@ -101,6 +102,30 @@ public class MethodInvocation {
         this.target = target;
         this.arguments = arguments != null ? arguments.clone() : new Object[0];
         this.isSkipped = false;
+    }
+
+    /**
+     * Reset this instance for reuse from the object pool.
+     * This is an internal framework method &mdash; interceptors should not call this.
+     *
+     * @param targetClass the class declaring the intercepted method
+     * @param methodName  the name of the intercepted method
+     * @param method      the reflective {@link Method} object, may be null
+     * @param target      the object instance on which the method is invoked (null for static methods)
+     * @param arguments   the arguments passed to the method; defensively copied
+     */
+    public void reset(Class<?> targetClass, String methodName,
+                      Method method, Object target, Object[] arguments) {
+        this.targetClass = targetClass;
+        this.methodName = methodName;
+        this.method = method;
+        this.target = target;
+        this.arguments = arguments != null ? arguments.clone() : new Object[0];
+        this.returnValue = null;
+        this.throwable = null;
+        this.isSkipped = false;
+        this.returnOverridden = false;
+        this.exceptionSuppressed = false;
     }
 
     /**

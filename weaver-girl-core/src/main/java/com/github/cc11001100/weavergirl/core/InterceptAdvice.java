@@ -4,6 +4,7 @@ import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.core.interceptor.MethodInvocationPool;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.implementation.bytecode.assign.Assigner;
 
@@ -45,7 +46,7 @@ public class InterceptAdvice {
 
             String className = targetClass.getName();
             String methodName = method.getName();
-            MethodInvocation invocation = new MethodInvocation(targetClass, methodName, method, target, arguments);
+            MethodInvocation invocation = MethodInvocationPool.acquire(targetClass, methodName, method, target, arguments);
 
             List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
             for (InterceptorDefinition def : defs) {
@@ -68,12 +69,13 @@ public class InterceptAdvice {
 
             // If any interceptor called skipMethod(), return the invocation to trigger skipOn.
             // The original method body will NOT execute, and onMethodExit will receive this
-            // invocation via @Advice.Enter.
+            // invocation via @Advice.Enter and will release it back to the pool.
             if (invocation.isSkipped()) {
                 return invocation;
             }
-            // Not skipped — return null. onMethodExit will create a fresh MethodInvocation
-            // from the @Advice.Enter null value + other available parameters.
+            // Not skipped — release back to pool and return null. onMethodExit will acquire
+            // a fresh MethodInvocation from the pool using the available parameters.
+            MethodInvocationPool.release(invocation);
             return null;
         } catch (Exception e) {
             return null;
@@ -90,14 +92,14 @@ public class InterceptAdvice {
             @Advice.Thrown(readOnly = false, typing = Assigner.Typing.DYNAMIC) Throwable throwable,
             @Advice.Return(readOnly = false, typing = Assigner.Typing.DYNAMIC) Object returnValue) {
         try {
-            // If onMethodEnter returned null (no skip), we need to create a fresh
-            // MethodInvocation for the after/onException callbacks.
+            // If onMethodEnter returned null (no skip), acquire a fresh MethodInvocation
+            // from the pool for the after/onException callbacks.
             // If onMethodEnter returned an invocation (skip triggered), reuse it.
             MethodInvocation context;
             if (invocation != null) {
                 context = invocation;
             } else {
-                context = new MethodInvocation(targetClass, method.getName(), method, target, arguments);
+                context = MethodInvocationPool.acquire(targetClass, method.getName(), method, target, arguments);
             }
 
             // Store the original return value / throwable into the invocation context.
@@ -152,6 +154,9 @@ public class InterceptAdvice {
             if (context.isReturnOverridden()) {
                 returnValue = context.getReturnValue();
             }
+
+            // Return the MethodInvocation to the pool for reuse.
+            MethodInvocationPool.release(context);
         } catch (Exception e) {
             // Never crash the target application
         }
