@@ -122,4 +122,4 @@ The sample demonstrates all three hook modes:
 
 ## License
 
-Apache License 2.0
+MIT License — see [LICENSE](LICENSE) for details.

@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build & Test (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java: [ 8, 11, 17, 21 ]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: temurin
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Build and test
+        run: mvn clean install -B -V -e
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-jdk${{ matrix.java }}
+          path: '**/surefire-reports/*.txt'
+
+  package:
+    name: Package Agent JAR
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@v4
+        with:
+          java-version: 8
+          distribution: temurin
+
+      - name: Package
+        run: mvn package -DskipTests -B
+
+      - name: Verify agent JAR
+        run: |
+          AGENT_JAR=$(find weaver-girl-agent/target -name "weaver-girl-agent-*.jar" ! -name "*sources*" ! -name "*javadoc*" | head -1)
+          echo "Agent JAR: $AGENT_JAR"
+          test -n "$AGENT_JAR" || (echo "FAIL: No agent JAR found" && exit 1)
+          echo "Premain-Class:"
+          unzip -p "$AGENT_JAR" META-INF/MANIFEST.MF | grep Premain-Class
+          echo "Plugin count:"
+          jar tf "$AGENT_JAR" | grep 'plugins/.*Plugin\.class' | grep -v '\$' | wc -l
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: weaver-girl-agent
+          path: weaver-girl-agent/target/weaver-girl-agent-*.jar
