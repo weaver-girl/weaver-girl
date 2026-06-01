@@ -210,6 +210,24 @@ public class MethodInvocation {
     }
 
     /**
+     * Set the argument at the specified index.
+     * This modifies the actual arguments array (not a clone), so the change
+     * is visible to subsequent interceptors and (for around-advice) to the
+     * target method itself.
+     *
+     * @param index zero-based argument index
+     * @param value the new argument value
+     * @throws IndexOutOfBoundsException if the index is out of range
+     */
+    public void setArgument(int index, Object value) {
+        if (index < 0 || index >= arguments.length) {
+            throw new IndexOutOfBoundsException(
+                    "Argument index " + index + " out of bounds for " + arguments.length + " arguments");
+        }
+        arguments[index] = value;
+    }
+
+    /**
      * Returns the parameter types of the intercepted method.
      *
      * <p>This is a convenience method that delegates to {@link Method#getParameterTypes()}.

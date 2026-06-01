@@ -143,10 +143,9 @@ public class HttpClientPlugin extends AbstractPlugin {
      */
     String extractUrl(MethodInvocation inv) {
         try {
-            Object[] args = inv.getArguments();
             // Try Apache HttpClient: first argument may be HttpRequest
-            if (args != null && args.length > 0) {
-                Object arg = args[0];
+            if (inv.getArguments() != null && inv.getArguments().length > 0) {
+                Object arg = inv.getArgument(0);
                 // Try getURI() method (Apache HttpUriRequest)
                 try {
                     java.lang.reflect.Method getUriMethod = arg.getClass().getMethod("getURI");
@@ -188,9 +187,8 @@ public class HttpClientPlugin extends AbstractPlugin {
      */
     String extractHttpMethod(MethodInvocation inv) {
         try {
-            Object[] args = inv.getArguments();
-            if (args != null && args.length > 0) {
-                Object arg = args[0];
+            if (inv.getArguments() != null && inv.getArguments().length > 0) {
+                Object arg = inv.getArgument(0);
                 // Try getMethod() (Apache HttpRequest)
                 try {
                     java.lang.reflect.Method getMethod = arg.getClass().getMethod("getMethod");
@@ -267,30 +265,28 @@ public class HttpClientPlugin extends AbstractPlugin {
      */
     void injectTraceHeader(MethodInvocation inv, String traceId) {
         try {
-            Object[] args = inv.getArguments();
-            if (args != null && args.length > 0) {
-                Object arg = args[0];
-                // Try addHeader(String, String) (Apache HttpClient)
+            Object arg = inv.getArgument(0);
+            // Try addHeader(String, String) (Apache HttpClient)
+            try {
+                java.lang.reflect.Method addHeader = arg.getClass().getMethod("addHeader", String.class, String.class);
+                addHeader.invoke(arg, traceHeaderName, traceId);
+                return;
+            } catch (NoSuchMethodException e) {
+                // Try header(String, String) returning builder (OkHttp Request builder pattern)
                 try {
-                    java.lang.reflect.Method addHeader = arg.getClass().getMethod("addHeader", String.class, String.class);
-                    addHeader.invoke(arg, traceHeaderName, traceId);
-                    return;
-                } catch (NoSuchMethodException e) {
-                    // Try header(String, String) returning builder (OkHttp Request builder pattern)
-                    try {
-                        java.lang.reflect.Method newBuilder = arg.getClass().getMethod("newBuilder");
-                        Object builder = newBuilder.invoke(arg);
-                        if (builder != null) {
-                            java.lang.reflect.Method headerMethod = builder.getClass().getMethod("header", String.class, String.class);
-                            headerMethod.invoke(builder, traceHeaderName, traceId);
-                            java.lang.reflect.Method buildMethod = builder.getClass().getMethod("build");
-                            Object newRequest = buildMethod.invoke(builder);
-                            // Replace first argument with the new request
-                            args[0] = newRequest;
-                        }
-                    } catch (NoSuchMethodException e2) {
-                        // Cannot inject — ignore
+                    java.lang.reflect.Method newBuilder = arg.getClass().getMethod("newBuilder");
+                    Object builder = newBuilder.invoke(arg);
+                    if (builder != null) {
+                        java.lang.reflect.Method headerMethod = builder.getClass().getMethod("header", String.class, String.class);
+                        headerMethod.invoke(builder, traceHeaderName, traceId);
+                        java.lang.reflect.Method buildMethod = builder.getClass().getMethod("build");
+                        Object newRequest = buildMethod.invoke(builder);
+                        // Replace first argument with the new request using setArgument
+                        // (getArguments() returns a clone, so mutation would be silently discarded)
+                        inv.setArgument(0, newRequest);
                     }
+                } catch (NoSuchMethodException e2) {
+                    // Cannot inject — ignore
                 }
             }
         } catch (Exception e) {

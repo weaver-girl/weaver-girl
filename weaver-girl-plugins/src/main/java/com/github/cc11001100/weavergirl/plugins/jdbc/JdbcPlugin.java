@@ -101,16 +101,19 @@ public class JdbcPlugin extends AbstractPlugin {
         };
 
         // Intercept Statement.execute methods
+        // Use byInterface because java.sql.Statement is an interface — real drivers use
+        // implementations like PgStatement, MySQLStatement, HikariProxyStatement, etc.
         registry.register(new InterceptorDefinition(
             name() + "-" + STATEMENT + "-execute",
-            new Pointcut(ClassMatcher.byName(STATEMENT), MethodMatcher.byNamePattern("execute|executeQuery|executeUpdate|executeBatch")),
+            new Pointcut(ClassMatcher.byInterface(STATEMENT), MethodMatcher.byNamePattern("execute|executeQuery|executeUpdate|executeBatch")),
             executeInterceptor, 10
         ));
 
         // Intercept PreparedStatement.execute methods
+        // PreparedStatement extends Statement — use byInterface for same reason
         registry.register(new InterceptorDefinition(
             name() + "-" + PREPARED_STATEMENT + "-execute",
-            new Pointcut(ClassMatcher.byName(PREPARED_STATEMENT), MethodMatcher.byNamePattern("execute|executeQuery|executeUpdate|executeBatch")),
+            new Pointcut(ClassMatcher.byInterface(PREPARED_STATEMENT), MethodMatcher.byNamePattern("execute|executeQuery|executeUpdate|executeBatch")),
             executeInterceptor, 10
         ));
 
@@ -131,7 +134,7 @@ public class JdbcPlugin extends AbstractPlugin {
 
         registry.register(new InterceptorDefinition(
             name() + "-" + CONNECTION + "-prepare",
-            new Pointcut(ClassMatcher.byName(CONNECTION), MethodMatcher.byNamePattern("prepareStatement|createStatement|prepareCall")),
+            new Pointcut(ClassMatcher.byInterface(CONNECTION), MethodMatcher.byNamePattern("prepareStatement|createStatement|prepareCall")),
             connectionInterceptor, 10
         ));
     }

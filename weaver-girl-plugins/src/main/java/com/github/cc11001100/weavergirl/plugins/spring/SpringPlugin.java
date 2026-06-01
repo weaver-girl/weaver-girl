@@ -9,14 +9,21 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Spring Framework instrumentation plugin.
- * Intercepts classes annotated with @Controller, @Service, @Repository, @Component
- * to measure execution time of public methods.
+ *
+ * <p>Two interception strategies:</p>
+ * <ol>
+ *   <li><strong>Controller handler methods:</strong> Intercepts methods annotated with
+ *       @RequestMapping, @GetMapping, @PostMapping, etc. on @Controller/@RestController
+ *       classes. This is the primary use case — tracking HTTP handler execution time.</li>
+ *   <li><strong>Service methods:</strong> Intercepts public methods on @Service classes,
+ *       excluding Object methods (toString, hashCode, equals, etc.). This tracks
+ *       business logic execution time.</li>
+ * </ol>
  *
  * <p>Configuration:</p>
  * <ul>
  *   <li>{@code slowThreshold} — Slow method threshold in ms (default: 3000)</li>
  *   <li>{@code logArguments} — Log method arguments (default: false)</li>
- *   <li>{@code interceptAnnotations} — Comma-separated list of annotations to intercept (default: org.springframework.stereotype.Controller,org.springframework.stereotype.Service,org.springframework.stereotype.Repository,org.springframework.stereotype.Component,org.springframework.web.bind.annotation.RestController)</li>
  *   <li>{@code enabled} — Enable/disable (default: true)</li>
  * </ul>
  *
@@ -28,14 +35,33 @@ public class SpringPlugin extends AbstractPlugin {
 
     private long slowThresholdMs = 3000;
     private boolean logArguments = false;
-    private String[] interceptAnnotations = {
+    private boolean enabled = true;
+
+    // Controller class annotations
+    private static final String[] CONTROLLER_ANNOTATIONS = {
         "org.springframework.stereotype.Controller",
-        "org.springframework.stereotype.Service",
-        "org.springframework.stereotype.Repository",
-        "org.springframework.stereotype.Component",
         "org.springframework.web.bind.annotation.RestController"
     };
-    private boolean enabled = true;
+
+    // Handler method annotations (on @Controller classes)
+    private static final String[] HANDLER_METHOD_ANNOTATIONS = {
+        "org.springframework.web.bind.annotation.RequestMapping",
+        "org.springframework.web.bind.annotation.GetMapping",
+        "org.springframework.web.bind.annotation.PostMapping",
+        "org.springframework.web.bind.annotation.PutMapping",
+        "org.springframework.web.bind.annotation.DeleteMapping",
+        "org.springframework.web.bind.annotation.PatchMapping"
+    };
+
+    // Service class annotations
+    private static final String[] SERVICE_ANNOTATIONS = {
+        "org.springframework.stereotype.Service",
+        "org.springframework.stereotype.Repository"
+    };
+
+    // Methods to exclude from service interception (Object methods)
+    private static final String EXCLUDED_METHODS_REGEX =
+        "^(toString|hashCode|equals|getClass|notify|notifyAll|wait|clone|finalize)$";
 
     @Override
     public String name() {
@@ -47,14 +73,6 @@ public class SpringPlugin extends AbstractPlugin {
         String thresholdStr = context.getConfig("slowThreshold", "3000");
         try { slowThresholdMs = Long.parseLong(thresholdStr); } catch (NumberFormatException e) { slowThresholdMs = 3000; }
         logArguments = "true".equalsIgnoreCase(context.getConfig("logArguments", "false"));
-        String annotationsStr = context.getConfig("interceptAnnotations", null);
-        if (annotationsStr != null && !annotationsStr.isEmpty()) {
-            interceptAnnotations = annotationsStr.split(",");
-            // Trim whitespace
-            for (int i = 0; i < interceptAnnotations.length; i++) {
-                interceptAnnotations[i] = interceptAnnotations[i].trim();
-            }
-        }
         enabled = "true".equalsIgnoreCase(context.getConfig("enabled", "true"));
     }
 
@@ -102,15 +120,31 @@ public class SpringPlugin extends AbstractPlugin {
             }
         };
 
-        // Register interceptor for each annotation
-        for (String annotation : interceptAnnotations) {
+        // Strategy 1: Intercept handler methods on @Controller/@RestController classes
+        // Only intercept methods with @RequestMapping, @GetMapping, etc.
+        for (String classAnnotation : CONTROLLER_ANNOTATIONS) {
+            for (String methodAnnotation : HANDLER_METHOD_ANNOTATIONS) {
+                registry.register(interceptAnnotated(classAnnotation)
+                    .methodAnnotated(methodAnnotation)
+                    .around(
+                        inv -> springInterceptor.before(inv),
+                        inv -> springInterceptor.after(inv)
+                    )
+                    .priority(10)
+                    .build());
+            }
+        }
+
+        // Strategy 2: Intercept public methods on @Service/@Repository classes
+        // Exclude Object methods to avoid noise
+        for (String annotation : SERVICE_ANNOTATIONS) {
             registry.register(interceptAnnotated(annotation)
-                .anyMethod()
+                .methodPattern("^(?!toString$|hashCode$|equals$|getClass$|notify$|notifyAll$|wait$|clone$|finalize$).+")
                 .around(
                     inv -> springInterceptor.before(inv),
                     inv -> springInterceptor.after(inv)
                 )
-                .priority(10)
+                .priority(20)
                 .build());
         }
     }

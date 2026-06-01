@@ -34,8 +34,6 @@ class SpringPluginTest {
         config.put("slowThreshold", "5000");
         PluginContext context = new TestPluginContext(config);
         plugin.init(context);
-        // Verify by checking that registerInterceptors works with the configured threshold
-        // (We test indirectly through the interceptor behavior)
         List<InterceptorDefinition> defs = registerAndCollect();
         assertFalse(defs.isEmpty());
     }
@@ -54,7 +52,6 @@ class SpringPluginTest {
         config.put("slowThreshold", "not-a-number");
         PluginContext context = new TestPluginContext(config);
         plugin.init(context);
-        // Should not throw, uses default 3000
         List<InterceptorDefinition> defs = registerAndCollect();
         assertFalse(defs.isEmpty());
     }
@@ -80,21 +77,15 @@ class SpringPluginTest {
     }
 
     @Test
-    void init_parsesInterceptAnnotations() {
-        Map<String, String> config = new HashMap<>();
-        config.put("interceptAnnotations", "com.example.MyAnnotation , com.example.OtherAnnotation");
-        PluginContext context = new TestPluginContext(config);
-        plugin.init(context);
-        List<InterceptorDefinition> defs = registerAndCollect();
-        assertEquals(2, defs.size());
-    }
-
-    @Test
-    void init_defaultAnnotations_registersFive() {
+    void init_defaultAnnotations_registersControllerAndServiceInterceptors() {
+        // New Spring plugin registers:
+        // - 2 controller annotations × 6 handler method annotations = 12 controller interceptors
+        // - 2 service annotations × 1 (method pattern) = 2 service interceptors
+        // Total = 14
         PluginContext context = new TestPluginContext(new HashMap<>());
         plugin.init(context);
         List<InterceptorDefinition> defs = registerAndCollect();
-        assertEquals(5, defs.size());
+        assertEquals(14, defs.size());
     }
 
     @Test

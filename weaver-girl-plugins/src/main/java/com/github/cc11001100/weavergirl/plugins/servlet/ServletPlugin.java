@@ -27,8 +27,11 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code enabled} — Enable/disable (default: true)</li>
  * </ul>
  *
- * <p>This plugin uses ClassMatcher.byName() with string class names,
- * so it has no compile dependency on servlet-api.</p>
+ * <p>This plugin uses ClassMatcher.bySuperClass() for HttpServlet and
+ * ClassMatcher.byInterface() for Filter, so it matches concrete implementations
+ * (e.g., FrameworkServlet, Spring's DispatcherServlet), not just the abstract
+ * class itself. This is critical because real applications never instantiate
+ * HttpServlet directly.</p>
  */
 public class ServletPlugin extends AbstractPlugin {
 
@@ -120,28 +123,30 @@ public class ServletPlugin extends AbstractPlugin {
         };
 
         // Register for javax.servlet namespace
+        // Use bySuperClass for HttpServlet — matches concrete subclasses (FrameworkServlet, etc.)
         registry.register(new InterceptorDefinition(
             name() + "-" + HTTP_SERVLET + "-service",
-            new Pointcut(ClassMatcher.byName(HTTP_SERVLET), MethodMatcher.byName("service")),
+            new Pointcut(ClassMatcher.bySuperClass(HTTP_SERVLET), MethodMatcher.byName("service")),
             serviceInterceptor, 10
         ));
 
+        // Use byInterface for Filter — matches all Filter implementations
         registry.register(new InterceptorDefinition(
             name() + "-" + FILTER + "-doFilter",
-            new Pointcut(ClassMatcher.byName(FILTER), MethodMatcher.byName("doFilter")),
+            new Pointcut(ClassMatcher.byInterface(FILTER), MethodMatcher.byName("doFilter")),
             serviceInterceptor, 10
         ));
 
         // Register for jakarta.servlet namespace
         registry.register(new InterceptorDefinition(
             name() + "-" + JAKARTA_HTTP_SERVLET + "-service",
-            new Pointcut(ClassMatcher.byName(JAKARTA_HTTP_SERVLET), MethodMatcher.byName("service")),
+            new Pointcut(ClassMatcher.bySuperClass(JAKARTA_HTTP_SERVLET), MethodMatcher.byName("service")),
             serviceInterceptor, 10
         ));
 
         registry.register(new InterceptorDefinition(
             name() + "-" + JAKARTA_FILTER + "-doFilter",
-            new Pointcut(ClassMatcher.byName(JAKARTA_FILTER), MethodMatcher.byName("doFilter")),
+            new Pointcut(ClassMatcher.byInterface(JAKARTA_FILTER), MethodMatcher.byName("doFilter")),
             serviceInterceptor, 10
         ));
     }
