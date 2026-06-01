@@ -63,6 +63,24 @@ interceptors:
     before: com.example.MyBeforeAdvice
 ```
 
+## Running the Sample
+
+```bash
+# Build and run with the sample script
+./run-sample.sh
+
+# Or manually:
+mvn clean package -DskipTests
+java -javaagent:weaver-girl-agent/target/weaver-girl-agent-1.0.0-SNAPSHOT.jar \
+     -cp "weaver-girl-sample/target/classes:weaver-girl-api/target/classes" \
+     com.github.cc11001100.weavergirl.sample.app.SampleApplication
+```
+
+The sample demonstrates all three hook modes:
+- **Programmatic**: LoggingPlugin registered via `WeaverPlugin` SPI
+- **Annotation**: `@WeaveClass` / `@Before` annotated interceptors
+- **YAML**: `weaver.yml` configuration file
+
 ## Architecture
 
 ```

@@ -16,6 +16,19 @@
     <name>Weaver Girl - Sample</name>
     <description>Sample applications demonstrating Weaver Girl usage</description>
 
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <mainClass>com.github.cc11001100.weavergirl.sample.app.SampleApplication</mainClass>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
     <dependencies>
         <!-- Sample plugins only need to depend on api (Plugin SDK), simulating real plugin development -->
         <dependency>
