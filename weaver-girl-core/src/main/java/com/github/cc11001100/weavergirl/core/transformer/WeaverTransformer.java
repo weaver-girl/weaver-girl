@@ -48,8 +48,8 @@ public class WeaverTransformer {
         AgentBuilder agentBuilder = new AgentBuilder.Default()
                 .disableClassFormatChanges()
                 .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
-                .with(new AgentBuilder.InjectionStrategy.UsingInstrumentation(instrumentation,
-                        new java.io.File(System.getProperty("java.io.tmpdir"))))
+                .with(new AgentBuilder.InjectionStrategy.UsingInstrumentation(
+                        instrumentation, new java.io.File(System.getProperty("java.io.tmpdir"))))
                 .with(new AgentBuilder.Listener.Adapter() {
                     @Override
                     public void onTransformation(TypeDescription typeDescription, ClassLoader classLoader,
