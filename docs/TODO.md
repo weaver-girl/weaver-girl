@@ -27,30 +27,26 @@
 
 ## ✅ P2 生产加固（已完成）
 
-- [x] **MethodMatcher 测试** — 12 个测试覆盖 byName/any/byNamePattern/byAnnotation
-- [x] **MethodInvocation 测试** — 11 个测试覆盖防御性拷贝/skipMethod/返回值/边界
-- [x] **Agent shutdown hook** — Runtime.addShutdownHook 调用 WeaverGirl.shutdown()
-- [x] **Agent 初始化容错** — try-catch(Throwable) 防止目标 JVM 崩溃
-- [x] **YAML 配置校验** — 结构性校验（className + advice 必填），advice 类存在性延迟校验
-- [x] **InterceptorRegistry.unregister()** — 按名称移除定义
+- [x] MethodMatcher 测试 — 12 个测试覆盖 byName/any/byNamePattern/byAnnotation
+- [x] MethodInvocation 测试 — 11 个测试覆盖防御性拷贝/skipMethod/返回值/边界
+- [x] Agent shutdown hook — Runtime.addShutdownHook 调用 WeaverGirl.shutdown()
+- [x] Agent 初始化容错 — try-catch(Throwable) 防止目标 JVM 崩溃
+- [x] YAML 配置校验 — 结构性校验（className + advice 必填），advice 类存在性延迟校验
+- [x] InterceptorRegistry.unregister() — 按名称移除定义
+- [x] WeaverGirl/InterceptBuilder 测试 — 8 个测试覆盖 programmatic API
+- [x] AnnotationPluginLoader 测试 — 10 个测试覆盖注解扫描 + 反射拦截器创建
+- [x] 方法签名匹配 — MethodMatcher.bySignature + matches(String, Class<?>[])
+- [x] Pointcut 组合 — Pointcut.and() / .or() + matches(String, String)
+- [x] equals/hashCode — ClassMatcher/MethodMatcher/Pointcut/InterceptorDefinition
 
-## 🔧 P2 续 — 补充能力（当前批次）
+## 🔧 P3 生产就绪（当前批次）
 
-- [ ] **WeaverGirl/InterceptBuilder 测试** — programmatic API 零测试
-- [ ] **AnnotationPluginLoader 测试** — 注解扫描 + 反射拦截器创建无测试
-- [ ] **方法签名匹配** — MethodMatcher 支持按参数类型匹配（不只是方法名）
-- [ ] **Pointcut 组合** — 支持 AND/OR/NOT 逻辑组合
-- [ ] **equals/hashCode** — 值对象实现 equals/hashCode
-
-## 🏗️ P3 生产就绪（下一批次）
-
-- [ ] **ClassLoader 隔离** — 每个插件使用独立的 child-first ClassLoader
+- [x] **已加载类重转换** — agentmain attach 时 retransformClasses 已加载类
+- [x] **值对象不可变** — 所有字段 private final，无 setter
+- [x] **ClassLoader 隔离** — PluginClassLoader child-first + PluginJarScanner + loadPluginsFromDirectory
+- [x] **配置动态重载** — ConfigWatcher + watch=true agent 参数
+- [x] **跨线程上下文传播** — ThreadContext + ContextRunnable + ContextCallable
 - [ ] **Bootstrap 类注入** — 支持拦截 java.* / javax.* 类
-- [ ] **Agent JAR 打包验证** — maven-shade-plugin + MANIFEST 正确性集成测试
-- [ ] **已加载类重转换** — agentmain attach 时 retransformClasses 已加载类
-- [ ] **配置动态重载** — 监听 YAML 文件变更，热更新拦截器配置
-- [ ] **跨线程上下文传播** — Runnable/Callable 包装器携带上下文
-- [ ] **值对象不可变** — InterceptorDefinition, Pointcut 改为不可变类
 - [ ] **API Javadoc** — 所有 public API 完整 Javadoc
 
 ## 🚀 P4 企业级能力（远期）
