@@ -38,21 +38,42 @@ public class WeaverGirlAgent {
     }
 
     private static void init(String agentArgs, Instrumentation instrumentation) {
-        log.info("WeaverGirl agent initializing...");
+        try {
+            log.info("WeaverGirl agent initializing...");
 
-        WeaverGirl weaverGirl = WeaverGirl.bootstrap(instrumentation);
+            WeaverGirl weaverGirl = WeaverGirl.bootstrap(instrumentation);
 
-        // Load YAML config if specified via agent arguments
-        if (agentArgs != null && !agentArgs.isEmpty()) {
-            String configPath = parseConfigPath(agentArgs);
-            if (configPath != null) {
-                YamlConfigLoader configLoader = new YamlConfigLoader();
-                configLoader.loadFromFile(configPath, weaverGirl.getRegistry());
+            // Load YAML config if specified via agent arguments
+            if (agentArgs != null && !agentArgs.isEmpty()) {
+                String configPath = parseConfigPath(agentArgs);
+                if (configPath != null) {
+                    YamlConfigLoader configLoader = new YamlConfigLoader();
+                    configLoader.loadFromFile(configPath, weaverGirl.getRegistry());
+                }
+            }
+
+            // Register shutdown hook to cleanly destroy plugins
+            final WeaverGirl shutdownRef = weaverGirl;
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                try {
+                    shutdownRef.shutdown();
+                } catch (Exception e) {
+                    // Shutdown hook must not throw
+                }
+            }, "weaver-girl-shutdown"));
+
+            log.info("WeaverGirl agent initialized with {} interceptor definitions",
+                    weaverGirl.getRegistry().getAllDefinitions().size());
+        } catch (Throwable t) {
+            // Agent init failure must NOT crash the target application
+            // Log the error but allow the JVM to continue
+            try {
+                System.err.println("[weaver-girl] FATAL: Agent initialization failed: " + t.getMessage());
+                t.printStackTrace(System.err);
+            } catch (Exception e) {
+                // Even logging failed — silently continue
             }
         }
-
-        log.info("WeaverGirl agent initialized with {} interceptor definitions",
-                weaverGirl.getRegistry().getAllDefinitions().size());
     }
 
     private static String parseConfigPath(String agentArgs) {
