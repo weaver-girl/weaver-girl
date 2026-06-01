@@ -16,6 +16,8 @@ public class WeaverConfig {
     private Long circuitBreakerCooldown;     // cooldown in milliseconds
     private List<String> excludedClasses;    // class name patterns to exclude from instrumentation
     private String logLevel;                 // TRACE, DEBUG, INFO, WARN, ERROR
+    private Integer maxTransformations;      // max number of classes to transform
+    private List<String> onlyInterceptPackages; // limit instrumentation to these packages
 
     public List<InterceptorConfig> getInterceptors() {
         return interceptors;
@@ -63,6 +65,22 @@ public class WeaverConfig {
 
     public void setLogLevel(String logLevel) {
         this.logLevel = logLevel;
+    }
+
+    public Integer getMaxTransformations() {
+        return maxTransformations;
+    }
+
+    public void setMaxTransformations(Integer maxTransformations) {
+        this.maxTransformations = maxTransformations;
+    }
+
+    public List<String> getOnlyInterceptPackages() {
+        return onlyInterceptPackages;
+    }
+
+    public void setOnlyInterceptPackages(List<String> onlyInterceptPackages) {
+        this.onlyInterceptPackages = onlyInterceptPackages;
     }
 
     public static class InterceptorConfig {

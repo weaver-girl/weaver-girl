@@ -10,6 +10,7 @@ import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
 import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
+import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingMonitor;
@@ -22,6 +23,8 @@ import java.lang.instrument.Instrumentation;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
+
+import com.github.cc11001100.weavergirl.core.config.ConfigWatcher;
 
 /**
  * Main entry point for the weaver-girl framework.
@@ -36,6 +39,7 @@ public class WeaverGirl {
     private Instrumentation instrumentation;
     private WeaverTransformer transformer;
     private SamplingMonitor samplingMonitor;
+    private ConfigWatcher configWatcher;
 
     private WeaverGirl() {
         this.registry = new DefaultInterceptorRegistry();
@@ -78,6 +82,10 @@ public class WeaverGirl {
             transformer.setExcludedClassPatterns(weaverConfig.getExcludedClasses());
         }
 
+        if (weaverConfig != null) {
+            transformer.setWeaverConfig(weaverConfig);
+        }
+
         transformer.install(instrumentation);
         weaverGirl.transformer = transformer;
 
@@ -106,6 +114,9 @@ public class WeaverGirl {
      */
     public void shutdown() {
         log.info("WeaverGirl agent shutting down...");
+        if (configWatcher != null) {
+            configWatcher.stop();
+        }
         if (samplingMonitor != null) {
             samplingMonitor.stop();
         }
@@ -147,6 +158,21 @@ public class WeaverGirl {
 
     public InterceptorRegistry getRegistry() {
         return registry;
+    }
+
+    /**
+     * Set the ConfigWatcher so it can be stopped during shutdown.
+     */
+    public void setConfigWatcher(ConfigWatcher watcher) {
+        this.configWatcher = watcher;
+    }
+
+    /**
+     * Returns a list of class names that have been transformed by this agent.
+     * Useful for diagnostic purposes.
+     */
+    public List<String> getTransformedClasses() {
+        return AgentStatus.getInstance().getTransformedClasses();
     }
 
     /**

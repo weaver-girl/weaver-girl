@@ -1,8 +1,11 @@
 package com.github.cc11001100.weavergirl.core.status;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -21,6 +24,7 @@ public class AgentStatus {
     private final AtomicLong interceptorInvocationCount = new AtomicLong(0);
     private final AtomicLong interceptorErrorCount = new AtomicLong(0);
     private final ConcurrentHashMap<String, String> customMetrics = new ConcurrentHashMap<>();
+    private final CopyOnWriteArrayList<String> transformedClasses = new CopyOnWriteArrayList<>();
 
     private volatile long startTime = System.currentTimeMillis();
     private volatile int activePluginCount = 0;
@@ -62,6 +66,16 @@ public class AgentStatus {
 
     public void putCustomMetric(String key, String value) {
         customMetrics.put(key, value);
+    }
+
+    public void addTransformedClass(String className) {
+        if (transformedClasses.size() < 10000) { // prevent unbounded growth
+            transformedClasses.add(className);
+        }
+    }
+
+    public List<String> getTransformedClasses() {
+        return Collections.unmodifiableList(new ArrayList<>(transformedClasses));
     }
 
     // --- Getters ---
@@ -110,6 +124,7 @@ public class AgentStatus {
         activePluginCount = 0;
         registeredInterceptorCount = 0;
         customMetrics.clear();
+        transformedClasses.clear();
         startTime = System.currentTimeMillis();
     }
 }

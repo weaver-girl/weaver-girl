@@ -52,6 +52,12 @@ public class WeaverGirlAgent {
             // Parse agent arguments
             Map<String, String> args = parseAgentArgs(agentArgs);
 
+            // Enable diagnostic mode if debug=true is passed
+            if ("true".equals(args.get("debug"))) {
+                System.setProperty("weavergirl.debug", "true");
+                log.info("Diagnostic mode enabled (weavergirl.debug=true)");
+            }
+
             // Determine YAML config path (before bootstrap so that
             // excludedClasses can be wired into the transformer's ignore matcher)
             String configPath = args.get("config");
@@ -79,6 +85,7 @@ public class WeaverGirlAgent {
                 if ("true".equalsIgnoreCase(args.get("watch"))) {
                     configWatcher = new ConfigWatcher(configPath, weaverGirl.getRegistry());
                     configWatcher.setAfterReloadCallback(() -> weaverGirl.retransformLoadedClasses());
+                    weaverGirl.setConfigWatcher(configWatcher);
                     configWatcher.start();
                 }
             }

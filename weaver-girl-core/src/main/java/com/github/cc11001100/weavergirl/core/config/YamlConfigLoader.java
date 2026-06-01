@@ -117,6 +117,12 @@ public class YamlConfigLoader {
         if (config.getLogLevel() == null) {
             config.setLogLevel("INFO");
         }
+        if (config.getOnlyInterceptPackages() == null) {
+            config.setOnlyInterceptPackages(new ArrayList<>()); // empty = intercept everything
+        }
+        if (config.getMaxTransformations() == null) {
+            config.setMaxTransformations(10000); // reasonable default
+        }
     }
 
     private void registerFromConfig(WeaverConfig config, InterceptorRegistry registry) {

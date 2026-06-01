@@ -4,6 +4,7 @@ import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.InterceptAdvice;
+import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.description.type.TypeDescription;
@@ -17,6 +18,8 @@ import java.security.ProtectionDomain;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 import static net.bytebuddy.matcher.ElementMatchers.nameStartsWith;
 import static net.bytebuddy.matcher.ElementMatchers.nameMatches;
@@ -43,6 +46,9 @@ public class WeaverTransformer {
     private Instrumentation instrumentation;
     private List<String> excludedClassPatterns = Collections.emptyList();
     private boolean ignoreAgentClasses = true;
+    private WeaverConfig weaverConfig;
+    private final AtomicInteger transformationCount = new AtomicInteger(0);
+    private int maxTransformations = 10000; // default
 
     public WeaverTransformer(InterceptorRegistry registry) {
         this.registry = registry;
@@ -59,6 +65,29 @@ public class WeaverTransformer {
      */
     public void setIgnoreAgentClasses(boolean ignoreAgentClasses) {
         this.ignoreAgentClasses = ignoreAgentClasses;
+    }
+
+    /**
+     * Set the WeaverConfig for scope control (onlyInterceptPackages, maxTransformations).
+     */
+    public void setWeaverConfig(WeaverConfig weaverConfig) {
+        this.weaverConfig = weaverConfig;
+        if (weaverConfig != null) {
+            if (weaverConfig.getMaxTransformations() != null) {
+                this.maxTransformations = weaverConfig.getMaxTransformations();
+            }
+        }
+    }
+
+    /**
+     * Set the maximum number of classes that may be transformed.
+     */
+    public void setMaxTransformations(int max) {
+        this.maxTransformations = max;
+    }
+
+    private boolean isDebugMode() {
+        return Boolean.getBoolean("weavergirl.debug");
     }
 
     /**
@@ -100,7 +129,21 @@ public class WeaverTransformer {
                     public void onTransformation(TypeDescription typeDescription, ClassLoader classLoader,
                                                   JavaModule module, boolean loaded, DynamicType dynamicType) {
                         AgentStatus.getInstance().incrementTransformationCount();
+                        AgentStatus.getInstance().addTransformedClass(typeDescription.getName());
                         log.info("Transformed class: {}", typeDescription.getName());
+                        if (isDebugMode()) {
+                            List<String> matchedNames = registry.getInterceptorsForClass(typeDescription.getName())
+                                    .stream().map(InterceptorDefinition::getName).collect(Collectors.toList());
+                            log.debug("  Interceptors matching {}: {}", typeDescription.getName(), matchedNames);
+                        }
+                    }
+
+                    @Override
+                    public void onIgnored(TypeDescription typeDescription, ClassLoader classLoader,
+                                          JavaModule module, boolean loaded) {
+                        if (isDebugMode()) {
+                            log.debug("Ignored class (no matching interceptor): {}", typeDescription.getName());
+                        }
                     }
 
                     @Override
@@ -110,6 +153,20 @@ public class WeaverTransformer {
                         log.warn("Error transforming class {}: {}", typeName, throwable.getMessage());
                     }
                 });
+
+        // If onlyInterceptPackages is specified, only match classes in those packages
+        List<String> allowedPackages = weaverConfig != null ? weaverConfig.getOnlyInterceptPackages() : null;
+        net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> packageAllowMatcher = null;
+        if (allowedPackages != null && !allowedPackages.isEmpty()) {
+            for (String pkg : allowedPackages) {
+                String prefix = pkg.endsWith(".") ? pkg : pkg + ".";
+                net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> pkgMatcher = nameStartsWith(prefix);
+                packageAllowMatcher = (packageAllowMatcher == null) ? pkgMatcher : packageAllowMatcher.or(pkgMatcher);
+            }
+            if (packageAllowMatcher != null) {
+                log.info("Instrumentation scope limited to packages: {}", allowedPackages);
+            }
+        }
 
         TypeExistenceChecker checker = new TypeExistenceChecker(instrumentation);
 
@@ -128,13 +185,22 @@ public class WeaverTransformer {
             }
 
             net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> typeMatcher = buildTypeMatcher(classMatcher);
+            // If package allowlist is specified, narrow the type matcher to only allowed packages
+            if (typeMatcher != null && packageAllowMatcher != null) {
+                typeMatcher = typeMatcher.and(packageAllowMatcher);
+            }
             if (typeMatcher != null) {
                 agentBuilder = agentBuilder
                         .type(typeMatcher)
-                        .transform((builder, typeDescription, classLoader, module, protectionDomain) ->
-                                builder.visit(net.bytebuddy.asm.Advice.to(InterceptAdvice.class)
-                                        .on(buildMethodMatcher(definition.getPointcut().getMethodMatcher())))
-                        );
+                        .transform((builder, typeDescription, classLoader, module, protectionDomain) -> {
+                            if (transformationCount.incrementAndGet() > maxTransformations) {
+                                log.warn("Max transformations ({}) reached, not transforming: {}",
+                                        maxTransformations, typeDescription.getName());
+                                return builder; // return unmodified builder
+                            }
+                            return builder.visit(net.bytebuddy.asm.Advice.to(InterceptAdvice.class)
+                                    .on(buildMethodMatcher(definition.getPointcut().getMethodMatcher())));
+                        });
             }
         }
 
