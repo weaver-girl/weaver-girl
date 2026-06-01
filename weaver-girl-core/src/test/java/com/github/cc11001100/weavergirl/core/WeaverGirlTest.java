@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -88,7 +89,7 @@ class WeaverGirlTest {
             interceptor.after(dummyInvocation);
             interceptor.onException(dummyInvocation);
 
-            assertEquals(List.of("before", "after", "onException"), callOrder);
+            assertEquals(Arrays.asList("before", "after", "onException"), callOrder);
         }
     }
 

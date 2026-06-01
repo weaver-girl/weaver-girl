@@ -2,6 +2,8 @@ package com.github.cc11001100.weavergirl.core.plugin;
 
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Set;
 
 /**
@@ -29,11 +31,17 @@ public class PluginClassLoader extends URLClassLoader {
      * This prevents plugins from overriding agent API classes or JDK classes
      * (class spoofing attack).
      */
-    private static final Set<String> PARENT_FIRST_PACKAGES = Set.of(
-        "com.github.cc11001100.weavergirl.api",
-        "com.github.cc11001100.weavergirl.annotation",
-        "java.", "javax.", "sun.", "jdk."
-    );
+    private static final Set<String> PARENT_FIRST_PACKAGES;
+    static {
+        Set<String> set = new HashSet<>();
+        set.add("com.github.cc11001100.weavergirl.api");
+        set.add("com.github.cc11001100.weavergirl.annotation");
+        set.add("java.");
+        set.add("javax.");
+        set.add("sun.");
+        set.add("jdk.");
+        PARENT_FIRST_PACKAGES = Collections.unmodifiableSet(set);
+    }
 
     public PluginClassLoader(URL[] urls, ClassLoader parent) {
         super(urls, parent);
@@ -41,7 +49,9 @@ public class PluginClassLoader extends URLClassLoader {
 
     @Override
     protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
-        synchronized (getClassLoadingLock(name)) {
+        // Java 8 compatible: use synchronized(this) instead of getClassLoadingLock()
+        // which was added in Java 9
+        synchronized (this) {
             // 1. Parent-first for agent API and JDK classes
             for (String prefix : PARENT_FIRST_PACKAGES) {
                 if (name.startsWith(prefix)) {
