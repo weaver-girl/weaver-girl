@@ -33,18 +33,29 @@ Per-interceptor metrics, plugin load status, YAML security validation
 
 ## ✅ P19 生产安全修复（已完成）
 
-- **CRITICAL**: InterceptAdvice 捕获 Throwable 防止 OOM/StackOverflow 穿透到目标应用
-- **HIGH**: BootstrapInjection 保持 JarFile 打开（修复 ZipFile closed 错误）
-- **HIGH**: SamplingController.shouldSample() 接入 InterceptAdvice（采样之前是死代码）
-- **HIGH**: InterceptorCircuitBreaker 同步化状态转换（修复竞态条件）
-- **HIGH**: MethodInvocationPool.release() 清除对象引用（修复 ClassLoader 内存泄漏）
-- **MEDIUM**: AgentStatus.InterceptorMetrics 使用 AtomicLong（修复计数丢失）
+Catch Throwable, JarFile 保持打开, 采样接入, 断路器同步化, MethodInvocation clear, AtomicLong
+
+## ✅ P20 关键测试覆盖（已完成）
+
+新增 56 个测试 (748→804):
+- ConfigWatcherTest: 6 tests (热重载、去抖、卸载后重载)
+- WeaverTransformerScopeTest: 7 tests (排除、限制、范围控制)
+- SamplingIntegrationTest: 6 tests (采样率、自适应调节)
+- CircuitBreakerIntegrationTest: 5 tests (触发、重置、并发、Throwable)
+- PluginLoaderTest: +3 tests (disabledPlugins)
+
+## ✅ P21 文档完善（已完成）
+
+- docs/yaml-config-reference.md: 完整配置参考 (agent 设置、拦截器定义、类/方法匹配、插件配置)
+- docs/troubleshooting.md: 故障排除指南 (8 个常见问题及解决方案)
+- README.md: 重写 — 30 秒快速开始、内置插件表、三种模式、文档链接
 
 ## 📊 统计
 
 - **源代码**: 7,523 行 (64 文件)
-- **测试代码**: 6,593 行 (48 文件)
-- **测试总数**: 748 个，全部通过
-- **提交总数**: 84 个
+- **测试代码**: 7,215 行 (52 文件)
+- **测试总数**: 804 个，全部通过
+- **提交总数**: 88 个
 - **模块**: 6 个 Maven 模块
 - **内置插件**: 12 个
+- **文档**: 7 个文件 (README, architecture, plugin-dev-guide, yaml-config-reference, troubleshooting, CONTRIBUTING, CHANGELOG)
