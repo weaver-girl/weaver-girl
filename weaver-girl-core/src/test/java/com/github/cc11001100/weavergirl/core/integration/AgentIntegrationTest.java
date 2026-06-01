@@ -295,15 +295,7 @@ class AgentIntegrationTest {
                 interceptor));
 
         WeaverTransformer transformer = new WeaverTransformer(registry);
-        transformer.setExcludedClassPatterns(java.util.Arrays.asList(
-                "com\\.github\\.cc11001100\\.weavergirl\\.core\\.transformer\\..*",
-                "com\\.github\\.cc11001100\\.weavergirl\\.core\\.InterceptAdvice",
-                "com\\.github\\.cc11001100\\.weavergirl\\.core\\.InterceptorHolder",
-                "com\\.github\\.cc11001100\\.weavergirl\\.core\\.status\\..*",
-                "com\\.github\\.cc11001100\\.weavergirl\\.core\\.sampling\\..*",
-                "com\\.github\\.cc11001100\\.weavergirl\\.core\\.BootstrapInjection",
-                "com\\.github\\.cc11001100\\.weavergirl\\.core\\.TypeExistenceChecker"
-        ));
+        transformer.setIgnoreAgentClasses(false);
         transformer.install(instrumentation);
         transformer.retransformLoadedClasses();
 
@@ -346,18 +338,9 @@ class AgentIntegrationTest {
     private void installTransformer() {
         WeaverTransformer transformer = new WeaverTransformer(registry);
         // In test environment, we need to instrument test target classes which
-        // are under com.github.cc11001100.weavergirl.* package. Override the
-        // default ignore list to only exclude the actual agent implementation
-        // classes (not test helpers).
-        transformer.setExcludedClassPatterns(java.util.Arrays.asList(
-                "com\\.github\\.cc11001100\\.weavergirl\\.core\\.transformer\\..*",
-                "com\\.github\\.cc11001100\\.weavergirl\\.core\\.InterceptAdvice",
-                "com\\.github\\.cc11001100\\.weavergirl\\.core\\.InterceptorHolder",
-                "com\\.github\\.cc11001100\\.weavergirl\\.core\\.status\\..*",
-                "com\\.github\\.cc11001100\\.weavergirl\\.core\\.sampling\\..*",
-                "com\\.github\\.cc11001100\\.weavergirl\\.core\\.BootstrapInjection",
-                "com\\.github\\.cc11001100\\.weavergirl\\.core\\.TypeExistenceChecker"
-        ));
+        // are under com.github.cc11001100.weavergirl.* package. Disable the
+        // default agent-class ignore so test helpers can be intercepted.
+        transformer.setIgnoreAgentClasses(false);
         transformer.install(instrumentation);
     }
 }

@@ -43,6 +43,7 @@ public class WeaverTransformer {
     private final InterceptorRegistry registry;
     private Instrumentation instrumentation;
     private List<String> excludedClassPatterns = Collections.emptyList();
+    private boolean ignoreAgentClasses = true;
 
     public WeaverTransformer(InterceptorRegistry registry) {
         this.registry = registry;
@@ -50,6 +51,15 @@ public class WeaverTransformer {
 
     public void setExcludedClassPatterns(List<String> patterns) {
         this.excludedClassPatterns = patterns != null ? patterns : Collections.emptyList();
+    }
+
+    /**
+     * Set whether to ignore the agent's own classes, shaded dependencies,
+     * and JDK internals. Defaults to true; set to false in test environments
+     * where test target classes live inside the weavergirl package tree.
+     */
+    public void setIgnoreAgentClasses(boolean ignoreAgentClasses) {
+        this.ignoreAgentClasses = ignoreAgentClasses;
     }
 
     /**
@@ -63,25 +73,18 @@ public class WeaverTransformer {
         BootstrapInjection bootstrapInjection = new BootstrapInjection();
         bootstrapInjection.inject(instrumentation);
 
-        // Exclude agent implementation packages to prevent ClassCircularityError.
-        // We exclude specific sub-packages, NOT the entire weavergirl namespace,
-        // because user code and test target classes may exist under weavergirl.api
-        // or weavergirl.core.integration (test helpers).
-        net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> excludeMatcher = nameStartsWith("com.github.cc11001100.weavergirl.core.registry.")
-                .or(nameStartsWith("com.github.cc11001100.weavergirl.core.transformer."))
-                .or(nameStartsWith("com.github.cc11001100.weavergirl.core.config."))
-                .or(nameStartsWith("com.github.cc11001100.weavergirl.core.plugin."))
-                .or(nameStartsWith("com.github.cc11001100.weavergirl.core.circuit."))
-                .or(nameStartsWith("com.github.cc11001100.weavergirl.core.sampling."))
-                .or(nameStartsWith("com.github.cc11001100.weavergirl.core.status."))
-                .or(nameStartsWith("com.github.cc11001100.weavergirl.agent."))
-                .or(nameStartsWith("com.github.cc11001100.weavergirl.shade."))
-                .or(nameStartsWith("net.bytebuddy."))
-                .or(nameStartsWith("org.slf4j."))
-                .or(nameStartsWith("org.yaml."))
-                .or(nameStartsWith("sun."))
+        // Build the ignore matcher: always exclude JDK internals;
+        // optionally exclude the agent's own classes and shaded dependencies
+        // to prevent ClassCircularityError.
+        net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> excludeMatcher = nameStartsWith("sun.")
                 .or(nameStartsWith("jdk.internal."))
                 .or(nameStartsWith("com.sun."));
+
+        if (ignoreAgentClasses) {
+            excludeMatcher = excludeMatcher
+                    .or(nameStartsWith("com.github.cc11001100.weavergirl."))
+                    .or(nameStartsWith("com.github.cc11001100.weavergirl.shade."));
+        }
 
         for (String pattern : excludedClassPatterns) {
             excludeMatcher = excludeMatcher.or(nameMatches(pattern));
