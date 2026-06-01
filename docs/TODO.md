@@ -3,85 +3,53 @@
 > 目标：向业内成熟产品（SkyWalking / OpenTelemetry Java Agent）看齐，补齐核心能力差距
 > 更新时间：2026-06-01
 
-## ✅ P0 核心缺陷修复（已完成）
+## ✅ P0-P4 已完成
 
-- [x] InterceptAdvice skipMethod / 返回值修改不生效
-- [x] YamlConfigLoader advice 只调 before()
-- [x] AnnotationPluginLoader @Around 语义不完整
-- [x] WeaverGirl.create() 未接通 ByteBuddy
-- [x] MethodInvocation arguments 非防御性拷贝
-- [x] DefaultInterceptorRegistry O(N) 全表扫描
-- [x] 废弃 Class.newInstance() 调用
-- [x] @Advice.Return(readOnly=false) 返回值写回
-- [x] onMethodExit 非跳过场景创建 MethodInvocation 上下文
+详见 git history。43 项增强全部落地。
 
-## ✅ P1 关键能力补全（已完成）
+## 🔧 P5 生产缺陷修复（当前批次）
 
-- [x] 集成测试 AgentIntegrationTest — before/after/onException 回调验证
-- [x] Agent 日志框架 — SLF4J 替换 System.out.println
-- [x] Fluent Builder 扩展 — byNamePattern/byAnnotation/bySuperClass/byInterface + methodPattern/methodAnnotated + priority + after/onException
-- [x] PluginContext 接口 + DefaultPluginContext 实现
-- [x] WeaverPlugin 生命周期 — init(PluginContext) / destroy()
-- [x] InterceptorRegistry.unregister(name)
-- [x] .gitignore
+### 错误韧性
 
-## ✅ P2 生产加固（已完成）
+- [ ] **InterceptAdvice 异常静默吞没** — onMethodEnter/onMethodExit 的 catch 块无任何日志，生产环境无法诊断失败拦截器
+- [ ] **YamlConfigLoader 每次调用反射创建 advice 实例** — 性能灾难 + 异常放大器，需缓存实例
+- [ ] **PluginLoader 只 catch Exception 不 catch Throwable** — OutOfMemoryError/NoClassDefFoundError 会崩溃 agent
+- [ ] **skipMethod 异常不回滚** — 拦截器调用 skipMethod() 后抛异常，方法仍被跳过，应重置 skip 状态
+- [ ] **BootstrapInjection JarFile 泄漏** — new JarFile() 后未关闭
 
-- [x] MethodMatcher 测试 — 12 个测试覆盖 byName/any/byNamePattern/byAnnotation
-- [x] MethodInvocation 测试 — 11 个测试覆盖防御性拷贝/skipMethod/返回值/边界
-- [x] Agent shutdown hook — Runtime.addShutdownHook 调用 WeaverGirl.shutdown()
-- [x] Agent 初始化容错 — try-catch(Throwable) 防止目标 JVM 崩溃
-- [x] YAML 配置校验 — 结构性校验（className + advice 必填），advice 类存在性延迟校验
-- [x] InterceptorRegistry.unregister() — 按名称移除定义
-- [x] WeaverGirl/InterceptBuilder 测试 — 8 个测试覆盖 programmatic API
-- [x] AnnotationPluginLoader 测试 — 10 个测试覆盖注解扫描 + 反射拦截器创建
-- [x] 方法签名匹配 — MethodMatcher.bySignature + matches(String, Class<?>[])
-- [x] Pointcut 组合 — Pointcut.and() / .or() + matches(String, String)
-- [x] equals/hashCode — ClassMatcher/MethodMatcher/Pointcut/InterceptorDefinition
+### 资源管理
 
-## ✅ P3 生产就绪（已完成）
+- [ ] **DefaultInterceptorRegistry rebuildIndex 竞态** — clear+putAll 非原子，并发注册时查找可能返回空列表
+- [ ] **register() 不替换同名定义** — Javadoc 承诺替换但实际是 add，导致重复拦截
+- [ ] **ThreadContext ThreadLocal 泄漏** — clear() 不调用 remove()，线程池环境跨请求污染
+- [ ] **ConfigWatcher 无防抖** — 编辑器保存触发多次事件，中间态可能丢失拦截器
 
-- [x] 已加载类重转换 — agentmain attach 时 retransformClasses 已加载类
-- [x] 值对象不可变 — 所有字段 private final，无 setter
-- [x] ClassLoader 隔离 — PluginClassLoader child-first + PluginJarScanner + loadPluginsFromDirectory
-- [x] 配置动态重载 — ConfigWatcher + watch=true agent 参数
-- [x] 跨线程上下文传播 — ThreadContext + ContextRunnable + ContextCallable
-- [x] Bootstrap 类注入 — BootstrapInjection + InjectionStrategy.UsingInstrumentation
-- [x] API Javadoc — 13 个 public API 类完整 Javadoc + @since 标签
+### Agent 打包
 
-## ✅ P4 企业级能力（已完成）
+- [ ] **Agent 无 SLF4J 实现** — 生产环境所有日志静默丢弃，等于盲跑
+- [ ] **Shade 不重定位 SLF4J** — 与目标应用的 SLF4J 版本冲突
 
-- [x] 条件化增强 — TypeExistenceChecker 跳过不存在类的拦截器
-- [x] 健康检查 / 状态报告 — AgentStatus 单例 + 转换/调用/错误计数 + getReport()
-- [x] 插件依赖解析 — WeaverPlugin.depends() + PluginDependencyResolver 拓扑排序
-- [x] Agent 自诊断 — WeaverGirlMBean + AgentStatusMonitor + JmxRegistrar
-- [x] 自适应采样 — SamplingController + SamplingMonitor + daemon 调度
-- [x] 性能基准测试 — JMH InterceptorBenchmark + MatcherBenchmark
-- [x] 多 Agent 共存测试 — MultiAgentCoexistenceTest 验证与其它 Agent 无冲突
+### API 缺陷
+
+- [ ] **MethodInvocation 不暴露 Method 对象** — 插件开发者无法获取完整方法签名/返回类型/注解
+- [ ] **无 suppressException 机制** — onException 无法阻止异常传播，破坏熔断/降级模式
+- [ ] **DefaultPluginContext 不做命名空间解析** — 文档承诺的 weavergirl.plugin.<name>. 前缀不生效
+- [ ] **WeaverGirlAgent 不传递 config 给 bootstrap** — PluginContext.getConfig() 永远返回 null
+
+### 拦截器韧性
+
+- [ ] **无拦截器超时/熔断机制** — 慢拦截器拖垮整个应用
+
+### 测试覆盖
+
+- [ ] **WeaverTransformer 无单元测试** — 核心转换引擎零直接覆盖
+- [ ] **ConfigWatcher 无测试** — 热重载功能零覆盖
+- [ ] **WeaverGirlAgent 无测试** — 入口参数解析零覆盖
 
 ## 📊 统计
 
 - **源文件**: 45 个 Java 文件
 - **测试文件**: 25 个
 - **测试总数**: 288 个，全部通过
-- **提交总数**: 43 个
+- **提交总数**: 43+ 个
 - **模块**: 5 个 Maven 模块 (api, core, annotation, agent, sample)
-
-## 🎯 能力对比（vs 成熟产品）
-
-| 能力 | SkyWalking | OpenTelemetry | Weaver-Girl |
-|------|-----------|---------------|-------------|
-| 字节码增强 | ✅ | ✅ | ✅ |
-| 插件体系 | ✅ | ✅ | ✅ |
-| ClassLoader 隔离 | ✅ | ✅ | ✅ |
-| Bootstrap 类注入 | ✅ | ✅ | ✅ |
-| 已加载类重转换 | ✅ | ✅ | ✅ |
-| YAML 配置 | ✅ | ✅ | ✅ |
-| 动态配置重载 | ✅ | ❌ | ✅ |
-| JMX 自诊断 | ✅ | ❌ | ✅ |
-| 自适应采样 | ✅ | ❌ | ✅ |
-| 跨线程上下文 | ✅ | ✅ | ✅ |
-| 插件依赖解析 | ❌ | ❌ | ✅ |
-| 条件化增强 | ✅ | ✅ | ✅ |
-| 注解驱动 | ❌ | ❌ | ✅ |
-| 多 Agent 共存 | ✅ | ✅ | ✅ |
