@@ -37,7 +37,17 @@ public class PluginLoader {
                                           Map<String, String> config) {
         ServiceLoader<WeaverPlugin> serviceLoader = ServiceLoader.load(WeaverPlugin.class, classLoader);
 
+        // Collect all discovered plugins first
+        List<WeaverPlugin> discovered = new ArrayList<>();
         for (WeaverPlugin plugin : serviceLoader) {
+            discovered.add(plugin);
+        }
+
+        // Resolve dependencies before initializing
+        PluginDependencyResolver resolver = new PluginDependencyResolver();
+        List<WeaverPlugin> sorted = resolver.resolve(discovered);
+
+        for (WeaverPlugin plugin : sorted) {
             try {
                 log.info("Loading plugin: {}", plugin.name());
 

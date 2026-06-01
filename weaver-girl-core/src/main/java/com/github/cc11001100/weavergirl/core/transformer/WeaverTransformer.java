@@ -64,8 +64,22 @@ public class WeaverTransformer {
                     }
                 });
 
+        TypeExistenceChecker checker = new TypeExistenceChecker(instrumentation);
+
         for (InterceptorDefinition definition : registry.getAllDefinitions()) {
             ClassMatcher classMatcher = definition.getPointcut().getClassMatcher();
+
+            // Before registering the type transformer, check if the target class exists.
+            // Only skip EXACT_NAME matches because pattern/annotation/superclass
+            // matches may apply to classes we can't predict.
+            if (classMatcher.getMatchType() == ClassMatcher.MatchType.EXACT_NAME) {
+                if (!checker.exists(classMatcher.getPattern())) {
+                    log.info("Skipping interceptor '{}': target class '{}' not found on classpath",
+                            definition.getName(), classMatcher.getPattern());
+                    continue;
+                }
+            }
+
             net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> typeMatcher = buildTypeMatcher(classMatcher);
             if (typeMatcher != null) {
                 agentBuilder = agentBuilder
