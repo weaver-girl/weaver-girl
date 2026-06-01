@@ -5,3 +5,6 @@ com.github.cc11001100.weavergirl.plugins.trace.TraceCorrelationPlugin
 com.github.cc11001100.weavergirl.plugins.spring.SpringPlugin
 com.github.cc11001100.weavergirl.plugins.exception.ExceptionMonitorPlugin
 com.github.cc11001100.weavergirl.plugins.redis.RedisPlugin
+com.github.cc11001100.weavergirl.plugins.httpclient.HttpClientPlugin
+com.github.cc11001100.weavergirl.plugins.grpc.GrpcPlugin
+com.github.cc11001100.weavergirl.plugins.kafka.KafkaPlugin
