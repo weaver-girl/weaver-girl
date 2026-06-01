@@ -7,17 +7,20 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Default thread-safe implementation of InterceptorRegistry.
- * Manages all registered interceptor definitions.
+ * Uses a ConcurrentHashMap index for fast class-level lookup.
  */
 public class DefaultInterceptorRegistry implements InterceptorRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultInterceptorRegistry.class);
 
     private final List<InterceptorDefinition> definitions = new CopyOnWriteArrayList<>();
+    private final ConcurrentHashMap<String, List<InterceptorDefinition>> classIndex = new ConcurrentHashMap<>();
+    private volatile boolean indexDirty = true;
 
     @Override
     public void register(InterceptorDefinition definition) {
@@ -26,19 +29,17 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
             return;
         }
         definitions.add(definition);
+        indexDirty = true;
         log.info("Registered interceptor: {}", definition.getName());
     }
 
     @Override
     public List<InterceptorDefinition> getInterceptorsForClass(String className) {
-        List<InterceptorDefinition> matched = new ArrayList<>();
-        for (InterceptorDefinition def : definitions) {
-            if (def.getPointcut().getClassMatcher().matches(className)) {
-                matched.add(def);
-            }
+        if (indexDirty) {
+            rebuildIndex();
         }
-        matched.sort(Comparator.comparingInt(InterceptorDefinition::getPriority));
-        return matched;
+        List<InterceptorDefinition> cached = classIndex.get(className);
+        return cached != null ? cached : Collections.emptyList();
     }
 
     @Override
@@ -51,5 +52,25 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
      */
     public void clear() {
         definitions.clear();
+        classIndex.clear();
+        indexDirty = true;
+    }
+
+    private synchronized void rebuildIndex() {
+        if (!indexDirty) {
+            return;
+        }
+        ConcurrentHashMap<String, List<InterceptorDefinition>> newIndex = new ConcurrentHashMap<>();
+        for (InterceptorDefinition def : definitions) {
+            String pattern = def.getPointcut().getClassMatcher().getPattern();
+            newIndex.computeIfAbsent(pattern, k -> new ArrayList<>()).add(def);
+        }
+        // Sort each list by priority
+        for (List<InterceptorDefinition> list : newIndex.values()) {
+            list.sort(Comparator.comparingInt(InterceptorDefinition::getPriority));
+        }
+        classIndex.clear();
+        classIndex.putAll(newIndex);
+        indexDirty = false;
     }
 }
