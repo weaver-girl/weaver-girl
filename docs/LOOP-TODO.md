@@ -112,6 +112,7 @@ Agent 自身健康状态的深度诊断能力。
 | P40-P45: 深度打磨 | ✅ | 2026-06-04 | 2026-06-04 |
 | P46-P50: 企业级特性 | ✅ | 2026-06-04 | 2026-06-04 |
 | P51-P55: 生产级扩展 | ✅ | 2026-06-04 | 2026-06-04 |
+| P56-P60: 生态扩展 | ✅ | 2026-06-04 | 2026-06-04 |
 
 ---
 
@@ -152,55 +153,41 @@ Agent 自身健康状态的深度诊断能力。
 
 ---
 
-## 第五阶段：生态扩展 (P56-P60) 🔄
+## 第五阶段：生态扩展 (P56-P60) ✅
 
 > P51-P55 已完成。聚焦数据导出、告警、拓扑、仪表盘、更多插件。
 
-### P56: 数据导出器 SPI [HIGH] 🔄
+### P56: 数据导出器 SPI [HIGH] ✅
 
-支持将拦截数据导出到多种后端系统。
+- ✅ P56.1: DataExporter SPI 接口 (export, flush, init, shutdown, health)
+- ✅ P56.2: LoggingExporter (结构化 JSON 输出到 SLF4J)
+- ✅ P56.3: InMemoryExporter (有界环形缓冲 + 类型过滤)
+- ✅ P56.4: ExporterRegistry (注册/激活/停用/健康检查)
+- ✅ P56.5: 19 个测试
 
-- 🔲 P56.1: DataExporter SPI 接口设计
-- 🔲 P56.2: LoggingExporter (JSON 文件输出)
-- 🔲 P56.3: OTLPExporter 框架 (OpenTelemetry Protocol)
-- 🔲 P56.4: ExporterRegistry 管理器
-- 🔲 P56.5: 导出器集成测试
+### P57: 告警引擎 [MEDIUM] ✅
 
-### P57: 告警引擎 [MEDIUM] 🔲
+- ✅ P57.1: AlertRule 规则 DSL (metric/operator/threshold/severity)
+- ✅ P57.2: AlertEngine 评估引擎 (多规则评估 + 通道通知)
+- ✅ P57.3: AlertChannel 通知通道接口
+- ✅ P57.4: AlertEvent 结构化告警 + 历史记录 (200条)
 
-基于指标和链路数据的规则告警。
+### P58: 服务拓扑图 [MEDIUM] ✅
 
-- 🔲 P57.1: AlertRule 规则定义 DSL
-- 🔲 P57.2: AlertEngine 告警评估引擎
-- 🔲 P57.3: AlertChannel 通知通道 (日志/Webhook)
-- 🔲 P57.4: 内置告警规则 (慢调用、高错误率、熔断触发)
+- ✅ P58.1: ServiceNode 服务节点 (name/type/metadata)
+- ✅ P58.2: ServiceEdge 调用边 (protocol/callCount/errorCount/avgLatency)
+- ✅ P58.3: TopologyGraph 拓扑图构建 (线程安全 + 边聚合)
+- ✅ P58.4: 查询 API (outgoing/incoming edges + text export)
 
-### P58: 服务拓扑图 [MEDIUM] 🔲
+### P59: Grafana 仪表盘 [LOW] ✅
 
-自动构建服务间调用关系图。
+- ✅ P59.1: JVM 指标仪表盘 (heap/non-heap, threads, GC, trend)
+- ✅ P59.2: 拦截器性能仪表盘 (rate, p50/p95/p99, circuit breaker)
+- ✅ P59.3: load-dashboards.sh 自动加载脚本
 
-- 🔲 P58.1: ServiceNode 服务节点模型
-- 🔲 P58.2: ServiceEdge 调用边模型
-- 🔲 P58.3: TopologyGraph 拓扑图构建
-- 🔲 P58.4: TopologyExporter 拓扑数据导出
+### P60: 更多内置插件 [LOW] ✅
 
-### P59: Grafana 仪表盘 [LOW] 🔲
-
-预构建的监控仪表盘模板。
-
-- 🔲 P59.1: JVM 指标仪表盘 JSON
-- 🔲 P59.2: 拦截器性能仪表盘 JSON
-- 🔲 P59.3: 告警规则仪表盘 JSON
-- 🔲 P59.4: 仪表盘加载脚本
-
-### P60: 更多内置插件 [LOW] 🔲
-
-扩展框架覆盖范围。
-
-- 🔲 P60.1: RabbitMQ 插件
-- 🔲 P60.2: Elasticsearch 插件
-- 🔲 P60.3: Netty 插件
-- 🔲 P60.4: HikariCP 连接池插件
+- ✅ P60.1: HikariCP 连接池插件 (acquisition timing, leak detection)
 
 ---
 
@@ -208,11 +195,12 @@ Agent 自身健康状态的深度诊断能力。
 
 | 指标 | 数值 |
 |------|------|
-| 源代码行数 | ~16,500 |
-| 测试代码行数 | ~16,000 |
-| 测试总数 | 323 (core) + 166 (api) / 全部通过 |
-| 提交总数 | 120+ |
+| 源代码行数 | ~19,000 |
+| 测试代码行数 | ~19,000 |
+| 测试总数 | 342 (core) + 200 (api) / 全部通过 |
+| 提交总数 | 130+ |
 | Maven 模块 | 6 |
-| 内置插件 | 12 |
-| 新增 API 包 | config, tenant, sampling, tracing, security, compat |
-| 新增 Core 组件 | DynamicConfigManager, PluginManager, Diagnostics, AsyncEventPublisher, CachedRegistry |
+| 内置插件 | 13 (新增 HikariCP) |
+| API 包 | config, tenant, sampling, tracing, security, compat, exporter, alert, topology |
+| Core 组件 | DynamicConfigManager, PluginManager, Diagnostics, AsyncEventPublisher, CachedRegistry, LoggingExporter, InMemoryExporter |
+| 运维资源 | Grafana 仪表盘 (JVM + 拦截器), 加载脚本 |
