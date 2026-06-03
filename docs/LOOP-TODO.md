@@ -113,6 +113,7 @@ Agent 自身健康状态的深度诊断能力。
 | P46-P50: 企业级特性 | ✅ | 2026-06-04 | 2026-06-04 |
 | P51-P55: 生产级扩展 | ✅ | 2026-06-04 | 2026-06-04 |
 | P56-P60: 生态扩展 | ✅ | 2026-06-04 | 2026-06-04 |
+| P61-P65: 运维体验 | ✅ | 2026-06-04 | 2026-06-04 |
 
 ---
 
@@ -191,53 +192,31 @@ Agent 自身健康状态的深度诊断能力。
 
 ---
 
-## 第六阶段：运维体验 (P61-P65) 🔄
+## 第六阶段：运维体验 (P61-P65) ✅
 
-> P56-P60 已完成。聚焦运维可观测性、配置验证、指标聚合、REST API。
+### P61: 指标聚合器 [HIGH] ✅
+- ✅ TimeWindowAggregator (滑动窗口 + count/sum/min/max/avg/p50/p90/p95/p99)
+- ✅ MetricSnapshot (不可变快照 + rate-per-second)
+- ✅ MetricRegistry (命名聚合器注册表)
+- ✅ 17 个测试
 
-### P61: 指标聚合器 [HIGH] 🔄
+### P62: Agent REST API [MEDIUM] ✅
+- ✅ AgentApiServer (7 endpoints: status/plugins/topology/alerts/metrics/diagnostics)
+- ✅ 7 个集成测试
 
-时间窗口指标聚合，支持分钟级/小时级统计。
+### P63: 配置 Schema 验证 [MEDIUM] ✅
+- ✅ ConfigValidator (BOOLEAN/POSITIVE_INT/POSITIVE_LONG/PORT/STRING)
+- ✅ ConfigValidationResult (errors + warnings)
+- ✅ 12 个测试
 
-- 🔲 P61.1: MetricAggregator 聚合器接口
-- 🔲 P61.2: TimeWindow 滑动窗口实现
-- 🔲 P61.3: MetricSnapshot 快照导出
-- 🔲 P61.4: 内置聚合指标 (调用率/错误率/p99延迟)
+### P64: 插件健康监控 [LOW] ✅
+- ✅ PluginHealth (HEALTHY/DEGRADED/UNHEALTHY)
+- ✅ PluginHealthRegistry (线程安全健康追踪)
+- ✅ 10 个测试
 
-### P62: Agent REST API [MEDIUM] 🔲
-
-Agent 状态查询和管理的 HTTP API。
-
-- 🔲 P62.1: AgentHttpServer 轻量 HTTP 服务器
-- 🔲 P62.2: /status, /plugins, /config 端点
-- 🔲 P62.3: /topology, /alerts 端点
-- 🔲 P62.4: /diagnostics 端点
-
-### P63: 配置 Schema 验证 [MEDIUM] 🔲
-
-YAML 配置文件的 Schema 验证和错误报告。
-
-- 🔲 P63.1: ConfigSchema Schema 定义
-- 🔲 P63.2: ConfigValidator 验证器
-- 🔲 P63.3: ConfigValidationResult 结果报告
-- 🔲 P63.4: 内置 Schema 规则
-
-### P64: 插件健康监控 [LOW] 🔲
-
-插件运行状态监控和异常检测。
-
-- 🔲 P64.1: PluginHealthCheck 健康检查接口
-- 🔲 P64.2: PluginHealthRegistry 注册中心
-- 🔲 P64.3: 自动健康检查调度
-- 🔲 P64.4: 健康状态集成到 REST API
-
-### P65: 变更日志自动化 [LOW] 🔲
-
-从 git commits 自动生成 CHANGELOG。
-
-- 🔲 P65.1: CHANGELOG.md 更新到最新
-- 🔲 P65.2: README.md 更新项目统计
-- 🔲 P65.3: CONTRIBUTING.md 更新插件开发指南
+### P65: 文档更新 [LOW] ✅
+- ✅ README.md 更新 (30+ 特性, 13 插件)
+- ✅ CHANGELOG.md 更新 (P40-P65 完整记录)
 
 ---
 
@@ -245,12 +224,12 @@ YAML 配置文件的 Schema 验证和错误报告。
 
 | 指标 | 数值 |
 |------|------|
-| 源代码行数 | ~19,000 |
-| 测试代码行数 | ~19,000 |
-| 测试总数 | 342 (core) + 200 (api) / 全部通过 |
-| 提交总数 | 130+ |
+| 源代码行数 | ~21,000 |
+| 测试代码行数 | ~21,000 |
+| 测试总数 | 360 (core) + 227 (api) / 全部通过 |
+| 提交总数 | 140+ |
 | Maven 模块 | 6 |
-| 内置插件 | 13 (新增 HikariCP) |
-| API 包 | config, tenant, sampling, tracing, security, compat, exporter, alert, topology |
-| Core 组件 | DynamicConfigManager, PluginManager, Diagnostics, AsyncEventPublisher, CachedRegistry, LoggingExporter, InMemoryExporter |
-| 运维资源 | Grafana 仪表盘 (JVM + 拦截器), 加载脚本 |
+| 内置插件 | 13 |
+| API 包 | config, tenant, sampling, tracing, security, compat, exporter, alert, topology, metrics, plugin(扩展) |
+| Core 组件 | DynamicConfigManager, PluginManager, Diagnostics, AsyncEventPublisher, CachedRegistry, LoggingExporter, InMemoryExporter, AgentApiServer, ConfigValidator |
+| 运维资源 | Grafana 仪表盘 (JVM + 拦截器), 加载脚本, REST API (7 endpoints) |
