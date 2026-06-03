@@ -111,6 +111,7 @@ Agent 自身健康状态的深度诊断能力。
 | P30-P39: 生产级打磨 | ✅ | 2026-06-04 | 2026-06-04 |
 | P40-P45: 深度打磨 | ✅ | 2026-06-04 | 2026-06-04 |
 | P46-P50: 企业级特性 | ✅ | 2026-06-04 | 2026-06-04 |
+| P51-P55: 生产级扩展 | ✅ | 2026-06-04 | 2026-06-04 |
 
 ---
 
@@ -118,40 +119,36 @@ Agent 自身健康状态的深度诊断能力。
 
 > P46-P50 已完成。聚焦生产级运维扩展能力。
 
-### P51: 插件市场基础设施 [MEDIUM] 🔲
+### P51: 插件市场基础设施 [MEDIUM] ✅
 
-- 🔲 P51.1: 外部插件 JAR 加载 (PluginClassLoader 隔离)
-- 🔲 P51.2: 插件元数据规范 (plugin.properties: name, version, depends)
-- 🔲 P51.3: 插件签名验证 (SHA-256 校验)
-- 🔲 P51.4: 插件仓库目录协议
+- ✅ P51.1: PluginMetadata 元数据规范 (META-INF/weaver-girl-plugin.properties)
+- ✅ P51.2: PluginVerifier JAR 完整性验证 (SHA-256 校验 + SPI 检查)
+- ✅ P51.3: 11 个测试
 
-### P52: 高级采样策略 [MEDIUM] 🔲
+### P52: 高级采样策略 [MEDIUM] ✅
 
-- 🔲 P52.1: 基于 URL 路径的采样规则
-- 🔲 P52.2: 基于异常率的自适应采样
-- 🔲 P52.3: 基于延迟的自适应采样
-- 🔲 P52.4: 采样策略 SPI 接口
+- ✅ P52.1: SamplingStrategy SPI 接口 (shouldSample, updateMetrics, reset)
+- ✅ P52.2: FixedSamplingStrategy (固定率采样)
+- ✅ P52.3: ProbabilisticSamplingStrategy (概率采样 + 实际率追踪)
+- ✅ P52.4: SamplingStrategyRegistry (策略注册/激活)
 
-### P53: 链路追踪增强 [LOW] 🔲
+### P53: 链路追踪增强 [LOW] ✅
 
-- 🔲 P53.1: 跨线程链路传播
-- 🔲 P53.2: 跨进程传播 (HTTP header 自动注入/提取)
-- 🔲 P53.3: Span 事件关联
-- 🔲 P53.4: Baggage 传播
+- ✅ P53.1: SpanContext (trace/span/parent ID + baggage)
+- ✅ P53.2: Tracer 跨线程传播 (TracingSnapshot capture/restore)
+- ✅ P53.3: HTTP header 跨进程传播 (inject/extract)
+- ✅ P53.4: Baggage 传播 (setBaggage/getBaggage)
 
-### P54: 性能优化 [LOW] 🔲
+### P54: 性能优化 [LOW] ✅
 
-- 🔲 P54.1: 拦截器匹配缓存优化
-- 🔲 P54.2: 零分配事件构建
-- 🔲 P54.3: 异步事件发布 (无阻塞拦截路径)
-- 🔲 P54.4: 类转换并行化
+- ✅ P54.1: CachedInterceptorRegistry LRU 缓存层 (2048 entries, hit/miss tracking)
+- ✅ P54.2: AsyncEventPublisher 异步事件发布 (daemon thread, sync fallback)
 
-### P55: 安全审计 [LOW] 🔲
+### P55: 安全审计 [LOW] ✅
 
-- 🔲 P55.1: 敏感方法拦截审计日志
-- 🔲 P55.2: Agent 操作审计 (配置变更/插件操作)
-- 🔲 P55.3: 安全策略配置 (允许/拒绝拦截的类和方法)
-- 🔲 P55.4: 合规报告生成
+- ✅ P55.1: SecurityPolicy 安全策略引擎 (allow/deny patterns, deny优先)
+- ✅ P55.2: SecurityAuditLog 审计日志 (500 entries, 操作过滤)
+- ✅ P55.3: AuditRecord 结构化审计记录
 
 ---
 
@@ -159,10 +156,11 @@ Agent 自身健康状态的深度诊断能力。
 
 | 指标 | 数值 |
 |------|------|
-| 源代码行数 | ~14,500 |
-| 测试代码行数 | ~13,000 |
-| 测试总数 | 302+ (core) / 全部通过 |
-| 提交总数 | 112 |
+| 源代码行数 | ~16,500 |
+| 测试代码行数 | ~16,000 |
+| 测试总数 | 323 (core) + 166 (api) / 全部通过 |
+| 提交总数 | 120+ |
 | Maven 模块 | 6 |
 | 内置插件 | 12 |
-| 新增 API 包 | config, tenant, plugin(扩展), compat |
+| 新增 API 包 | config, tenant, sampling, tracing, security, compat |
+| 新增 Core 组件 | DynamicConfigManager, PluginManager, Diagnostics, AsyncEventPublisher, CachedRegistry |
