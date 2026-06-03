@@ -1,0 +1,107 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Interception Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        { "expr": "rate(weaver_girl_intercept_total[5m])", "legendFormat": "Intercepts/sec" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps" },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Interception Duration (p50/p95/p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, rate(weaver_girl_intercept_duration_bucket[5m]))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, rate(weaver_girl_intercept_duration_bucket[5m]))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, rate(weaver_girl_intercept_duration_bucket[5m]))", "legendFormat": "p99" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms" },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Active Interceptors",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "weaver_girl_interceptor_definitions", "legendFormat": "Definitions" }
+      ]
+    },
+    {
+      "title": "Active Plugins",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+      "targets": [
+        { "expr": "weaver_girl_plugin_count", "legendFormat": "Plugins" }
+      ]
+    },
+    {
+      "title": "Transformed Classes",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "weaver_girl_transformed_classes", "legendFormat": "Classes" }
+      ]
+    },
+    {
+      "title": "Sampling Rate",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 8 },
+      "targets": [
+        { "expr": "weaver_girl_sampling_rate", "legendFormat": "Rate" }
+      ],
+      "fieldConfig": {
+        "defaults": { "min": 0, "max": 100, "unit": "none" },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Circuit Breaker Status",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        { "expr": "weaver_girl_circuit_breaker_open", "legendFormat": "{{interceptor}}" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "Closed", "color": "green" }, "1": { "text": "Open", "color": "red" } } }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Top 10 Slowest Interceptors",
+      "type": "barchart",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        { "expr": "topk(10, weaver_girl_intercept_duration_sum / weaver_girl_intercept_total)", "legendFormat": "{{interceptor}}" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ms" },
+        "overrides": []
+      }
+    }
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["weaver-girl", "interceptors"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "Weaver-Girl: Interceptor Performance",
+  "uid": "weaver-girl-interceptors",
+  "version": 1
+}
