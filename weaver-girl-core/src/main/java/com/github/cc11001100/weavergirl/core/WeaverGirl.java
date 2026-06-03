@@ -332,6 +332,10 @@ public class WeaverGirl {
     static void applyCoreConfig(java.util.Map<String, String> config) {
         if (config == null) return;
 
+        // Log configuration with sensitive values masked
+        java.util.Map<String, String> safeConfig = SecurityUtils.sanitizeForLogging(config);
+        log.info("Agent configuration: {}", safeConfig);
+
         // SamplingController configuration
         SamplingController sampling = SamplingController.getInstance();
         String samplingRate = config.get("samplingRate");
