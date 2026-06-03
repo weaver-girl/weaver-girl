@@ -4,6 +4,158 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## P46-P65 — Enterprise & Ecosystem (2026-06-04)
+
+### P46: Dynamic Configuration Center
+- `ConfigChangeEvent` / `ConfigChangeListener` API for runtime config observation
+- `DynamicConfigManager` interface with get/set/remove/listener/snapshot/rollback
+- `DefaultDynamicConfigManager`: thread-safe with audit trail (1000 entries)
+- `ConfigSnapshot` for versioned rollback support (max 50 snapshots)
+- Integrated into `WeaverGirl.bootstrap()` with `DynamicCoreConfigListener`
+- 31 tests including concurrency stress tests
+
+### P47: Plugin Hot Management
+- `PluginState` enum with valid transition rules (LOADED→ACTIVE→DISABLED→UNLOADED)
+- `PluginManager` interface for runtime plugin lifecycle management
+- `PluginInfo` metadata (state, version, interceptor count, timestamps)
+- `DefaultPluginManager`: disable/enable/unload with interceptor coordination
+- 11 tests covering state transitions, lifecycle, edge cases
+
+### P48: Multi-tenant Isolation
+- `TenantContext`: ThreadLocal-based tenant ID/group propagation
+- `TenantSnapshot`: immutable capture/restore for cross-thread propagation
+- `TenantConfig`: per-tenant sampling rate, max rate, threshold, custom props
+- `TenantConfigRegistry`: thread-safe tenant config lookup by ID or current context
+- 18 tests covering context, config, registry, cross-thread propagation
+
+### P49: Agent Self-diagnostics
+- `AgentDiagnostics`: memory snapshot history, interceptor hotspot analysis
+- Memory tracking: heap/non-heap usage, trend calculation, auto pressure detection
+- Interceptor hotspots: per-interceptor invocation count, avg/max/total time, top-N ranking
+- Fault detection: recorded faults with type/message, recent faults query
+- `generateReport()` comprehensive text report with uptime, memory, hotspots, faults
+- 11 tests
+
+### P50: Runtime Compatibility
+- `RuntimeCompatibility`: Java version, Virtual Threads, GraalVM Native Image detection
+- Framework detection: Spring Boot, Quarkus, Micronaut, Reactor, gRPC, Kafka, Redis, MongoDB
+- `SpringBootAutoConfiguration`: recommended exclusions, reactive stack adaptations
+- 12 tests
+
+### P51: Plugin Marketplace Infrastructure
+- `PluginMetadata`: structured descriptor from `META-INF/weaver-girl-plugin.properties`
+- `PluginVerifier`: JAR integrity verification (SPI presence, SHA-256 checksum)
+- 11 tests
+
+### P52: Advanced Sampling Strategies
+- `SamplingStrategy` SPI interface: shouldSample, updateMetrics, reset
+- `SamplingStrategyRegistry`: register/activate strategies by name
+- `FixedSamplingStrategy`: counter-based every-Nth-invocation
+- `ProbabilisticSamplingStrategy`: random percentage-based with actual rate tracking
+- 16 tests
+
+### P53: Distributed Tracing
+- `SpanContext`: trace/span/parent IDs, sampled flag, immutable baggage map
+- `Tracer`: ThreadLocal span management, span creation, child spans
+- Cross-thread propagation via `TracingSnapshot` (capture/restore)
+- Cross-process HTTP header injection/extraction (X-Trace-Id, X-Span-Id, X-Baggage-*)
+- Baggage propagation: setBaggage/getBaggage
+- 16 tests
+
+### P54: Performance Optimizations
+- `CachedInterceptorRegistry`: LRU cache layer with hit/miss tracking, bounded size
+- `AsyncEventPublisher`: async event delivery via daemon thread pool
+- 11 tests
+
+### P55: Security Audit
+- `SecurityPolicy`: allow/deny pattern matching with precedence (deny > allow)
+- `SecurityAuditLog`: thread-safe bounded audit log (500 entries)
+- `AuditRecord`: structured audit entries with operation, principal, target, result
+- 16 tests
+
+### P56: Data Exporter SPI
+- `DataExporter` SPI interface: export, flush, init, shutdown, health check
+- `ExporterRegistry`: register/activate/deactivate, multi-exporter fan-out
+- `LoggingExporter`: structured JSON output to SLF4J
+- `InMemoryExporter`: bounded ring buffer with type/recent filtering
+- 19 tests
+
+### P57: Alerting Engine
+- `AlertRule`: configurable rule with metric, operator, threshold, severity
+- `AlertEngine`: centralized evaluation, multi-rule fan-out, channel notification
+- `AlertEvent` / `AlertChannel`: structured alert with notification interface
+- 19 tests
+
+### P58: Service Topology
+- `ServiceNode` / `ServiceEdge`: service and call edge models
+- `TopologyGraph`: thread-safe graph builder with call recording, edge aggregation
+- Query APIs: outgoing/incoming edges, text export
+- 15 tests
+
+### P59: Grafana Dashboards
+- JVM Metrics dashboard: heap/non-heap memory, threads, GC, memory trend
+- Interceptor Performance dashboard: rate, p50/p95/p99 latency, circuit breaker
+- `load-dashboards.sh` automated provisioning script
+
+### P60: HikariCP Plugin
+- Connection pool monitoring for HikariCP (13th built-in plugin)
+- Tracks acquisition time, slow threshold alerting, connection lifecycle
+
+### P61: Metric Aggregator
+- `TimeWindowAggregator`: sliding window with count/sum/min/max/avg/p50/p90/p95/p99
+- `MetricSnapshot`: immutable snapshot with rate-per-second calculation
+- `MetricRegistry`: named aggregator registry with convenience methods
+- 17 tests
+
+### P62: Agent REST API
+- `AgentApiServer`: lightweight HTTP server with 7 endpoints
+- GET /status, /plugins, /topology, /alerts, /metrics, /diagnostics
+- 7 integration tests
+
+### P63: Config Schema Validation
+- `ConfigValidator`: validates config keys against known schema (BOOLEAN/INT/LONG/PORT)
+- `ConfigValidationResult`: errors (blocking) + warnings (non-blocking)
+- 12 tests
+
+### P64: Plugin Health Monitoring
+- `PluginHealth`: status (HEALTHY/DEGRADED/UNHEALTHY) with message
+- `PluginHealthRegistry`: thread-safe health tracking and query
+- 10 tests
+
+---
+
+## P40-P45 — Depth Polishing (2026-06-04)
+
+### P40: Security Hardening
+- Sensitive information masking in logs (`SecurityUtils.maskIfSensitive`)
+- Configuration sanitization for safe logging
+- Agent JAR integrity verification (SHA-256 in release workflow)
+
+### P41: CI Quality Gate
+- JaCoCo coverage check in CI quality job
+- SpotBugs analysis in CI quality job
+- Test + coverage report upload to GitHub Actions
+
+### P42: Plugin Examples
+- `AuditLogPlugin.java`: minimal plugin example using WeaverPlugin interface
+- `CustomMetricPlugin.java`: advanced plugin with event publishing and conditional activation
+
+### P43: Error Recovery
+- Plugin loading failure degradation
+- Transformer installation fallback
+- Configuration corruption safe defaults
+
+### P44: Structured Logging
+- Unified log prefix format
+- JSON event format support (`jsonEvents=true`)
+- Log level configurable via agent args
+
+### P45: API Stability
+- `ApiStabilityTest`: verifies all public API method signatures
+- Regression safeguard against accidental API breakage
+
+---
+
 ## P30-P39 — Production Maturity (2026-06-04)
 
 ### P30: Code Quality Gate

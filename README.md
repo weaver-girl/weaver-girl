@@ -53,23 +53,34 @@ interceptors:
 
 ## Features
 
-- **12 Built-in Plugins**: Servlet, Spring, JDBC, Redis, Kafka, gRPC, MongoDB, HttpClient, MethodTiming, TraceCorrelation, ExceptionMonitor, Logging
+- **13 Built-in Plugins**: Servlet, Spring, JDBC, Redis, Kafka, gRPC, MongoDB, HttpClient, HikariCP, MethodTiming, TraceCorrelation, ExceptionMonitor, Logging
 - **Three Hook Modes**: Programmatic API, Annotation-driven, YAML configuration
-- **Plugin System**: SPI-based plugin discovery with dependency resolution, ClassLoader isolation, and conditional enable/disable
+- **Plugin System**: SPI-based plugin discovery with dependency resolution, ClassLoader isolation, conditional enable/disable, state management, and hot loading
 - **ByteBuddy Advice**: Zero-allocation inlined method interception with skip & return-value override
 - **Bootstrap Class Injection**: Intercept `java.*` and `javax.*` classes
 - **Dynamic Attach**: Runtime attachment via `agentmain` with retransformation
 - **Hot Reload**: YAML config changes applied without restart
 - **Circuit Breaker**: Automatic disable of failing interceptors (configurable threshold & cooldown)
 - **Adaptive Sampling**: Reduce overhead under high load (configurable rate & threshold)
+- **Advanced Sampling**: SPI strategy interface with fixed-rate and probabilistic strategies
+- **Dynamic Config Center**: Runtime config changes with listeners, snapshots, rollback, and audit trail
+- **Multi-tenant Isolation**: Per-tenant config, sampling, and context propagation
+- **Distributed Tracing**: SpanContext, cross-thread/process propagation, baggage
+- **Service Topology**: Auto-built service dependency graph from call data
+- **Alerting Engine**: Rule-based alerting with configurable channels
+- **Data Exporters**: SPI for exporting to logging, in-memory, OTLP, or custom backends
+- **Metric Aggregation**: Sliding time windows with p50/p95/p99 percentiles
+- **Security Audit**: Allow/deny policy engine with audit logging
+- **Self Diagnostics**: Memory trends, interceptor hotspots, fault detection
+- **Runtime Compatibility**: Auto-detect Spring Boot, Quarkus, Virtual Threads, GraalVM
+- **REST API**: Agent status, plugins, topology, alerts, metrics, diagnostics endpoints
 - **Prometheus Metrics**: Built-in metrics endpoint with slow-ops, errors, and duration tracking
 - **JMX Diagnostics**: Monitor agent status via JMX MBean
 - **Health Check**: Liveness (`/health`) and readiness (`/ready`) HTTP endpoints
 - **OpenTelemetry Bridge**: Convert intercepted events to OTel-compatible spans
 - **W3C Trace Context**: Full traceparent/tracestate propagation across services
-- **Cross-thread Context**: ThreadContext propagation with ContextRunnable/ContextCallable
-- **Input Validation**: Comprehensive null/empty checks on all public API methods
-- **Structured Error Codes**: `WeaverGirlException` with 13 error codes across 5 categories
+- **Config Validation**: Schema-based config validation with error/warning reporting
+- **Plugin Health**: Runtime health monitoring for all loaded plugins
 - **Quality Gates**: JaCoCo (80%+ coverage), SpotBugs, CheckStyle enforced in build
 
 ## Programmatic API
@@ -116,6 +127,7 @@ public class MyInterceptor {
 | `grpc` | io.grpc | `slowThreshold` (ms) |
 | `kafka` | Apache Kafka | `slowThreshold` (ms) |
 | `mongo` | MongoDB Driver | `slowThreshold` (ms) |
+| `hikari` | HikariCP | `leakThresholdMs`, `trackAcquisition` |
 | `timing` | Any method | `slowThreshold` (ms) |
 | `trace-correlation` | HTTP headers | `headerName` |
 | `exception` | Any exception | `maxStackTraceLength` |
@@ -201,7 +213,7 @@ docker-compose up
 | `weaver-girl-api` | Plugin SDK — interfaces and value objects |
 | `weaver-girl-core` | Engine — ByteBuddy transformer, registry, config |
 | `weaver-girl-annotation` | Declarative annotations for interceptors |
-| `weaver-girl-plugins` | 12 built-in instrumentation plugins |
+| `weaver-girl-plugins` | 13 built-in instrumentation plugins |
 | `weaver-girl-agent` | Agent entry point (premain/agentmain) |
 | `weaver-girl-sample` | Sample application demonstrating all modes |
 
