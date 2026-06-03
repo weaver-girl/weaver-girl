@@ -10,3 +10,4 @@ com.github.cc11001100.weavergirl.plugins.grpc.GrpcPlugin
 com.github.cc11001100.weavergirl.plugins.kafka.KafkaPlugin
 com.github.cc11001100.weavergirl.plugins.mongo.MongoPlugin
 com.github.cc11001100.weavergirl.plugins.logging.LoggingPlugin
+com.github.cc11001100.weavergirl.plugins.hikari.HikariPlugin
