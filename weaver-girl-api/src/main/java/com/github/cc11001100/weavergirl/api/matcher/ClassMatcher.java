@@ -1,5 +1,7 @@
 package com.github.cc11001100.weavergirl.api.matcher;
 
+import com.github.cc11001100.weavergirl.api.ValidationUtils;
+
 import java.util.regex.Pattern;
 
 /**
@@ -75,9 +77,10 @@ public class ClassMatcher {
      *
      * @param className the fully-qualified class name (e.g., {@code "com.example.Service"})
      * @return a new ClassMatcher with {@link MatchType#EXACT_NAME}
+     * @throws IllegalArgumentException if {@code className} is null or empty
      */
     public static ClassMatcher byName(String className) {
-        return new ClassMatcher(MatchType.EXACT_NAME, className);
+        return new ClassMatcher(MatchType.EXACT_NAME, ValidationUtils.requireNonEmpty(className, "className"));
     }
 
     /**
@@ -85,9 +88,10 @@ public class ClassMatcher {
      *
      * @param regex a Java regex pattern (e.g., {@code "com\\.example\\..*Service"})
      * @return a new ClassMatcher with {@link MatchType#NAME_PATTERN}
+     * @throws IllegalArgumentException if {@code regex} is null or empty
      */
     public static ClassMatcher byNamePattern(String regex) {
-        return new ClassMatcher(MatchType.NAME_PATTERN, regex);
+        return new ClassMatcher(MatchType.NAME_PATTERN, ValidationUtils.requireNonEmpty(regex, "regex"));
     }
 
     /**
@@ -99,9 +103,10 @@ public class ClassMatcher {
      * @param annotationClassName the fully-qualified annotation class name
      *                            (e.g., {@code "com.example.Trace"})
      * @return a new ClassMatcher with {@link MatchType#ANNOTATION}
+     * @throws IllegalArgumentException if {@code annotationClassName} is null or empty
      */
     public static ClassMatcher byAnnotation(String annotationClassName) {
-        return new ClassMatcher(MatchType.ANNOTATION, annotationClassName);
+        return new ClassMatcher(MatchType.ANNOTATION, ValidationUtils.requireNonEmpty(annotationClassName, "annotationClassName"));
     }
 
     /**
@@ -113,9 +118,10 @@ public class ClassMatcher {
      * @param superClassName the fully-qualified superclass name
      *                       (e.g., {@code "com.example.BaseService"})
      * @return a new ClassMatcher with {@link MatchType#SUPER_CLASS}
+     * @throws IllegalArgumentException if {@code superClassName} is null or empty
      */
     public static ClassMatcher bySuperClass(String superClassName) {
-        return new ClassMatcher(MatchType.SUPER_CLASS, superClassName);
+        return new ClassMatcher(MatchType.SUPER_CLASS, ValidationUtils.requireNonEmpty(superClassName, "superClassName"));
     }
 
     /**
@@ -127,9 +133,10 @@ public class ClassMatcher {
      * @param interfaceName the fully-qualified interface name
      *                      (e.g., {@code "java.io.Serializable"})
      * @return a new ClassMatcher with {@link MatchType#INTERFACE}
+     * @throws IllegalArgumentException if {@code interfaceName} is null or empty
      */
     public static ClassMatcher byInterface(String interfaceName) {
-        return new ClassMatcher(MatchType.INTERFACE, interfaceName);
+        return new ClassMatcher(MatchType.INTERFACE, ValidationUtils.requireNonEmpty(interfaceName, "interfaceName"));
     }
 
     /**

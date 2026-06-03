@@ -177,7 +177,9 @@ public class InterceptAdvice {
             // Never let any error (including OOM, StackOverflow) crash the target application
             // If we have a pooled invocation, release it to prevent pool leak
             if (invocation != null) {
-                try { MethodInvocationPool.release(invocation); } catch (Throwable ignored) {}
+                try { MethodInvocationPool.release(invocation); } catch (Throwable poolError) {
+                    System.err.println("[weaver-girl] Failed to release MethodInvocation to pool: " + poolError.getMessage());
+                }
             }
         }
     }

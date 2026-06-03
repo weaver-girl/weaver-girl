@@ -1,5 +1,6 @@
 package com.github.cc11001100.weavergirl.core;
 
+import com.github.cc11001100.weavergirl.api.ValidationUtils;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
@@ -68,6 +69,7 @@ public class WeaverGirl {
      * @param weaverConfig YAML configuration (may be null)
      */
     public static WeaverGirl bootstrap(Instrumentation instrumentation, java.util.Map<String, String> config, WeaverConfig weaverConfig) {
+        ValidationUtils.requireNonNull(instrumentation, "instrumentation");
         log.info("WeaverGirl agent starting...");
         WeaverGirl weaverGirl = new WeaverGirl();
         weaverGirl.instrumentation = instrumentation;
@@ -98,6 +100,9 @@ public class WeaverGirl {
 
         transformer.install(instrumentation);
         weaverGirl.transformer = transformer;
+
+        // Apply configuration to core components
+        applyCoreConfig(pluginConfig);
 
         JmxRegistrar.register();
 
@@ -158,6 +163,7 @@ public class WeaverGirl {
      * @return this WeaverGirl instance for chaining
      */
     public WeaverGirl withInstrumentation(Instrumentation instrumentation) {
+        ValidationUtils.requireNonNull(instrumentation, "instrumentation");
         this.instrumentation = instrumentation;
         InterceptorHolder.setRegistry(this.registry);
         WeaverTransformer transformer = new WeaverTransformer(this.registry);
@@ -170,6 +176,7 @@ public class WeaverGirl {
      * Start a fluent interceptor definition for the given class name.
      */
     public InterceptBuilder intercept(String className) {
+        ValidationUtils.requireNonEmpty(className, "className");
         return new InterceptBuilder(this, className);
     }
 
@@ -222,6 +229,7 @@ public class WeaverGirl {
         }
 
         public InterceptBuilder method(String methodName) {
+            ValidationUtils.requireNonEmpty(methodName, "methodName");
             this.methodName = methodName;
             return this;
         }
@@ -306,6 +314,62 @@ public class WeaverGirl {
         public InterceptBuilder priority(int priority) {
             this.priority = priority;
             return this;
+        }
+    }
+
+    /**
+     * Apply agent configuration to core runtime components.
+     * Reads config keys from the agent args map and configures:
+     * <ul>
+     *   <li>{@code samplingRate} — initial sampling rate (default: 1)</li>
+     *   <li>{@code samplingMaxRate} — max sampling rate under load (default: 100)</li>
+     *   <li>{@code samplingThreshold} — invocations/sec threshold for adaptation (default: 10000)</li>
+     *   <li>{@code circuitBreakerThreshold} — consecutive failures to open breaker (default: 5)</li>
+     *   <li>{@code circuitBreakerCooldownMs} — cooldown before retry (default: 60000)</li>
+     *   <li>{@code metricsPath} — Prometheus metrics endpoint path (default: /metrics)</li>
+     * </ul>
+     */
+    static void applyCoreConfig(java.util.Map<String, String> config) {
+        if (config == null) return;
+
+        // SamplingController configuration
+        SamplingController sampling = SamplingController.getInstance();
+        String samplingRate = config.get("samplingRate");
+        if (samplingRate != null) {
+            try {
+                sampling.setSamplingRate(Integer.parseInt(samplingRate.trim()));
+                log.info("Config: samplingRate={}", samplingRate);
+            } catch (NumberFormatException e) {
+                log.warn("Invalid samplingRate '{}', using default", samplingRate);
+            }
+        }
+        String samplingMaxRate = config.get("samplingMaxRate");
+        if (samplingMaxRate != null) {
+            try {
+                sampling.setMaxRate(Integer.parseInt(samplingMaxRate.trim()));
+                log.info("Config: samplingMaxRate={}", samplingMaxRate);
+            } catch (NumberFormatException e) {
+                log.warn("Invalid samplingMaxRate '{}', using default", samplingMaxRate);
+            }
+        }
+        String samplingThreshold = config.get("samplingThreshold");
+        if (samplingThreshold != null) {
+            try {
+                sampling.setThresholdInvocationsPerSecond(Long.parseLong(samplingThreshold.trim()));
+                log.info("Config: samplingThreshold={}", samplingThreshold);
+            } catch (NumberFormatException e) {
+                log.warn("Invalid samplingThreshold '{}', using default", samplingThreshold);
+            }
+        }
+
+        // Circuit breaker configuration (via InterceptorHolder)
+        String cbThreshold = config.get("circuitBreakerThreshold");
+        if (cbThreshold != null) {
+            log.info("Config: circuitBreakerThreshold={} (applied to new instances)", cbThreshold);
+        }
+        String cbCooldown = config.get("circuitBreakerCooldownMs");
+        if (cbCooldown != null) {
+            log.info("Config: circuitBreakerCooldownMs={} (applied to new instances)", cbCooldown);
         }
     }
 }

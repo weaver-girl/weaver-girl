@@ -29,7 +29,7 @@ class MethodTimingPluginTest {
         interceptor.before(invocation);
 
         // Simulate some work
-        try { Thread.sleep(10); } catch (InterruptedException e) {}
+        try { Thread.sleep(10); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
 
         // after should log timing (we just verify it doesn't throw)
         assertDoesNotThrow(() -> interceptor.after(invocation));

@@ -1,5 +1,6 @@
 package com.github.cc11001100.weavergirl.core.plugin;
 
+import com.github.cc11001100.weavergirl.api.ValidationUtils;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 
@@ -16,9 +17,9 @@ public class DefaultPluginContext implements PluginContext {
     private final String pluginName;
 
     public DefaultPluginContext(InterceptorRegistry registry, Map<String, String> config, String pluginName) {
-        this.registry = registry;
+        this.registry = ValidationUtils.requireNonNull(registry, "registry");
         this.config = config != null ? config : Collections.emptyMap();
-        this.pluginName = pluginName;
+        this.pluginName = ValidationUtils.requireNonEmpty(pluginName, "pluginName");
     }
 
     @Override
@@ -28,6 +29,7 @@ public class DefaultPluginContext implements PluginContext {
 
     @Override
     public String getConfig(String key) {
+        ValidationUtils.requireNonEmpty(key, "key");
         // Check namespaced system property first
         String namespacedKey = "weavergirl.plugin." + pluginName + "." + key;
         String value = System.getProperty(namespacedKey);

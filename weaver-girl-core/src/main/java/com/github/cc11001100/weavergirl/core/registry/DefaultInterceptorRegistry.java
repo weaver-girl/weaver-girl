@@ -1,5 +1,6 @@
 package com.github.cc11001100.weavergirl.core.registry;
 
+import com.github.cc11001100.weavergirl.api.ValidationUtils;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
@@ -38,6 +39,7 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
 
     @Override
     public List<InterceptorDefinition> getInterceptorsForClass(String className) {
+        ValidationUtils.requireNonEmpty(className, "className");
         if (indexDirty) {
             rebuildIndex();
         }
@@ -68,9 +70,7 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
 
     @Override
     public boolean unregister(String name) {
-        if (name == null) {
-            return false;
-        }
+        ValidationUtils.requireNonEmpty(name, "name");
         boolean removed = definitions.removeIf(d -> name.equals(d.getName()));
         if (removed) {
             indexDirty = true;

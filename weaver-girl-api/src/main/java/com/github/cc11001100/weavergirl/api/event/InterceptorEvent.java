@@ -44,12 +44,19 @@ public class InterceptorEvent {
         this.attributes = attributes != null ? attributes : new java.util.LinkedHashMap<String, String>();
     }
 
+    /** Returns the event type (e.g., {@code "slow-query"}, {@code "http-request"}). */
     public String getType() { return type; }
+    /** Returns the name of the plugin that emitted this event. */
     public String getPlugin() { return plugin; }
+    /** Returns the fully-qualified name of the intercepted class. */
     public String getClassName() { return className; }
+    /** Returns the name of the intercepted method. */
     public String getMethodName() { return methodName; }
+    /** Returns the epoch-millis timestamp when this event was created. */
     public long getTimestamp() { return timestamp; }
+    /** Returns the measured duration in milliseconds, or 0 if not applicable. */
     public long getDurationMs() { return durationMs; }
+    /** Returns an unmodifiable view of the event's key-value attributes. */
     public java.util.Map<String, String> getAttributes() { return java.util.Collections.unmodifiableMap(attributes); }
 
     /**
@@ -76,6 +83,9 @@ public class InterceptorEvent {
         return new Builder();
     }
 
+    /**
+     * Fluent builder for constructing {@link InterceptorEvent} instances.
+     */
     public static class Builder {
         private String type;
         private String plugin;
@@ -85,14 +95,22 @@ public class InterceptorEvent {
         private long durationMs = 0;
         private final java.util.Map<String, String> attributes = new java.util.LinkedHashMap<>();
 
+        /** Sets the event type (e.g., {@code "slow-query"}). */
         public Builder type(String type) { this.type = type; return this; }
+        /** Sets the originating plugin name. */
         public Builder plugin(String plugin) { this.plugin = plugin; return this; }
+        /** Sets the intercepted class name. */
         public Builder className(String className) { this.className = className; return this; }
+        /** Sets the intercepted method name. */
         public Builder methodName(String methodName) { this.methodName = methodName; return this; }
+        /** Sets the event timestamp (epoch millis). Defaults to current time. */
         public Builder timestamp(long timestamp) { this.timestamp = timestamp; return this; }
+        /** Sets the measured duration in milliseconds. */
         public Builder durationMs(long durationMs) { this.durationMs = durationMs; return this; }
+        /** Adds a key-value attribute to the event. */
         public Builder attribute(String key, String value) { this.attributes.put(key, value); return this; }
 
+        /** Builds an immutable {@link InterceptorEvent} from the configured values. */
         public InterceptorEvent build() {
             return new InterceptorEvent(type, plugin, className, methodName,
                     timestamp, durationMs, attributes);

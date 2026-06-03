@@ -177,7 +177,9 @@ public class SampleApplication {
                 try {
                     resp.setStatus(500);
                     resp.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
-                } catch (Exception ignored) {}
+                } catch (Exception ex) {
+                    System.err.println("[SampleApp] Failed to write error response: " + ex.getMessage());
+                }
             }
         }
     }
@@ -191,7 +193,9 @@ public class SampleApplication {
             try {
                 resp.setContentType("application/json");
                 resp.getWriter().write("{\"status\":\"UP\",\"agent\":\"weaver-girl\"}");
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                System.err.println("[SampleApp] Failed to write health response: " + e.getMessage());
+            }
         }
     }
 }

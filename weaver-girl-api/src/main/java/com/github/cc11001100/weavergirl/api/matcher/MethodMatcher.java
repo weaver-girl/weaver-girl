@@ -1,5 +1,7 @@
 package com.github.cc11001100.weavergirl.api.matcher;
 
+import com.github.cc11001100.weavergirl.api.ValidationUtils;
+
 import java.util.regex.Pattern;
 
 /**
@@ -70,9 +72,10 @@ public class MethodMatcher {
      *
      * @param methodName the method name (e.g., {@code "process"})
      * @return a new MethodMatcher with {@link MatchType#EXACT_NAME}
+     * @throws IllegalArgumentException if {@code methodName} is null or empty
      */
     public static MethodMatcher byName(String methodName) {
-        return new MethodMatcher(MatchType.EXACT_NAME, methodName);
+        return new MethodMatcher(MatchType.EXACT_NAME, ValidationUtils.requireNonEmpty(methodName, "methodName"));
     }
 
     /**
@@ -80,9 +83,10 @@ public class MethodMatcher {
      *
      * @param regex a Java regex pattern (e.g., {@code "process.*"})
      * @return a new MethodMatcher with {@link MatchType#NAME_PATTERN}
+     * @throws IllegalArgumentException if {@code regex} is null or empty
      */
     public static MethodMatcher byNamePattern(String regex) {
-        return new MethodMatcher(MatchType.NAME_PATTERN, regex);
+        return new MethodMatcher(MatchType.NAME_PATTERN, ValidationUtils.requireNonEmpty(regex, "regex"));
     }
 
     /**
@@ -94,9 +98,10 @@ public class MethodMatcher {
      * @param annotationClassName the fully-qualified annotation class name
      *                            (e.g., {@code "com.example.Traced"})
      * @return a new MethodMatcher with {@link MatchType#ANNOTATION}
+     * @throws IllegalArgumentException if {@code annotationClassName} is null or empty
      */
     public static MethodMatcher byAnnotation(String annotationClassName) {
-        return new MethodMatcher(MatchType.ANNOTATION, annotationClassName);
+        return new MethodMatcher(MatchType.ANNOTATION, ValidationUtils.requireNonEmpty(annotationClassName, "annotationClassName"));
     }
 
     /**
@@ -111,8 +116,12 @@ public class MethodMatcher {
      * @param parameterTypes  comma-separated fully-qualified parameter type names
      *                        (e.g., {@code "java.lang.String,int"})
      * @return a new MethodMatcher with {@link MatchType#SIGNATURE}
+     * @throws IllegalArgumentException if {@code methodName} is null or empty,
+     *                                  or if {@code parameterTypes} is null
      */
     public static MethodMatcher bySignature(String methodName, String parameterTypes) {
+        ValidationUtils.requireNonEmpty(methodName, "methodName");
+        ValidationUtils.requireNonNull(parameterTypes, "parameterTypes");
         return new MethodMatcher(MatchType.SIGNATURE, methodName + "(" + parameterTypes + ")");
     }
 

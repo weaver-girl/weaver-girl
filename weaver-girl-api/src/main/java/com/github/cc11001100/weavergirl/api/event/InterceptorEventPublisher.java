@@ -36,6 +36,11 @@ public class InterceptorEventPublisher {
 
     private InterceptorEventPublisher() {}
 
+    /**
+     * Returns the singleton publisher instance.
+     *
+     * @return the shared publisher, never null
+     */
     public static InterceptorEventPublisher getInstance() {
         return INSTANCE;
     }
