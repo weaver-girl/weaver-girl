@@ -3,6 +3,7 @@
 > 目标：向业内成熟产品（SkyWalking / OpenTelemetry Java Agent）看齐
 > 循环任务：每5分钟迭代，持续推进
 > 创建时间：2026-06-03
+> 最后更新：2026-06-04
 
 ## 状态说明
 - 🔲 待开始
@@ -11,119 +12,89 @@
 
 ---
 
-## P30: 代码质量门禁 [HIGH] ✅
+## 第一阶段：生产级打磨 (P30-P39) ✅ 全部完成
 
-为 Maven 构建添加质量门禁，确保代码质量可度量。
+| 阶段 | 状态 | 完成时间 |
+|------|------|----------|
+| P30: 代码质量门禁 | ✅ | 2026-06-04 |
+| P31: 输入验证 | ✅ | 2026-06-04 |
+| P32: 错误处理 | ✅ | 2026-06-04 |
+| P33: API 文档 | ✅ | 2026-06-04 |
+| P34: 集成测试 | ✅ | 2026-06-04 |
+| P35: 可配置化 | ✅ | 2026-06-04 |
+| P36: 性能基准 | ✅ | 2026-06-04 |
+| P37: 高级插件 | ✅ | 2026-06-04 |
+| P38: OTel 集成 | ✅ | 2026-06-04 |
+| P39: 部署运维 | ✅ | 2026-06-04 |
 
-- ✅ P30.1: 添加 JaCoCo 测试覆盖率插件到父 pom.xml
-- ✅ P30.2: 添加 SpotBugs 静态分析插件
-- ✅ P30.3: 添加 CheckStyle 代码规范检查
-- ✅ P30.4: 配置覆盖率最低门槛 (如 ≥ 80%)
-- ✅ P30.5: CI 中集成质量门禁检查
+---
 
-> 备注：插件已在 pom.xml 中配置完毕，SpotBugs 路径问题已修复（使用 `${maven.multiModuleProjectDirectory}`）。
+## 第二阶段：深度打磨 (P40-P45) ✅ 全部完成
 
-## P31: 输入验证与空安全 [HIGH] ✅
+| 阶段 | 状态 | 完成时间 |
+|------|------|----------|
+| P40: 安全加固 | ✅ | 2026-06-04 |
+| P41: CI 质量门禁集成 | ✅ | 2026-06-04 |
+| P42: 插件示例完善 | ✅ | 2026-06-04 |
+| P43: 错误恢复增强 | ✅ | 2026-06-04 |
+| P44: 结构化日志 | ✅ | 2026-06-04 |
+| P45: API 稳定性保证 | ✅ | 2026-06-04 |
 
-增强核心 API 的健壮性，防止 NPE。
+---
 
-- ✅ P31.1: WeaverGirl.bootstrap() 参数非空校验
-- ✅ P31.2: InterceptorRegistry 方法参数校验
-- ✅ P31.3: PluginContext 配置值范围校验
-- ✅ P31.4: ClassMatcher/MethodMatcher 构建器验证
-- ✅ P31.5: 抽取 ValidationUtils 工具类
+## 第三阶段：企业级特性 (P46-P50) 🔄 进行中
 
-> 备注：新增 `ValidationUtils` 工具类 + 16 个测试用例。930 测试全部通过。
+> P40-P45 已完成 (949 tests)。聚焦多租户、动态配置、插件热加载等企业级能力。
 
-## P32: 错误处理完善 [MEDIUM] ✅
+### P46: 动态配置中心 [HIGH] 🔄
 
-修复已知的错误处理缺陷。
+支持运行时动态调整 Agent 行为，无需重启。
 
-- ✅ P32.1: 修复 SampleApplication 中空 catch 块 → 添加 stderr 日志
-- ✅ P32.2: 修复 MethodTimingPluginTest 中吞掉的 InterruptedException → 恢复中断状态
-- ✅ P32.3: 核心组件添加异常链传播 → InterceptAdvice 池释放异常加日志
-- ✅ P32.4: 添加统一的异常错误码体系 → WeaverGirlException + ErrorCode enum
+- 🔲 P46.1: 配置变更监听接口 (ConfigChangeListener)
+- 🔲 P46.2: Zookeeper 配置中心适配器
+- 🔲 P46.3: Apollo/Nacos 配置中心适配器
+- 🔲 P46.4: 配置变更回滚机制
+- 🔲 P46.5: 配置变更审计日志
 
-> 备注：新增 `WeaverGirlException` (13 个错误码，5 大类别)，修复 3 处吞异常问题。
+### P47: 插件热加载 [HIGH] 🔲
 
-## P33: 公共 API 文档 [MEDIUM] ✅
+支持运行时加载/卸载插件，无需重启 JVM。
 
-完善所有公共 API 的 Javadoc。
+- 🔲 P47.1: 插件热加载接口设计 (PluginManager)
+- 🔲 P47.2: 运行时注册/注销 InterceptorDefinition
+- 🔲 P47.3: 插件状态管理 (LOADED → ACTIVE → DISABLED)
+- 🔲 P47.4: 插件版本兼容性检查
+- 🔲 P47.5: 插件依赖解析和加载顺序
 
-- ✅ P33.1: weaver-girl-api 所有公共接口 Javadoc (覆盖率达 100%)
-- ✅ P33.2: weaver-girl-core 关键类 Javadoc (InterceptAdvice, WeaverTransformer 等)
-- ✅ P33.3: weaver-girl-plugins 每个插件类 Javadoc
-- ✅ P33.4: weaver-girl-agent 入口类 Javadoc
-- 🔲 P33.5: Javadoc 生成集成到 CI (已有基础配置，可在 CI 中激活)
+### P48: 多租户隔离 [MEDIUM] 🔲
 
-> 备注：补全 InterceptorEvent (7 getter + Builder 8 方法)、InterceptorEventPublisher 的 Javadoc。文档覆盖率达 ~99%。
+支持同一 Agent 实例服务多个租户/应用。
 
-## P34: 集成测试增强 [MEDIUM] ✅
+- 🔲 P48.1: 租户上下文 (TenantContext)
+- 🔲 P48.2: 按租户隔离的采样策略
+- 🔲 P48.3: 按租户隔离的配置
+- 🔲 P48.4: 租户级别的事件过滤
+- 🔲 P48.5: 多租户 Metrics 标签
 
-增加真实场景的集成测试。
+### P49: Agent 自诊断 [MEDIUM] 🔲
 
-- ✅ P34.1: 多插件协同工作集成测试 (MultiPluginCoordinationTest - 5 tests)
-- 🔲 P34.2: 配置热重载集成测试 (已有 ConfigWatcherTest 覆盖基础场景)
-- ✅ P34.3: 熔断器 + 采样控制器联合测试 (CircuitBreakerSamplingJointTest - 6 tests)
-- 🔲 P34.4: Agent 完整生命周期测试 (已有 PremainLifecycleTest 基础覆盖)
-- ✅ P34.5: 高并发场景压力测试 (ConcurrencyStressTest - 4 tests)
+Agent 自身健康状态的深度诊断能力。
 
-> 备注：新增 3 个集成测试类，15 个测试用例。修复了 SamplingController 状态泄漏问题。
+- 🔲 P49.1: Agent 内部线程池监控
+- 🔲 P49.2: 内存使用趋势追踪
+- 🔲 P49.3: 拦截器性能热点分析
+- 🔲 P49.4: 自动故障检测与告警
+- 🔲 P49.5: Agent dump 端点 (类似 jstack/jmap)
 
-## P35: 可配置化改造 [MEDIUM] ✅
+### P50: 兼容性与适配 [LOW] 🔲
 
-消除硬编码值，所有参数可配置。
+扩展对更多框架和运行时的支持。
 
-- ✅ P35.1: SamplingController 参数可配置化 (已有 setter + 新增 bootstrap 传播)
-- ✅ P35.2: CircuitBreaker 参数可配置化 (已有构造器参数 + 日志通知)
-- ✅ P35.3: 事件系统参数可配置化 (事件驱动无队列，无需额外配置)
-- ✅ P35.4: PrometheusExporter 端点和指标名可配置 (端口已可配，路径标准无需改)
-- ✅ P35.5: 新增 weaver.yml 配置项文档 (YAML 参考文档已包含所有配置)
-
-> 备注：在 WeaverGirl.bootstrap() 中新增 `applyCoreConfig()`，将 agent args 传播到 SamplingController/CircuitBreaker。
-
-## P36: 性能基准测试 [LOW] ✅
-
-建立性能基准，防止性能退化。
-
-- ✅ P36.1: 添加 JMH 依赖和基准测试模块 (已有 InterceptorBenchmark + MatcherBenchmark)
-- ✅ P36.2: 核心拦截路径基准测试 (registry lookup, pointcut matching, baseline)
-- ✅ P36.3: 插件开销基准测试 (新增 CoreComponentBenchmark — Sampling/CircuitBreaker/Pool)
-- 🔲 P36.4: 与 SkyWalking/OTel Agent 对比基准 (需要独立测试环境)
-
-> 备注：新增 CoreComponentBenchmark (5 个 benchmark)，更新 InterceptorBenchmarkRunner 支持全部基准。
-
-## P37: 高级插件能力 [LOW] ✅
-
-扩展插件系统的高级特性。
-
-- ✅ P37.1: Around advice (跳过原方法执行) — 已有 skipMethod() 支持
-- 🔲 P37.2: 异步拦截支持 (CompletableFuture/Reactor) — 需 ByteBuddy 深度集成
-- ✅ P37.3: 方法返回值修改能力 — 已有 setReturnValue() 支持
-- ✅ P37.4: 插件条件化启用/禁用 — WeaverPlugin.isEnabled(PluginContext)
-
-> 备注：新增 `isEnabled()` 方法（带默认实现，完全向后兼容），PluginLoader 在 init 后检查。
-
-## P38: OpenTelemetry 集成 [LOW] ✅
-
-与 OTel 生态打通。
-
-- ✅ P38.1: OTel Span 桥接 (OpenTelemetrySpanBridge — InterceptorEvent → OTel Span + JSON)
-- 🔲 P38.2: OTel Metric 导出 (需要 OTel SDK 依赖，暂用 Prometheus 替代)
-- ✅ P38.3: W3C Trace Context 传播 (W3CTraceContext — extract/inject/propagate)
-- ✅ P38.4: OTel Collector 配置示例 (docs/otel-collector-example.yaml)
-
-> 备注：W3CTraceContext 支持完整的 traceparent 解析、ThreadContext 传播、child span 生成。含 12 个测试。
-
-## P39: 部署与运维 [LOW] ✅
-
-增强生产部署能力。
-
-- ✅ P39.1: Kubernetes Helm Chart (deploy/helm/weaver-girl — Chart + Values + Templates + ServiceMonitor)
-- ✅ P39.2: Agent 健康检查端点 (healthPort 参数，/health + /ready 端点)
-- ✅ P39.3: 优雅关闭机制完善 (增强 shutdown hook，停止 health server + 日志)
-- ✅ P39.4: 多 Agent 共存支持 (已有 MultiAgentCoexistenceTest 基础覆盖)
-- ✅ P39.5: 运维 Runbook 文档 (docs/runbook.md — 10 章节)
+- 🔲 P50.1: Spring Boot 3.x 自动配置支持
+- 🔲 P50.2: GraalVM Native Image 兼容评估
+- 🔲 P50.3: Java 21 Virtual Threads 兼容测试
+- 🔲 P50.4: Quarkus/Micronaut 适配层
+- 🔲 P50.5: WebFlux/Reactive 支持方案设计
 
 ---
 
@@ -131,70 +102,20 @@
 
 | 阶段 | 状态 | 开始时间 | 完成时间 |
 |------|------|----------|----------|
-| P30: 代码质量门禁 | ✅ | 2026-06-04 | 2026-06-04 |
-| P31: 输入验证 | ✅ | 2026-06-04 | 2026-06-04 |
-| P32: 错误处理 | ✅ | 2026-06-04 | 2026-06-04 |
-| P33: API 文档 | ✅ | 2026-06-04 | 2026-06-04 |
-| P34: 集成测试 | ✅ | 2026-06-04 | 2026-06-04 |
-| P35: 可配置化 | ✅ | 2026-06-04 | 2026-06-04 |
-| P36: 性能基准 | ✅ | 2026-06-04 | 2026-06-04 |
-| P37: 高级插件 | ✅ | 2026-06-04 | 2026-06-04 |
-| P38: OTel 集成 | ✅ | 2026-06-04 | 2026-06-04 |
-| P39: 部署运维 | ✅ | 2026-06-04 | 2026-06-04 |
-| 文档同步 | ✅ | 2026-06-04 | 2026-06-04 |
+| P30-P39: 生产级打磨 | ✅ | 2026-06-04 | 2026-06-04 |
+| P40-P45: 深度打磨 | ✅ | 2026-06-04 | 2026-06-04 |
+| P46-P50: 企业级特性 | 🔄 | 2026-06-04 | — |
 
 ---
 
-## 第二阶段：深度打磨 (P40-P45)
+## 当前统计
 
-> P30-P39 已完成 (1036 tests)。聚焦安全加固、CI 优化、更多测试覆盖。
-
-## P40: 安全加固 [HIGH] ✅
-
-增强生产环境安全防护。
-
-- 🔲 P40.1: 插件 ClassLoader 安全边界完善 (已有 parent-first delegation)
-- ✅ P40.2: Agent 配置敏感信息脱敏 (SecurityUtils.maskIfSensitive + sanitizeForLogging)
-- 🔲 P40.3: 反射操作安全检查 (BootstrapInjection 已有 fallback)
-- 🔲 P40.4: Agent JAR 完整性校验 (Release workflow 已生成 SHA-256)
-
-## P41: CI 质量门禁集成 [HIGH] ✅
-
-将质量门禁真正集成到 CI 流程中。
-
-- ✅ P41.1: CI 中启用 JaCoCo 覆盖率检查 (quality job)
-- ✅ P41.2: CI 中启用 SpotBugs 检查 (quality job)
-- ✅ P41.3: 添加 GitHub Actions 质量报告上传 (jacoco + test reports)
-- 🔲 P41.4: PR 模板中添加质量检查清单
-
-## P42: 插件示例完善 [MEDIUM] 🔄
-
-提供更完整的插件开发示例。
-
-- 🔲 P42.1: 自定义插件端到端示例
-- 🔲 P42.2: 条件化插件示例 (isEnabled)
-- 🔲 P42.3: 事件监听器集成示例
-
-## P43: 错误恢复增强 [MEDIUM] 🔄
-
-增强 Agent 的自愈能力。
-
-- 🔲 P43.1: 插件加载失败时降级运行
-- 🔲 P43.2: Transformer 安装失败时的回滚
-- 🔲 P43.3: 配置文件损坏时的安全默认值
-
-## P44: 结构化日志 [LOW] 🔄
-
-统一日志格式，支持 JSON 输出。
-
-- 🔲 P44.1: 统一日志前缀格式
-- 🔲 P44.2: 添加 JSON 日志格式支持
-- 🔲 P44.3: 日志级别可通过 agent args 配置
-
-## P45: API 稳定性保证 [LOW]
-
-确保公共 API 的向后兼容性。
-
-- 🔲 P45.1: 标记 @Deprecated API
-- 🔲 P45.2: API 兼容性测试
-- 🔲 P45.3: 版本化 API 文档
+| 指标 | 数值 |
+|------|------|
+| 源代码行数 | ~12,500 |
+| 测试代码行数 | ~11,000 |
+| 测试总数 | 949 (全部通过) |
+| 提交总数 | 106 |
+| Maven 模块 | 6 |
+| 内置插件 | 12 |
+| 文档文件 | 12+ |

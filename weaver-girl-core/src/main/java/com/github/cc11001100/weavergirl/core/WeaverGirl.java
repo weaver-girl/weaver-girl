@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import com.github.cc11001100.weavergirl.core.config.ConfigWatcher;
+import com.github.cc11001100.weavergirl.core.config.DefaultDynamicConfigManager;
 
 /**
  * Main entry point for the weaver-girl framework.
@@ -43,9 +44,12 @@ public class WeaverGirl {
     private SamplingMonitor samplingMonitor;
     private ConfigWatcher configWatcher;
 
+    private final DefaultDynamicConfigManager dynamicConfigManager;
+
     private WeaverGirl() {
         this.registry = new DefaultInterceptorRegistry();
         this.pluginLoader = new PluginLoader();
+        this.dynamicConfigManager = new DefaultDynamicConfigManager();
     }
 
     /**
@@ -104,6 +108,11 @@ public class WeaverGirl {
         // Apply configuration to core components
         applyCoreConfig(pluginConfig);
 
+        // Initialize DynamicConfigManager with initial config and runtime listener
+        weaverGirl.dynamicConfigManager.loadFromSource(pluginConfig, "bootstrap");
+        weaverGirl.dynamicConfigManager.addListener(weaverGirl.new DynamicCoreConfigListener());
+        weaverGirl.dynamicConfigManager.snapshot("initial-bootstrap");
+
         JmxRegistrar.register();
 
         // Register JMX monitoring MBean
@@ -140,6 +149,9 @@ public class WeaverGirl {
         }
         if (samplingMonitor != null) {
             samplingMonitor.stop();
+        }
+        if (dynamicConfigManager != null) {
+            dynamicConfigManager.shutdown();
         }
         pluginLoader.destroyAll();
         AgentMonitor.getInstance().unregister();
@@ -182,6 +194,15 @@ public class WeaverGirl {
 
     public InterceptorRegistry getRegistry() {
         return registry;
+    }
+
+    /**
+     * Get the DynamicConfigManager for runtime configuration management.
+     *
+     * @return the dynamic config manager instance
+     */
+    public com.github.cc11001100.weavergirl.api.config.DynamicConfigManager getDynamicConfigManager() {
+        return dynamicConfigManager;
     }
 
     /**
@@ -374,6 +395,57 @@ public class WeaverGirl {
         String cbCooldown = config.get("circuitBreakerCooldownMs");
         if (cbCooldown != null) {
             log.info("Config: circuitBreakerCooldownMs={} (applied to new instances)", cbCooldown);
+        }
+    }
+
+    /**
+     * Internal listener that applies dynamic config changes to core components
+     * (SamplingController, CircuitBreaker) at runtime.
+     */
+    private class DynamicCoreConfigListener implements com.github.cc11001100.weavergirl.api.config.ConfigChangeListener {
+
+        @Override
+        public void onConfigChange(com.github.cc11001100.weavergirl.api.config.ConfigChangeEvent event) {
+            String key = event.getKey();
+            String value = event.getNewValue();
+            if (value == null) {
+                return; // key removed, keep current setting
+            }
+
+            SamplingController sampling = SamplingController.getInstance();
+
+            switch (key) {
+                case "samplingRate":
+                    try {
+                        sampling.setSamplingRate(Integer.parseInt(value.trim()));
+                        log.info("[DynamicConfig] Applied: samplingRate={}", value);
+                    } catch (NumberFormatException e) {
+                        log.warn("[DynamicConfig] Invalid samplingRate '{}'", value);
+                    }
+                    break;
+
+                case "samplingMaxRate":
+                    try {
+                        sampling.setMaxRate(Integer.parseInt(value.trim()));
+                        log.info("[DynamicConfig] Applied: samplingMaxRate={}", value);
+                    } catch (NumberFormatException e) {
+                        log.warn("[DynamicConfig] Invalid samplingMaxRate '{}'", value);
+                    }
+                    break;
+
+                case "samplingThreshold":
+                    try {
+                        sampling.setThresholdInvocationsPerSecond(Long.parseLong(value.trim()));
+                        log.info("[DynamicConfig] Applied: samplingThreshold={}", value);
+                    } catch (NumberFormatException e) {
+                        log.warn("[DynamicConfig] Invalid samplingThreshold '{}'", value);
+                    }
+                    break;
+
+                default:
+                    // Not a core config key — plugins may handle via their own listeners
+                    break;
+            }
         }
     }
 }
