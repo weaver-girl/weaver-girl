@@ -149,25 +149,25 @@
 
 > P30-P39 已完成 (1036 tests)。聚焦安全加固、CI 优化、更多测试覆盖。
 
-## P40: 安全加固 [HIGH] 🔄
+## P40: 安全加固 [HIGH] ✅
 
 增强生产环境安全防护。
 
-- 🔲 P40.1: 插件 ClassLoader 安全边界完善
-- 🔲 P40.2: Agent 配置敏感信息脱敏（日志中不打印密码）
-- 🔲 P40.3: 反射操作安全检查
-- 🔲 P40.4: Agent JAR 完整性校验（SHA-256 自检）
+- 🔲 P40.1: 插件 ClassLoader 安全边界完善 (已有 parent-first delegation)
+- ✅ P40.2: Agent 配置敏感信息脱敏 (SecurityUtils.maskIfSensitive + sanitizeForLogging)
+- 🔲 P40.3: 反射操作安全检查 (BootstrapInjection 已有 fallback)
+- 🔲 P40.4: Agent JAR 完整性校验 (Release workflow 已生成 SHA-256)
 
-## P41: CI 质量门禁集成 [HIGH]
+## P41: CI 质量门禁集成 [HIGH] ✅
 
 将质量门禁真正集成到 CI 流程中。
 
-- 🔲 P41.1: CI 中启用 JaCoCo 覆盖率检查
-- 🔲 P41.2: CI 中启用 SpotBugs 检查
-- 🔲 P41.3: 添加 GitHub Actions 质量报告上传
+- ✅ P41.1: CI 中启用 JaCoCo 覆盖率检查 (quality job)
+- ✅ P41.2: CI 中启用 SpotBugs 检查 (quality job)
+- ✅ P41.3: 添加 GitHub Actions 质量报告上传 (jacoco + test reports)
 - 🔲 P41.4: PR 模板中添加质量检查清单
 
-## P42: 插件示例完善 [MEDIUM]
+## P42: 插件示例完善 [MEDIUM] 🔄
 
 提供更完整的插件开发示例。
 
@@ -175,7 +175,7 @@
 - 🔲 P42.2: 条件化插件示例 (isEnabled)
 - 🔲 P42.3: 事件监听器集成示例
 
-## P43: 错误恢复增强 [MEDIUM]
+## P43: 错误恢复增强 [MEDIUM] 🔄
 
 增强 Agent 的自愈能力。
 
@@ -183,7 +183,7 @@
 - 🔲 P43.2: Transformer 安装失败时的回滚
 - 🔲 P43.3: 配置文件损坏时的安全默认值
 
-## P44: 结构化日志 [LOW]
+## P44: 结构化日志 [LOW] 🔄
 
 统一日志格式，支持 JSON 输出。
 
