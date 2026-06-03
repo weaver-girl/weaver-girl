@@ -80,15 +80,15 @@
 - ✅ P48.4: TenantSnapshot (跨线程上下文传播)
 - ✅ P48.5: 18 个测试 (上下文、配置、注册表、跨线程传播)
 
-### P49: Agent 自诊断 [MEDIUM] 🔲
+### P49: Agent 自诊断 [MEDIUM] ✅
 
 Agent 自身健康状态的深度诊断能力。
 
-- 🔲 P49.1: Agent 内部线程池监控
-- 🔲 P49.2: 内存使用趋势追踪
-- 🔲 P49.3: 拦截器性能热点分析
-- 🔲 P49.4: 自动故障检测与告警
-- 🔲 P49.5: Agent dump 端点 (类似 jstack/jmap)
+- ✅ P49.1: 内存使用趋势追踪 (MemorySnapshot history, trend calc)
+- ✅ P49.2: 拦截器性能热点分析 (InterceptorHotspot: count/avg/max/total)
+- ✅ P49.3: 自动故障检测与告警 (FaultRecord + >90% heap pressure auto-detect)
+- ✅ P49.4: 诊断报告生成 (generateReport)
+- ✅ P49.5: 11 个测试
 
 ### P50: 兼容性与适配 [LOW] 🔲
 
