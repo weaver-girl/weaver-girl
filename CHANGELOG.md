@@ -4,6 +4,73 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## P30-P39 — Production Maturity (2026-06-04)
+
+### P30: Code Quality Gate
+- JaCoCo test coverage plugin with 80% minimum instruction coverage
+- SpotBugs static analysis (High threshold, fail on error)
+- CheckStyle code style checking (Google style, 200 max violations)
+- Quality-gate Maven profile for CI enforcement
+- Fixed SpotBugs exclude path for multi-module projects
+
+### P31: Input Validation & Null Safety
+- `ValidationUtils` utility class with 6 validation methods (`requireNonNull`, `requireNonEmpty`, `requireNonBlank`, `requirePositive`, `requireNonNegative`, `requireInRange`)
+- Parameter validation added to all public API entry points: `WeaverGirl.bootstrap()`, `intercept()`, `withInstrumentation()`, `DefaultInterceptorRegistry`, `DefaultPluginContext`, `ClassMatcher`, `MethodMatcher`
+- 16 unit tests for ValidationUtils
+
+### P32: Error Handling
+- Fixed 3 empty catch blocks (SampleApplication, MethodTimingPluginTest)
+- Added error logging to InterceptAdvice pool release
+- `WeaverGirlException` with 13 error codes across 5 categories (Bootstrap, Plugin, Transformer, Interceptor, Configuration)
+
+### P33: Public API Documentation
+- Completed Javadoc for `InterceptorEvent` (7 getters + Builder with 8 methods)
+- Completed Javadoc for `InterceptorEventPublisher` (getInstance method)
+- Overall API Javadoc coverage now ~99%
+
+### P34: Integration Tests
+- `MultiPluginCoordinationTest` — 5 tests for multi-plugin scenarios (shared registry, priority ordering, re-registration, event delivery, unregistration)
+- `CircuitBreakerSamplingJointTest` — 6 tests for circuit breaker + sampling joint behavior
+- `ConcurrencyStressTest` — 4 tests for concurrent register/unregister, read/write consistency, InterceptorHolder thread safety, unmodifiable view
+
+### P35: Configuration Externalization
+- `applyCoreConfig()` in `WeaverGirl.bootstrap()` — propagates agent args to SamplingController and CircuitBreaker
+- Config keys: `samplingRate`, `samplingMaxRate`, `samplingThreshold`, `circuitBreakerThreshold`, `circuitBreakerCooldownMs`
+
+### P36: Performance Benchmarks
+- `CoreComponentBenchmark` — 5 JMH benchmarks for SamplingController, CircuitBreaker, MethodInvocationPool
+- Updated `InterceptorBenchmarkRunner` to include all benchmark suites (16 total)
+
+### P37: Advanced Plugin Capabilities
+- `WeaverPlugin.isEnabled(PluginContext)` — conditional plugin activation with default implementation (backward compatible)
+- `PluginLoader` checks `isEnabled()` after `init()`, before `registerInterceptors()`
+
+### P38: OpenTelemetry Integration
+- `OpenTelemetrySpanBridge` — converts InterceptorEvents to OTel-compatible spans (zero OTel SDK dependency)
+  - Bounded buffer, OTel JSON export format, status mapping
+  - 7 tests covering conversion, buffering, JSON rendering
+- `W3CTraceContext` — full W3C Trace Context propagation
+  - Parse/inject `traceparent` and `tracestate` headers
+  - ThreadContext propagation, child span generation
+  - 12 tests covering extraction, injection, propagation, edge cases
+- OTel Collector config example (`docs/otel-collector-example.yaml`)
+
+### P39: Deployment & Operations
+- Health check endpoint: `healthPort` parameter, `/health` (liveness) and `/ready` (readiness) paths
+- Enhanced shutdown hook with structured logging and health server cleanup
+- Kubernetes Helm Chart (`deploy/helm/weaver-girl/`)
+  - Chart.yaml, values.yaml, ConfigMap, Service, ServiceMonitor templates
+  - Init container injection examples
+- Operations Runbook (`docs/runbook.md`) — 10 chapters covering install, config, monitoring, troubleshooting, tuning, upgrade, rollback
+
+### Statistics
+- Total: ~540+ tests passing across 6 modules
+- ~99% API Javadoc coverage
+- 16 JMH performance benchmarks
+- 40 files added, ~2860 lines of production code + tests + docs
+
+---
+
 ## P28 -- Agent Self-Monitoring (JMX)
 
 ### Added

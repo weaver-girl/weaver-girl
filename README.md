@@ -55,15 +55,22 @@ interceptors:
 
 - **12 Built-in Plugins**: Servlet, Spring, JDBC, Redis, Kafka, gRPC, MongoDB, HttpClient, MethodTiming, TraceCorrelation, ExceptionMonitor, Logging
 - **Three Hook Modes**: Programmatic API, Annotation-driven, YAML configuration
-- **Plugin System**: SPI-based plugin discovery with dependency resolution and ClassLoader isolation
-- **ByteBuddy Advice**: Zero-allocation inlined method interception
+- **Plugin System**: SPI-based plugin discovery with dependency resolution, ClassLoader isolation, and conditional enable/disable
+- **ByteBuddy Advice**: Zero-allocation inlined method interception with skip & return-value override
 - **Bootstrap Class Injection**: Intercept `java.*` and `javax.*` classes
 - **Dynamic Attach**: Runtime attachment via `agentmain` with retransformation
 - **Hot Reload**: YAML config changes applied without restart
-- **Circuit Breaker**: Automatic disable of failing interceptors
-- **Adaptive Sampling**: Reduce overhead under high load
+- **Circuit Breaker**: Automatic disable of failing interceptors (configurable threshold & cooldown)
+- **Adaptive Sampling**: Reduce overhead under high load (configurable rate & threshold)
+- **Prometheus Metrics**: Built-in metrics endpoint with slow-ops, errors, and duration tracking
 - **JMX Diagnostics**: Monitor agent status via JMX MBean
+- **Health Check**: Liveness (`/health`) and readiness (`/ready`) HTTP endpoints
+- **OpenTelemetry Bridge**: Convert intercepted events to OTel-compatible spans
+- **W3C Trace Context**: Full traceparent/tracestate propagation across services
 - **Cross-thread Context**: ThreadContext propagation with ContextRunnable/ContextCallable
+- **Input Validation**: Comprehensive null/empty checks on all public API methods
+- **Structured Error Codes**: `WeaverGirlException` with 13 error codes across 5 categories
+- **Quality Gates**: JaCoCo (80%+ coverage), SpotBugs, CheckStyle enforced in build
 
 ## Programmatic API
 
@@ -122,6 +129,47 @@ public class MyInterceptor {
 
 The sample demonstrates all three hook modes: Programmatic, Annotation, and YAML.
 
+## Observability
+
+```bash
+# Enable Prometheus metrics + health check
+java -javaagent:agent.jar=metricsPort=9400,healthPort=9401 -jar app.jar
+
+# Check agent health
+curl http://localhost:9401/health    # {"status":"UP","agent":"weaver-girl","uptimeSeconds":3600}
+curl http://localhost:9401/ready     # {"status":"READY","interceptorCount":12}
+
+# Scrape metrics
+curl http://localhost:9400/metrics
+```
+
+### Monitoring Stack
+
+- **Prometheus**: Built-in `/metrics` endpoint (slow ops, errors, duration)
+- **JMX**: `com.github.cc11001100.weavergirl:type=Agent` MBean
+- **Health**: Kubernetes liveness/readiness probes via `/health` and `/ready`
+- **OTel**: Span bridge to OpenTelemetry Collector
+- **JSON Events**: Structured event output with `jsonEvents=true`
+
+## Deployment
+
+### Kubernetes (Helm)
+
+```bash
+helm install weaver-girl ./deploy/helm/weaver-girl \
+  --set config.metricsPort=9400 \
+  --set config.healthPort=9401 \
+  --set serviceMonitor.enabled=true
+```
+
+### Docker
+
+```bash
+docker-compose up
+```
+
+→ **Full deployment guide:** [docs/runbook.md](docs/runbook.md)
+
 ## Architecture
 
 ```
@@ -164,11 +212,14 @@ The sample demonstrates all three hook modes: Programmatic, Annotation, and YAML
 
 ## Documentation
 
-- [Architecture](docs/architecture.md)
+- [Architecture](docs/ARCHITECTURE.md)
 - [Plugin Developer Guide](docs/plugin-developer-guide.md)
 - [YAML Config Reference](docs/yaml-config-reference.md)
 - [Troubleshooting](docs/troubleshooting.md)
+- [Operations Runbook](docs/runbook.md)
+- [OTel Collector Example](docs/otel-collector-example.yaml)
 - [Contributing](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
 
 ## License
 
