@@ -11,6 +11,7 @@ import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
 import com.github.cc11001100.weavergirl.core.management.AgentMonitor;
+import com.github.cc11001100.weavergirl.core.plugin.DefaultPluginManager;
 import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
@@ -45,6 +46,7 @@ public class WeaverGirl {
     private ConfigWatcher configWatcher;
 
     private final DefaultDynamicConfigManager dynamicConfigManager;
+    private DefaultPluginManager pluginManager;
 
     private WeaverGirl() {
         this.registry = new DefaultInterceptorRegistry();
@@ -125,6 +127,9 @@ public class WeaverGirl {
         samplingMonitor.start();
         weaverGirl.samplingMonitor = samplingMonitor;
 
+        // Initialize PluginManager for runtime plugin lifecycle management
+        weaverGirl.pluginManager = new DefaultPluginManager(weaverGirl.pluginLoader, weaverGirl.registry);
+
         log.info("WeaverGirl agent started with {} interceptor definitions",
                 weaverGirl.registry.getAllDefinitions().size());
         return weaverGirl;
@@ -203,6 +208,15 @@ public class WeaverGirl {
      */
     public com.github.cc11001100.weavergirl.api.config.DynamicConfigManager getDynamicConfigManager() {
         return dynamicConfigManager;
+    }
+
+    /**
+     * Get the PluginManager for runtime plugin lifecycle management.
+     *
+     * @return the plugin manager instance, or null if not yet initialized
+     */
+    public com.github.cc11001100.weavergirl.api.plugin.PluginManager getPluginManager() {
+        return pluginManager;
     }
 
     /**

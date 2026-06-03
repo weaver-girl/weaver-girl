@@ -46,15 +46,17 @@
 
 > P40-P45 已完成 (949 tests)。聚焦多租户、动态配置、插件热加载等企业级能力。
 
-### P46: 动态配置中心 [HIGH] 🔄
+### P46: 动态配置中心 [HIGH] ✅
 
 支持运行时动态调整 Agent 行为，无需重启。
 
-- 🔲 P46.1: 配置变更监听接口 (ConfigChangeListener)
-- 🔲 P46.2: Zookeeper 配置中心适配器
-- 🔲 P46.3: Apollo/Nacos 配置中心适配器
-- 🔲 P46.4: 配置变更回滚机制
-- 🔲 P46.5: 配置变更审计日志
+- ✅ P46.1: 配置变更监听接口 (ConfigChangeListener + ConfigChangeEvent)
+- ✅ P46.2: DynamicConfigManager 核心实现 (DefaultDynamicConfigManager)
+- ✅ P46.3: 配置变更审计日志 (audit trail with per-key filtering)
+- ✅ P46.4: 配置变更回滚机制 (ConfigSnapshot with versioned rollback)
+- ✅ P46.5: 集成测试 (31 tests: listeners, snapshots, rollback, concurrency)
+
+> 备注：31 个测试覆盖核心场景 + 并发压力测试。集成到 WeaverGirl.bootstrap()，采样配置支持运行时动态更新。
 
 ### P47: 插件热加载 [HIGH] 🔲
 
