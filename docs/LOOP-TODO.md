@@ -152,6 +152,58 @@ Agent 自身健康状态的深度诊断能力。
 
 ---
 
+## 第五阶段：生态扩展 (P56-P60) 🔄
+
+> P51-P55 已完成。聚焦数据导出、告警、拓扑、仪表盘、更多插件。
+
+### P56: 数据导出器 SPI [HIGH] 🔄
+
+支持将拦截数据导出到多种后端系统。
+
+- 🔲 P56.1: DataExporter SPI 接口设计
+- 🔲 P56.2: LoggingExporter (JSON 文件输出)
+- 🔲 P56.3: OTLPExporter 框架 (OpenTelemetry Protocol)
+- 🔲 P56.4: ExporterRegistry 管理器
+- 🔲 P56.5: 导出器集成测试
+
+### P57: 告警引擎 [MEDIUM] 🔲
+
+基于指标和链路数据的规则告警。
+
+- 🔲 P57.1: AlertRule 规则定义 DSL
+- 🔲 P57.2: AlertEngine 告警评估引擎
+- 🔲 P57.3: AlertChannel 通知通道 (日志/Webhook)
+- 🔲 P57.4: 内置告警规则 (慢调用、高错误率、熔断触发)
+
+### P58: 服务拓扑图 [MEDIUM] 🔲
+
+自动构建服务间调用关系图。
+
+- 🔲 P58.1: ServiceNode 服务节点模型
+- 🔲 P58.2: ServiceEdge 调用边模型
+- 🔲 P58.3: TopologyGraph 拓扑图构建
+- 🔲 P58.4: TopologyExporter 拓扑数据导出
+
+### P59: Grafana 仪表盘 [LOW] 🔲
+
+预构建的监控仪表盘模板。
+
+- 🔲 P59.1: JVM 指标仪表盘 JSON
+- 🔲 P59.2: 拦截器性能仪表盘 JSON
+- 🔲 P59.3: 告警规则仪表盘 JSON
+- 🔲 P59.4: 仪表盘加载脚本
+
+### P60: 更多内置插件 [LOW] 🔲
+
+扩展框架覆盖范围。
+
+- 🔲 P60.1: RabbitMQ 插件
+- 🔲 P60.2: Elasticsearch 插件
+- 🔲 P60.3: Netty 插件
+- 🔲 P60.4: HikariCP 连接池插件
+
+---
+
 ## 当前统计
 
 | 指标 | 数值 |
