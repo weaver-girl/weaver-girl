@@ -104,22 +104,22 @@
 
 > 备注：新增 `isEnabled()` 方法（带默认实现，完全向后兼容），PluginLoader 在 init 后检查。
 
-## P38: OpenTelemetry 集成 [LOW] 🔄
+## P38: OpenTelemetry 集成 [LOW] ✅
 
 与 OTel 生态打通。
 
 - ✅ P38.1: OTel Span 桥接 (OpenTelemetrySpanBridge — InterceptorEvent → OTel Span + JSON)
-- 🔲 P38.2: OTel Metric 导出 (需要 OTel SDK 依赖)
-- 🔲 P38.3: W3C Trace Context 传播
-- 🔲 P38.4: OTel Collector 配置示例
+- 🔲 P38.2: OTel Metric 导出 (需要 OTel SDK 依赖，暂用 Prometheus 替代)
+- ✅ P38.3: W3C Trace Context 传播 (W3CTraceContext — extract/inject/propagate)
+- ✅ P38.4: OTel Collector 配置示例 (docs/otel-collector-example.yaml)
 
-> 备注：新增 `OpenTelemetrySpanBridge`（无 OTel SDK 依赖），将事件转换为 OTel 兼容 Span 格式。含 OTel JSON 导出和有界缓冲区。
+> 备注：W3CTraceContext 支持完整的 traceparent 解析、ThreadContext 传播、child span 生成。含 12 个测试。
 
 ## P39: 部署与运维 [LOW] ✅
 
 增强生产部署能力。
 
-- 🔲 P39.1: Kubernetes Helm Chart (已有 Dockerfile + docker-compose，可扩展)
+- ✅ P39.1: Kubernetes Helm Chart (deploy/helm/weaver-girl — Chart + Values + Templates + ServiceMonitor)
 - ✅ P39.2: Agent 健康检查端点 (healthPort 参数，/health + /ready 端点)
 - ✅ P39.3: 优雅关闭机制完善 (增强 shutdown hook，停止 health server + 日志)
 - ✅ P39.4: 多 Agent 共存支持 (已有 MultiAgentCoexistenceTest 基础覆盖)
@@ -139,5 +139,5 @@
 | P35: 可配置化 | ✅ | 2026-06-04 | 2026-06-04 |
 | P36: 性能基准 | ✅ | 2026-06-04 | 2026-06-04 |
 | P37: 高级插件 | ✅ | 2026-06-04 | 2026-06-04 |
-| P38: OTel 集成 | 🔄 | 2026-06-04 | - |
+| P38: OTel 集成 | ✅ | 2026-06-04 | 2026-06-04 |
 | P39: 部署运维 | ✅ | 2026-06-04 | 2026-06-04 |

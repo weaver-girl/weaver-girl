@@ -1,0 +1,97 @@
+# Weaver-Girl Helm Chart values
+
+# Agent image configuration
+image:
+  repository: weaver-girl/agent
+  pullPolicy: IfNotPresent
+  tag: "1.0.0"
+
+# Agent JAR location inside the init container
+agent:
+  jarPath: /opt/weaver-girl/weaver-girl-agent.jar
+
+# Agent configuration
+config:
+  # Path to YAML config file (mounted from ConfigMap)
+  configFile: /opt/weaver-girl/weaver.yml
+
+  # Enable config hot-reload
+  watch: false
+
+  # Prometheus metrics endpoint
+  metricsPort: 9400
+
+  # Health check endpoint
+  healthPort: 9401
+
+  # Structured JSON event output
+  jsonEvents: false
+
+  # Sampling configuration
+  samplingRate: 1
+  samplingMaxRate: 100
+  samplingThreshold: 10000
+
+  # Circuit breaker configuration
+  circuitBreakerThreshold: 5
+  circuitBreakerCooldownMs: 60000
+
+  # Plugins to disable (comma-separated)
+  disabledPlugins: ""
+
+  # Debug mode
+  debug: false
+
+# YAML configuration content (rendered as ConfigMap)
+yamlConfig: |
+  # Weaver-Girl configuration
+  # See: https://github.com/cc11001100/weaver-girl/blob/main/docs/yaml-config-reference.md
+
+# Resource limits for the init container
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# Target application settings
+targetApplication:
+  # The container index in the target pod to inject the agent into (default: 0)
+  containerIndex: 0
+
+  # JVM options to append
+  extraJvmOpts: ""
+
+# Health check probes
+livenessProbe:
+  httpGet:
+    path: /health
+    port: health
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: health
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# Service for metrics and health
+service:
+  type: ClusterIP
+  metricsPort: 9400
+  healthPort: 9401
+
+# ServiceMonitor for Prometheus (requires Prometheus Operator)
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  path: /metrics
+  labels: {}
