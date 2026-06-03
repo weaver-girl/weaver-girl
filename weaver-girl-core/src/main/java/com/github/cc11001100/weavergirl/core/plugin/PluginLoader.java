@@ -81,6 +81,13 @@ public class PluginLoader {
                 PluginContext context = new DefaultPluginContext(registry, config, plugin.name());
                 plugin.init(context);
 
+                // Phase 1.5: conditional enable check
+                if (!plugin.isEnabled(context)) {
+                    log.info("Plugin {} is disabled via isEnabled() check — skipping interceptors", plugin.name());
+                    AgentStatus.getInstance().recordPluginStatus(plugin.name(), false, "disabled via isEnabled()");
+                    continue;
+                }
+
                 // Phase 2: register interceptors
                 plugin.registerInterceptors(registry);
 

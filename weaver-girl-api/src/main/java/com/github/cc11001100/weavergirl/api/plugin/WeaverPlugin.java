@@ -126,4 +126,29 @@ public interface WeaverPlugin {
     default void destroy() {
         // no-op by default
     }
+
+    /**
+     * Check whether this plugin should be enabled at runtime.
+     *
+     * <p>Called after {@link #init(PluginContext)} but before
+     * {@link #registerInterceptors(InterceptorRegistry)}. If this method returns
+     * {@code false}, the plugin's interceptors will NOT be registered, effectively
+     * disabling the plugin at runtime.</p>
+     *
+     * <p>This allows plugins to perform conditional activation based on:</p>
+     * <ul>
+     *   <li>Configuration values (e.g., {@code context.getConfig("enabled", "true")})</li>
+     *   <li>Environment conditions (e.g., presence of a specific system property)</li>
+     *   <li>Feature flags or runtime state</li>
+     * </ul>
+     *
+     * <p>Default implementation always returns {@code true} (plugin is enabled).</p>
+     *
+     * @param context the plugin context for checking configuration
+     * @return {@code true} if the plugin should register its interceptors
+     * @since 1.0.0
+     */
+    default boolean isEnabled(PluginContext context) {
+        return true;
+    }
 }
