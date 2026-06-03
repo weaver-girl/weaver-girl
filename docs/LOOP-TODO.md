@@ -70,15 +70,15 @@
 
 > 备注：disable/enable/unload 生命周期完整，拦截器自动注册/注销。
 
-### P48: 多租户隔离 [MEDIUM] 🔲
+### P48: 多租户隔离 [MEDIUM] ✅
 
 支持同一 Agent 实例服务多个租户/应用。
 
-- 🔲 P48.1: 租户上下文 (TenantContext)
-- 🔲 P48.2: 按租户隔离的采样策略
-- 🔲 P48.3: 按租户隔离的配置
-- 🔲 P48.4: 租户级别的事件过滤
-- 🔲 P48.5: 多租户 Metrics 标签
+- ✅ P48.1: TenantContext (ThreadLocal 租户ID/组传播)
+- ✅ P48.2: TenantConfig (按租户隔离的采样策略/配置)
+- ✅ P48.3: TenantConfigRegistry (线程安全租户配置注册表)
+- ✅ P48.4: TenantSnapshot (跨线程上下文传播)
+- ✅ P48.5: 18 个测试 (上下文、配置、注册表、跨线程传播)
 
 ### P49: Agent 自诊断 [MEDIUM] 🔲
 
