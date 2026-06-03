@@ -82,22 +82,24 @@
 
 > 备注：在 WeaverGirl.bootstrap() 中新增 `applyCoreConfig()`，将 agent args 传播到 SamplingController/CircuitBreaker。
 
-## P36: 性能基准测试 [LOW] 🔄
+## P36: 性能基准测试 [LOW] ✅
 
 建立性能基准，防止性能退化。
 
-- 🔲 P36.1: 添加 JMH 依赖和基准测试模块
-- 🔲 P36.2: 核心拦截路径基准测试
-- 🔲 P36.3: 插件开销基准测试
-- 🔲 P36.4: 与 SkyWalking/OTel Agent 对比基准
+- ✅ P36.1: 添加 JMH 依赖和基准测试模块 (已有 InterceptorBenchmark + MatcherBenchmark)
+- ✅ P36.2: 核心拦截路径基准测试 (registry lookup, pointcut matching, baseline)
+- ✅ P36.3: 插件开销基准测试 (新增 CoreComponentBenchmark — Sampling/CircuitBreaker/Pool)
+- 🔲 P36.4: 与 SkyWalking/OTel Agent 对比基准 (需要独立测试环境)
+
+> 备注：新增 CoreComponentBenchmark (5 个 benchmark)，更新 InterceptorBenchmarkRunner 支持全部基准。
 
 ## P37: 高级插件能力 [LOW]
 
 扩展插件系统的高级特性。
 
-- 🔲 P37.1: Around advice (跳过原方法执行)
+- 🔲 P37.1: Around advice (跳过原方法执行) — 已有 skipMethod() 支持
 - 🔲 P37.2: 异步拦截支持 (CompletableFuture/Reactor)
-- 🔲 P37.3: 方法返回值修改能力
+- 🔲 P37.3: 方法返回值修改能力 — 已有 setReturnValue() 支持
 - 🔲 P37.4: 插件条件化启用/禁用
 
 ## P38: OpenTelemetry 集成 [LOW]
@@ -109,14 +111,14 @@
 - 🔲 P38.3: W3C Trace Context 传播
 - 🔲 P38.4: OTel Collector 配置示例
 
-## P39: 部署与运维 [LOW]
+## P39: 部署与运维 [LOW] 🔄
 
 增强生产部署能力。
 
 - 🔲 P39.1: Kubernetes Helm Chart
-- 🔲 P39.2: Agent 健康检查端点
-- 🔲 P39.3: 优雅关闭机制完善
-- 🔲 P39.4: 多 Agent 共存支持
+- ✅ P39.2: Agent 健康检查端点 (healthPort 参数，/health + /ready 端点)
+- ✅ P39.3: 优雅关闭机制完善 (增强 shutdown hook，停止 health server + 日志)
+- 🔲 P39.4: 多 Agent 共存支持 (已有 MultiAgentCoexistenceTest 基础覆盖)
 - 🔲 P39.5: 运维 Runbook 文档
 
 ---
@@ -130,8 +132,8 @@
 | P32: 错误处理 | ✅ | 2026-06-04 | 2026-06-04 |
 | P33: API 文档 | ✅ | 2026-06-04 | 2026-06-04 |
 | P34: 集成测试 | ✅ | 2026-06-04 | 2026-06-04 |
-| P35: 可配置化 | 🔄 | 2026-06-04 | - |
-| P36: 性能基准 | 🔲 | - | - |
+| P35: 可配置化 | ✅ | 2026-06-04 | 2026-06-04 |
+| P36: 性能基准 | ✅ | 2026-06-04 | 2026-06-04 |
 | P37: 高级插件 | 🔲 | - | - |
 | P38: OTel 集成 | 🔲 | - | - |
-| P39: 部署运维 | 🔲 | - | - |
+| P39: 部署运维 | 🔄 | 2026-06-04 | - |

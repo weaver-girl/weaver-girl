@@ -8,10 +8,13 @@ import com.github.cc11001100.weavergirl.core.config.YamlConfigLoader;
 import com.github.cc11001100.weavergirl.core.event.JsonEventListener;
 import com.github.cc11001100.weavergirl.core.metrics.PrometheusExporter;
 import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
+import com.github.cc11001100.weavergirl.core.status.AgentStatus;
+import com.sun.net.httpserver.HttpServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.instrument.Instrumentation;
+import java.net.InetSocketAddress;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -32,6 +35,9 @@ public class WeaverGirlAgent {
     private static final Logger log = LoggerFactory.getLogger(WeaverGirlAgent.class);
     private static final String CONFIG_PREFIX = "config=";
     private static volatile ConfigWatcher configWatcher;
+    private static volatile HttpServer healthServer;
+    private static volatile WeaverGirl weaverGirlInstance;
+    private static volatile long startTimeMs = System.currentTimeMillis();
 
     /**
      * Premain entry — called before application main() when using -javaagent flag.
@@ -110,6 +116,7 @@ public class WeaverGirlAgent {
             }
 
             WeaverGirl weaverGirl = WeaverGirl.bootstrap(instrumentation, args, weaverConfig);
+            weaverGirlInstance = weaverGirl;
 
             // Now register interceptors from YAML config (registry is available)
             if (configPath != null) {
@@ -142,16 +149,37 @@ public class WeaverGirlAgent {
                 log.info("Retransformed {} already-loaded classes for dynamic attach", retransformed);
             }
 
+            // Start health check endpoint if healthPort is specified
+            String healthPortStr = args.get("healthPort");
+            if (healthPortStr != null) {
+                try {
+                    int healthPort = Integer.parseInt(healthPortStr);
+                    startHealthEndpoint(healthPort);
+                    log.info("Health check endpoint enabled on port {} (healthPort={})", healthPort, healthPortStr);
+                } catch (NumberFormatException e) {
+                    log.warn("Invalid healthPort value: {}, expected integer", healthPortStr);
+                } catch (Exception e) {
+                    log.warn("Failed to start health check server: {}", e.getMessage());
+                }
+            }
+
             // Register shutdown hook to cleanly destroy plugins
             final WeaverGirl shutdownRef = weaverGirl;
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 try {
+                    log.info("WeaverGirl agent shutting down...");
+                    if (healthServer != null) {
+                        healthServer.stop(2);
+                        log.info("Health check endpoint stopped");
+                    }
                     if (configWatcher != null) {
                         configWatcher.stop();
                     }
                     shutdownRef.shutdown();
+                    log.info("WeaverGirl agent shutdown complete");
                 } catch (Exception e) {
                     // Shutdown hook must not throw
+                    System.err.println("[weaver-girl] Error during shutdown: " + e.getMessage());
                 }
             }, "weaver-girl-shutdown"));
 
@@ -193,5 +221,61 @@ public class WeaverGirlAgent {
             }
         }
         return result;
+    }
+
+    /**
+     * Start a lightweight HTTP health check endpoint.
+     * Exposes two paths:
+     * <ul>
+     *   <li>{@code /health} — liveness probe (always 200 if agent is running)</li>
+     *   <li>{@code /ready} — readiness probe (200 once agent has interceptors)</li>
+     * </ul>
+     *
+     * @param port the port to bind
+     */
+    private static void startHealthEndpoint(int port) throws Exception {
+        healthServer = HttpServer.create(new InetSocketAddress(port), 0);
+
+        healthServer.createContext("/health", exchange -> {
+            try {
+                long uptimeSec = (System.currentTimeMillis() - startTimeMs) / 1000;
+                String json = "{\"status\":\"UP\",\"agent\":\"weaver-girl\",\"uptimeSeconds\":" + uptimeSec + "}";
+                byte[] bytes = json.getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, bytes.length);
+                exchange.getResponseBody().write(bytes);
+                exchange.getResponseBody().close();
+            } catch (Exception e) {
+                exchange.sendResponseHeaders(500, 0);
+                exchange.getResponseBody().close();
+            }
+        });
+
+        healthServer.createContext("/ready", exchange -> {
+            try {
+                WeaverGirl wg = weaverGirlInstance;
+                int defCount = (wg != null) ? wg.getRegistry().getAllDefinitions().size() : 0;
+                if (defCount > 0) {
+                    String json = "{\"status\":\"READY\",\"interceptorCount\":" + defCount + "}";
+                    byte[] bytes = json.getBytes("UTF-8");
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(200, bytes.length);
+                    exchange.getResponseBody().write(bytes);
+                } else {
+                    String json = "{\"status\":\"NOT_READY\",\"interceptorCount\":0}";
+                    byte[] bytes = json.getBytes("UTF-8");
+                    exchange.getResponseHeaders().set("Content-Type", "application/json");
+                    exchange.sendResponseHeaders(503, bytes.length);
+                    exchange.getResponseBody().write(bytes);
+                }
+                exchange.getResponseBody().close();
+            } catch (Exception e) {
+                exchange.sendResponseHeaders(500, 0);
+                exchange.getResponseBody().close();
+            }
+        });
+
+        healthServer.setExecutor(null);
+        healthServer.start();
     }
 }
