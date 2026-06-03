@@ -191,6 +191,56 @@ Agent 自身健康状态的深度诊断能力。
 
 ---
 
+## 第六阶段：运维体验 (P61-P65) 🔄
+
+> P56-P60 已完成。聚焦运维可观测性、配置验证、指标聚合、REST API。
+
+### P61: 指标聚合器 [HIGH] 🔄
+
+时间窗口指标聚合，支持分钟级/小时级统计。
+
+- 🔲 P61.1: MetricAggregator 聚合器接口
+- 🔲 P61.2: TimeWindow 滑动窗口实现
+- 🔲 P61.3: MetricSnapshot 快照导出
+- 🔲 P61.4: 内置聚合指标 (调用率/错误率/p99延迟)
+
+### P62: Agent REST API [MEDIUM] 🔲
+
+Agent 状态查询和管理的 HTTP API。
+
+- 🔲 P62.1: AgentHttpServer 轻量 HTTP 服务器
+- 🔲 P62.2: /status, /plugins, /config 端点
+- 🔲 P62.3: /topology, /alerts 端点
+- 🔲 P62.4: /diagnostics 端点
+
+### P63: 配置 Schema 验证 [MEDIUM] 🔲
+
+YAML 配置文件的 Schema 验证和错误报告。
+
+- 🔲 P63.1: ConfigSchema Schema 定义
+- 🔲 P63.2: ConfigValidator 验证器
+- 🔲 P63.3: ConfigValidationResult 结果报告
+- 🔲 P63.4: 内置 Schema 规则
+
+### P64: 插件健康监控 [LOW] 🔲
+
+插件运行状态监控和异常检测。
+
+- 🔲 P64.1: PluginHealthCheck 健康检查接口
+- 🔲 P64.2: PluginHealthRegistry 注册中心
+- 🔲 P64.3: 自动健康检查调度
+- 🔲 P64.4: 健康状态集成到 REST API
+
+### P65: 变更日志自动化 [LOW] 🔲
+
+从 git commits 自动生成 CHANGELOG。
+
+- 🔲 P65.1: CHANGELOG.md 更新到最新
+- 🔲 P65.2: README.md 更新项目统计
+- 🔲 P65.3: CONTRIBUTING.md 更新插件开发指南
+
+---
+
 ## 当前统计
 
 | 指标 | 数值 |
