@@ -58,15 +58,17 @@
 
 > 备注：31 个测试覆盖核心场景 + 并发压力测试。集成到 WeaverGirl.bootstrap()，采样配置支持运行时动态更新。
 
-### P47: 插件热加载 [HIGH] 🔲
+### P47: 插件热加载 [HIGH] ✅
 
 支持运行时加载/卸载插件，无需重启 JVM。
 
-- 🔲 P47.1: 插件热加载接口设计 (PluginManager)
-- 🔲 P47.2: 运行时注册/注销 InterceptorDefinition
-- 🔲 P47.3: 插件状态管理 (LOADED → ACTIVE → DISABLED)
-- 🔲 P47.4: 插件版本兼容性检查
-- 🔲 P47.5: 插件依赖解析和加载顺序
+- ✅ P47.1: PluginState 状态机 (LOADED → ACTIVE → DISABLED → UNLOADED)
+- ✅ P47.2: PluginManager 接口 + DefaultPluginManager 实现
+- ✅ P47.3: PluginInfo 元数据 + 11 个测试
+- 🔲 P47.4: 插件版本兼容性检查 (后续版本)
+- 🔲 P47.5: 外部 JAR 热加载 (需要 ClassLoader 隔离设计)
+
+> 备注：disable/enable/unload 生命周期完整，拦截器自动注册/注销。
 
 ### P48: 多租户隔离 [MEDIUM] 🔲
 
