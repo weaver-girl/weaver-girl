@@ -36,36 +36,13 @@
 
 > 目标：从单机拦截扩展到全链路追踪，对接 OpenTelemetry 生态
 
-- [ ] **P85: 提交 SpanData/SpanExporter/SpanFormatter**
-  - 代码已完成（untracked files），需要 commit
-  - 文件: `core/exporter/SpanData.java`、`SpanExporter.java`、`SpanFormatter.java`
+- [x] **P85: 提交 SpanData/SpanExporter/SpanFormatter** ✅ 2026-06-05
+- [x] **P86: Tracer → SpanExporter 联通** ✅ 2026-06-05
+- [x] **P87: 跨线程 Trace Context 传播** ✅ 2026-06-05
 
-- [ ] **P86: Tracer → SpanExporter 联通**
-  - Tracer 完成每个 Span 时自动提交到 SpanExporter
-  - Span 自动填充 traceId/spanId/parentSpanId/duration
-  - 文件: 修改 `core/trace/Tracer.java`
-
-- [ ] **P87: 跨线程 Trace Context 传播**
-  - `Runnable`/`Callable` 自动包装，传递 SpanContext
-  - `TraceRunnable`/`TraceCallable` 工具类
-  - 支持 `ExecutorService` 包装
-  - 文件: 新增 `core/trace/TraceRunnable.java`、`TraceExecutorService.java`
-
-- [ ] **P88: 跨服务 HTTP Trace Context 传播**
-  - Servlet Plugin 自动注入/提取 trace headers（W3C `traceparent`/`tracestate`）
-  - OkHttp/HttpClient Plugin 自动传播 trace headers
-  - 文件: 修改 `plugins/servlet/`、`plugins/okhttp/`、`plugins/httpClient/`
-
-- [ ] **P89: OpenTelemetry OTLP Bridge**
-  - SpanExporter 支持 HTTP/gRPC 导出到 OTLP Collector
-  - `OtlpHttpExporter` 通过 HTTP POST 发送 OTLP JSON
-  - `OtlpGrpcExporter`（可选，需 grpc 依赖）
-  - 文件: 新增 `core/exporter/OtlpHttpExporter.java`
-
-- [ ] **P90: Baggage 与 Span Links**
-  - Baggage: 跨服务传播业务上下文（如 userId、tenantId）
-  - Span Links: 关联异步/批处理操作的 spans
-  - 文件: 新增 `api/tracing/Baggage.java`、修改 `SpanData.java`
+- [x] **P88: 跨服务 HTTP Trace Context 传播** ✅ 2026-06-05
+- [x] **P89: OpenTelemetry OTLP Bridge** ✅ 2026-06-05
+- [x] **P90: Baggage 与 Span Links** ✅ 2026-06-05
 
 ---
 
@@ -255,13 +232,13 @@
 | Phase | 名称 | 总项 | 完成 | 进度 |
 |-------|------|------|------|------|
 | 1 | Core AOP 通用性 | 6 | 6 | ██████ 100% |
-| 2 | Span 导出与链路追踪 | 6 | 0 | ░░░░░░ 0% |
+| 2 | Span 导出与链路追踪 | 6 | 6 | ██████ 100% |
 | 3 | 可观测性增强 | 6 | 0 | ░░░░░░ 0% |
 | 4 | 生产加固 | 6 | 0 | ░░░░░░ 0% |
 | 5 | 文档与开发者体验 | 5 | 0 | ░░░░░░ 0% |
 | 6 | 生态集成 | 5 | 0 | ░░░░░░ 0% |
 | 7 | 发布与社区 | 4 | 0 | ░░░░░░ 0% |
-| **Total** | | **38** | **6** | **█░░░░░ 16%** |
+| **Total** | | **38** | **12** | **███░░░ 32%** |
 
 ---
 
