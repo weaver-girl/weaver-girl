@@ -293,7 +293,7 @@ Agent 自身健康状态的深度诊断能力。
 |------|------|
 | 源代码行数 | ~27,000 |
 | 测试代码行数 | ~30,000 |
-| 测试总数 | 1125 (227 api + 593 core + 283 plugins + 15 agent + 7 sample) / 全部通过 |
+| 测试总数 | 1156 (227 api + 624 core + 283 plugins + 15 agent + 7 sample) / 全部通过 |
 | 提交总数 | 145+ |
 | Maven 模块 | 6 |
 | 内置插件 | 16 |
@@ -344,10 +344,16 @@ Agent 自身健康状态的深度诊断能力。
 - ✅ MetricFormatter SPI (format(MetricSnapshot) 接口)
 - ✅ 30 个测试
 
-### P78: RateLimiter — 自适应限流 [MEDIUM] 🔲
+### P78: RateLimiter — 自适应限流 [MEDIUM] ✅
 
-- 🔲 令牌桶/滑动窗口限流器
-- 🔲 自适应限流 (根据系统负载调整)
+- ✅ AdaptiveRateLimiter (令牌桶自适应限流器)
+  - 令牌桶算法 (tryAcquire 单个/多个/超时)
+  - 自适应速率调整 (根据系统负载动态增减)
+  - 可配置 burst 容量和负载阈值
+  - 统计追踪 (allowed/rejected/total/rejectionRate)
+  - 平滑速率变化 (避免突发流量)
+  - 线程安全 (AtomicLong/AtomicInteger CAS 操作)
+- ✅ 31 个测试
 
 ### P79: SpanExporter — 链路数据导出 [LOW] 🔲
 

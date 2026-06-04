@@ -4,6 +4,22 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## P78 — Adaptive Rate Limiter (2026-06-04)
+
+### P78: Adaptive Rate Limiter
+- `AdaptiveRateLimiter`: token bucket rate limiter with adaptive load-based adjustment
+  - Token bucket algorithm: `tryAcquire()` for single/multi-permit acquisition
+  - `tryAcquire(timeoutMs)`: blocking acquisition with timeout
+  - Adaptive rate: `updateLoad(systemLoad)` reduces rate when load exceeds threshold (max 50% reduction)
+  - Automatic restoration to base rate when load drops below threshold
+  - Configurable burst capacity and load threshold (0.0-1.0)
+  - Statistics: allowed/rejected/total counts, rejection rate, total wait time
+  - Thread-safe: AtomicLong/AtomicInteger CAS operations
+  - `setBaseRate()`: runtime rate adjustment
+- 31 tests
+
+---
+
 ## P77 — Metric Reporter (2026-06-04)
 
 ### P77: Periodic Metric Reporter
