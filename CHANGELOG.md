@@ -4,6 +4,23 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## P74 — Documentation Update (2026-06-04)
+
+### P74: Documentation Improvements
+- Updated `ARCHITECTURE.md`:
+  - Module structure: 12 → 16 built-in plugins
+  - Module details table: added OkHttp, RabbitMQ, Elasticsearch plugins
+  - New "Enterprise Features (P46-P73)" section with 12 subsections:
+    Dynamic Config Center, Plugin Hot Management, Multi-Tenant Isolation,
+    Distributed Tracing, Data Exporter SPI, Alerting Engine, Service Topology,
+    Metric Aggregation, Agent REST API, Agent State Persistence,
+    Plugin Compatibility Checker, Lock-Free Object Pool, Internationalization
+  - Thread Safety Model: added 10 new components
+- `README.md` already updated (16 plugins table + State Persistence feature)
+- `CHANGELOG.md` complete records for P66-P73
+
+---
+
 ## P73 — Internationalization (2026-06-04)
 
 ### P73: i18n Support

@@ -347,11 +347,15 @@ Agent 自身健康状态的深度诊断能力。
 - ✅ 覆盖: Bootstrap, Plugin, Interceptor, Config, Diagnostics, Security, Export, Alert, Persistence, Compatibility, Errors
 - ✅ 32 个测试
 
-### P74: 文档完善 [LOW] 🔲
+### P74: 文档完善 [LOW] ✅
 
-- 🔲 Quick Start 指南改进
-- 🔲 架构图更新 (新增组件)
-- 🔲 Plugin 开发教程完善
+- ✅ ARCHITECTURE.md 更新
+  - 模块结构更新 (12 → 16 内置插件)
+  - 模块详情表更新 (新增 OkHttp, RabbitMQ, Elasticsearch 插件)
+  - 新增 "Enterprise Features (P46-P73)" 章节 (12 个子节)
+  - 线程安全模型更新 (新增 10 个组件)
+- ✅ README.md 已在之前阶段更新 (16 插件表格 + State Persistence 特性)
+- ✅ CHANGELOG.md 完整记录 P66-P73 所有变更
 
 ### P75: 发布准备 [LOW] 🔲
 

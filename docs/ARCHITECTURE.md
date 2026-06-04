@@ -15,7 +15,7 @@ weaver-girl/                          (parent POM, packaging=pom)
 ├── weaver-girl-api/                  Plugin SDK — interfaces, matchers, context, event system
 ├── weaver-girl-core/                 Core engine — transformer, registry, config, circuit breaker, sampling
 ├── weaver-girl-annotation/           Declarative annotations — @WeaveClass, @Before, @After, @Around
-├── weaver-girl-plugins/              12 built-in instrumentation plugins
+├── weaver-girl-plugins/              16 built-in instrumentation plugins
 ├── weaver-girl-agent/                Agent entry point — premain/agentmain, YAML config loading
 └── weaver-girl-sample/               Sample application — embedded Jetty + H2 demo
 ```
@@ -51,7 +51,7 @@ Key dependency rules:
 | `weaver-girl-api` | Plugin SDK: interfaces and value objects that plugin developers code against | `WeaverPlugin`, `AbstractPlugin`, `Interceptor`, `MethodInvocation`, `ClassMatcher`, `MethodMatcher`, `Pointcut`, `InterceptorDefinition`, `InterceptorRegistry`, `PluginContext`, `ThreadContext`, `InterceptorEvent`, `InterceptorEventPublisher`, `InterceptorEventListener` |
 | `weaver-girl-core` | Engine implementation: bytecode transformation, registry, config, fault isolation | `WeaverGirl`, `InterceptAdvice`, `WeaverTransformer`, `DefaultInterceptorRegistry`, `PluginLoader`, `YamlConfigLoader`, `ConfigWatcher`, `InterceptorCircuitBreaker`, `SamplingController`, `PrometheusExporter`, `AgentMXBean`/`AgentMonitor` |
 | `weaver-girl-annotation` | Declarative annotation-driven hook mode | `@WeaveClass`, `@Before`, `@After`, `@Around` |
-| `weaver-girl-plugins` | 12 built-in instrumentation plugins | `ServletPlugin`, `JdbcPlugin`, `SpringPlugin`, `RedisPlugin`, `KafkaPlugin`, `GrpcPlugin`, `MongoPlugin`, `HttpClientPlugin`, `MethodTimingPlugin`, `TraceCorrelationPlugin`, `ExceptionMonitorPlugin`, `LoggingPlugin` |
+| `weaver-girl-plugins` | 16 built-in instrumentation plugins | `ServletPlugin`, `JdbcPlugin`, `SpringPlugin`, `RedisPlugin`, `KafkaPlugin`, `GrpcPlugin`, `MongoPlugin`, `HttpClientPlugin`, `HikariPlugin`, `MethodTimingPlugin`, `TraceCorrelationPlugin`, `ExceptionMonitorPlugin`, `LoggingPlugin`, `OkHttpPlugin`, `RabbitMQPlugin`, `ElasticsearchPlugin` |
 | `weaver-girl-agent` | Java Agent entry point | `WeaverGirlAgent` |
 | `weaver-girl-sample` | Demonstration application | `SampleApplication`, `TargetService`, sample plugins and interceptors |
 
@@ -447,6 +447,130 @@ When `watch=true` is passed as an agent argument, `ConfigWatcher` monitors the Y
 
 ---
 
+## Enterprise Features (P46-P73)
+
+### Dynamic Configuration Center
+
+`DefaultDynamicConfigManager` provides runtime config changes with listeners, snapshots, and rollback:
+
+- `ConfigChangeListener` receives `ConfigChangeEvent` on every set/remove
+- `ConfigSnapshot` captures full config state at a point in time (max 50 snapshots)
+- `rollback(snapshot)` restores a previous snapshot
+- Audit trail: all changes logged with source and timestamp
+- Thread-safe with `ConcurrentHashMap` and `CopyOnWriteArrayList`
+
+### Plugin Hot Management
+
+`PluginManager` / `DefaultPluginManager` manage plugin lifecycle at runtime:
+
+- `PluginState` enum: `LOADED → ACTIVE → DISABLED → UNLOADED` with valid transition rules
+- `PluginInfo` metadata: state, version, interceptor count, timestamps
+- Disable/enable/unload with automatic interceptor coordination
+- `PluginHealthRegistry`: tracks per-plugin health (HEALTHY/DEGRADED/UNHEALTHY)
+
+### Multi-Tenant Isolation
+
+`TenantContext` + `TenantConfigRegistry` provide per-tenant isolation:
+
+- `TenantContext`: ThreadLocal tenant ID/group propagation
+- `TenantSnapshot`: immutable capture/restore for cross-thread propagation
+- `TenantConfig`: per-tenant sampling rate, max rate, threshold, custom properties
+
+### Distributed Tracing
+
+`Tracer` + `SpanContext` provide W3C-compatible distributed tracing:
+
+- `SpanContext`: trace/span/parent IDs, sampled flag, baggage map
+- `Tracer`: ThreadLocal span management, child span creation
+- `TracingSnapshot`: cross-thread propagation (capture/restore)
+- HTTP header injection/extraction (X-Trace-Id, X-Span-Id, X-Baggage-*)
+
+### Data Exporter SPI
+
+`DataExporter` interface for exporting intercepted data to external systems:
+
+- `LoggingExporter`: structured JSON output to SLF4J
+- `InMemoryExporter`: bounded ring buffer with type/recent filtering
+- `ExporterRegistry`: register/activate/deactivate with multi-exporter fan-out
+
+### Alerting Engine
+
+`AlertEngine` evaluates rules against metrics and fires notifications:
+
+- `AlertRule`: metric, operator (>, <, ==, >=, <=), threshold, severity
+- `AlertChannel`: notification interface for custom delivery
+- `AlertEvent`: structured alert with rule, metric value, timestamp
+
+### Service Topology
+
+`TopologyGraph` auto-builds a service dependency graph:
+
+- `ServiceNode` / `ServiceEdge`: service and call edge models
+- Thread-safe graph builder with call recording, edge aggregation
+- Query APIs: outgoing/incoming edges, text export
+
+### Metric Aggregation
+
+`TimeWindowAggregator` + `MetricRegistry` provide sliding-window metrics:
+
+- Percentiles: p50, p90, p95, p99
+- Statistics: count, sum, min, max, avg
+- `MetricSnapshot`: immutable snapshot with rate-per-second calculation
+
+### Agent REST API
+
+`AgentApiServer` exposes 7 HTTP endpoints for runtime management:
+
+| Endpoint | Description |
+|----------|-------------|
+| GET /status | Agent status and uptime |
+| GET /plugins | Loaded plugins and states |
+| GET /topology | Service topology graph |
+| GET /alerts | Recent alert events |
+| GET /metrics | Metric aggregations |
+| GET /diagnostics | Memory, hotspots, faults |
+
+### Agent State Persistence
+
+`AgentStateSnapshot` + `AgentStatePersister` enable state survival across JVM restarts:
+
+- Properties-format persistence (human-readable, editable)
+- Captures: interceptor counts, plugin states, config, metrics, health
+- `AgentStatePersister`: periodic snapshot scheduler with configurable interval
+- Graceful shutdown final snapshot
+- `SnapshotListener` callbacks for onSnapshot/onRestore events
+
+### Plugin Compatibility Checker
+
+`PluginCompatibilityChecker` validates plugins at load time:
+
+- Agent version check: `minimumAgentVersion` in plugin metadata
+- Duplicate detection: same-name plugins with same or older version rejected
+- Dependency verification: all declared `depends` checked against available plugins
+- Version format validation: semver-like format (X.Y.Z with optional suffixes)
+- Auto-disable: incompatible plugins automatically disabled (configurable)
+- `CompatibilityReport`: structured result with warnings, errors, autoDisabled flag
+
+### Lock-Free Object Pool
+
+`LockFreeObjectPool<T>` reduces GC pressure on hot paths:
+
+- `ConcurrentLinkedQueue`-based: no locks on borrow/release
+- Bounded pool size with eviction
+- Statistics: hit/miss/borrow/return/eviction counts and hit rate
+
+### Internationalization (i18n)
+
+`AgentMessages` provides lightweight message externalization:
+
+- ResourceBundle-based with UTF-8 encoding
+- Parameterized messages: `{0}`, `{1}`, `{2}`... positional arguments
+- Multi-locale caching with English fallback
+- 50+ English messages, complete Chinese (zh_CN) translation
+- Auto-detection from system properties
+
+---
+
 ## Self-Protection
 
 The agent excludes its own packages from instrumentation to prevent `ClassCircularityError`:
@@ -478,6 +602,16 @@ User-configured exclusions from `WeaverConfig.excludedClasses` are also applied.
 | `ThreadContext` | `ThreadLocal` with `remove()` to prevent memory leaks |
 | `PrometheusExporter` | `ConcurrentHashMap` with `AtomicLong` counters |
 | `ConfigWatcher` | `AtomicBoolean` for running state |
+| `DefaultDynamicConfigManager` | `ConcurrentHashMap` for config, `CopyOnWriteArrayList` for listeners/snapshots |
+| `DefaultPluginManager` | `ConcurrentHashMap` for plugin states |
+| `TenantConfigRegistry` | `ConcurrentHashMap` for tenant configs |
+| `TopologyGraph` | `ConcurrentHashMap` for nodes/edges |
+| `MetricRegistry` | `ConcurrentHashMap` for named aggregators |
+| `AlertEngine` | `CopyOnWriteArrayList` for rules/channels |
+| `ExporterRegistry` | `ConcurrentHashMap` for exporters |
+| `PluginCompatibilityChecker` | `ConcurrentHashMap` for loaded versions, `CopyOnWriteArrayList` for reports |
+| `LockFreeObjectPool` | `ConcurrentLinkedQueue` + `AtomicInteger` for pool size and stats |
+| `AgentMessages` | `ConcurrentHashMap` for locale→bundle cache |
 
 ---
 
