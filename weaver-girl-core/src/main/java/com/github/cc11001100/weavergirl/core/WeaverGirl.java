@@ -8,6 +8,8 @@ import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 import com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin;
 import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
+import com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression;
+import com.github.cc11001100.weavergirl.api.pointcut.PointcutParser;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
 import com.github.cc11001100.weavergirl.core.management.AgentMonitor;
@@ -197,6 +199,15 @@ public class WeaverGirl {
         return new InterceptBuilder(this, className);
     }
 
+    /**
+     * Start a fluent interceptor definition using a pointcut expression.
+     * @since 1.1.0
+     */
+    public ExpressionInterceptBuilder interceptExpression(String expression) {
+        ValidationUtils.requireNonEmpty(expression, "expression");
+        return new ExpressionInterceptBuilder(this, expression);
+    }
+
     public InterceptorRegistry getRegistry() {
         return registry;
     }
@@ -349,6 +360,69 @@ public class WeaverGirl {
         public InterceptBuilder priority(int priority) {
             this.priority = priority;
             return this;
+        }
+    }
+
+    /**
+     * Fluent builder for interceptor registration via pointcut expression.
+     * @since 1.1.0
+     */
+    public static class ExpressionInterceptBuilder {
+        private final WeaverGirl weaverGirl;
+        private final String expression;
+        private Interceptor interceptor;
+        private int priority = 0;
+
+        ExpressionInterceptBuilder(WeaverGirl weaverGirl, String expression) {
+            this.weaverGirl = weaverGirl;
+            this.expression = expression;
+        }
+
+        public ExpressionInterceptBuilder before(final Consumer<MethodInvocation> callback) {
+            Interceptor existing = this.interceptor;
+            this.interceptor = new Interceptor() {
+                @Override public void before(MethodInvocation invocation) { callback.accept(invocation); }
+                @Override public void after(MethodInvocation invocation) { if (existing != null) existing.after(invocation); }
+                @Override public void onException(MethodInvocation invocation) { if (existing != null) existing.onException(invocation); }
+            };
+            return this;
+        }
+
+        public ExpressionInterceptBuilder after(final Consumer<MethodInvocation> callback) {
+            Interceptor existing = this.interceptor;
+            this.interceptor = new Interceptor() {
+                @Override public void before(MethodInvocation invocation) { if (existing != null) existing.before(invocation); }
+                @Override public void after(MethodInvocation invocation) { callback.accept(invocation); }
+                @Override public void onException(MethodInvocation invocation) { if (existing != null) existing.onException(invocation); }
+            };
+            return this;
+        }
+
+        public ExpressionInterceptBuilder onException(final Consumer<MethodInvocation> callback) {
+            Interceptor existing = this.interceptor;
+            this.interceptor = new Interceptor() {
+                @Override public void before(MethodInvocation invocation) { if (existing != null) existing.before(invocation); }
+                @Override public void after(MethodInvocation invocation) { if (existing != null) existing.after(invocation); }
+                @Override public void onException(MethodInvocation invocation) { callback.accept(invocation); }
+            };
+            return this;
+        }
+
+        public ExpressionInterceptBuilder priority(int priority) {
+            this.priority = priority;
+            return this;
+        }
+
+        public WeaverGirl install() {
+            PointcutExpression expr = PointcutParser.getInstance().parse(expression);
+            Pointcut pointcut = expr.toPointcut();
+            if (interceptor == null) {
+                interceptor = new Interceptor() {};
+            }
+            InterceptorDefinition definition = new InterceptorDefinition(
+                    "expr-" + expression.hashCode(), pointcut, interceptor, priority);
+            weaverGirl.registry.register(definition);
+            return weaverGirl;
         }
     }
 
