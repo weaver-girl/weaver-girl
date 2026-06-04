@@ -4,6 +4,25 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## P73 — Internationalization (2026-06-04)
+
+### P73: i18n Support
+- `AgentMessages`: lightweight internationalization framework
+  - ResourceBundle-based message externalization with UTF-8 encoding
+  - Parameterized messages with {0}, {1}, {2}... positional arguments
+  - Multi-locale caching (ConcurrentHashMap), auto-fallback to English
+  - System property auto-detection: `weaver-girl.messages` or `user.language`
+  - `parseLocale()`: locale string parser (zh_CN, en-US, ja_JP)
+  - `formatMessage()`: simple placeholder formatter
+  - `hasKey()`, `getKeys()`: key existence and enumeration
+- Message files:
+  - `META-INF/agent-messages.properties` (English — 50+ messages)
+  - `META-INF/agent-messages_zh_CN.properties` (Chinese Simplified — complete translation)
+- Coverage: Bootstrap, Plugin, Interceptor, Config, Diagnostics, Security, Export, Alert, Persistence, Compatibility, Errors
+- 32 tests
+
+---
+
 ## P71-P72 — Maturity & Performance (2026-06-04)
 
 ### P71: Plugin Version Compatibility Checker

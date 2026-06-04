@@ -293,7 +293,7 @@ Agent 自身健康状态的深度诊断能力。
 |------|------|
 | 源代码行数 | ~25,000 |
 | 测试代码行数 | ~27,000 |
-| 测试总数 | 1018 (227 api + 486 core + 283 plugins + 15 agent + 7 sample) / 全部通过 |
+| 测试总数 | 1050 (227 api + 518 core + 283 plugins + 15 agent + 7 sample) / 全部通过 |
 | 提交总数 | 140+ |
 | Maven 模块 | 6 |
 | 内置插件 | 16 |
@@ -332,10 +332,20 @@ Agent 自身健康状态的深度诊断能力。
   - 池大小上限验证 (10 容量压力测试)
 - ✅ 19 个测试
 
-### P73: 国际化 (i18n) [MEDIUM] 🔲
+### P73: 国际化 (i18n) [MEDIUM] ✅
 
-- 🔲 日志消息国际化
-- 🔲 错误码消息国际化
+- ✅ AgentMessages (轻量级国际化框架)
+  - ResourceBundle 消息外部化
+  - UTF-8 编码加载 (PropertyResourceBundle)
+  - 参数化消息 ({0}, {1}, {2}... 占位符替换)
+  - 多 Locale 缓存 (ConcurrentHashMap)
+  - 自动回退到英文 (缺失翻译时)
+  - 系统属性自动检测 (weaver-girl.messages / user.language)
+- ✅ 消息资源文件:
+  - agent-messages.properties (英文 — 50+ 消息)
+  - agent-messages_zh_CN.properties (简体中文 — 完整翻译)
+- ✅ 覆盖: Bootstrap, Plugin, Interceptor, Config, Diagnostics, Security, Export, Alert, Persistence, Compatibility, Errors
+- ✅ 32 个测试
 
 ### P74: 文档完善 [LOW] 🔲
 
