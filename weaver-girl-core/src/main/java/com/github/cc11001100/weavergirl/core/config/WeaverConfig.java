@@ -101,6 +101,12 @@ public class WeaverConfig {
         private String after;
         private String around;
         private int priority;
+        private String classAnnotation;
+        private String superClass;
+        private String interfaceName;
+        private String methodAnnotation;
+        private String methodSignature;
+        private String pointcut;
 
         public String getClassName() { return className; }
         public void setClassName(String className) { this.className = className; }
@@ -125,5 +131,23 @@ public class WeaverConfig {
 
         public int getPriority() { return priority; }
         public void setPriority(int priority) { this.priority = priority; }
+
+        public String getClassAnnotation() { return classAnnotation; }
+        public void setClassAnnotation(String classAnnotation) { this.classAnnotation = classAnnotation; }
+
+        public String getSuperClass() { return superClass; }
+        public void setSuperClass(String superClass) { this.superClass = superClass; }
+
+        public String getInterfaceName() { return interfaceName; }
+        public void setInterfaceName(String interfaceName) { this.interfaceName = interfaceName; }
+
+        public String getMethodAnnotation() { return methodAnnotation; }
+        public void setMethodAnnotation(String methodAnnotation) { this.methodAnnotation = methodAnnotation; }
+
+        public String getMethodSignature() { return methodSignature; }
+        public void setMethodSignature(String methodSignature) { this.methodSignature = methodSignature; }
+
+        public String getPointcut() { return pointcut; }
+        public void setPointcut(String pointcut) { this.pointcut = pointcut; }
     }
 }

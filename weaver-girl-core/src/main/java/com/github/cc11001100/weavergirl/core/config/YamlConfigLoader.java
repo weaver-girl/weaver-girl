@@ -6,6 +6,8 @@ import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
+import com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression;
+import com.github.cc11001100.weavergirl.api.pointcut.PointcutParser;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -141,18 +143,95 @@ public class YamlConfigLoader {
     }
 
     private void registerInterceptorConfig(WeaverConfig.InterceptorConfig ic, InterceptorRegistry registry) {
-        ClassMatcher classMatcher = ic.getClassPattern() != null && !ic.getClassPattern().isEmpty()
-                ? ClassMatcher.byNamePattern(ic.getClassPattern())
-                : ClassMatcher.byName(ic.getClassName());
-
-        MethodMatcher methodMatcher = ic.getMethodPattern() != null && !ic.getMethodPattern().isEmpty()
-                ? MethodMatcher.byNamePattern(ic.getMethodPattern())
-                : (ic.getMethod() != null ? MethodMatcher.byName(ic.getMethod()) : MethodMatcher.any());
-
+        // 1. If pointcut expression specified, use it directly
+        if (ic.getPointcut() != null && !ic.getPointcut().isEmpty()) {
+            registerFromPointcutExpression(ic, registry);
+            return;
+        }
+        // 2. Build from individual fields (backward compatible)
+        ClassMatcher classMatcher = buildClassMatcher(ic);
+        MethodMatcher methodMatcher = buildMethodMatcher(ic);
         Interceptor interceptor = buildInterceptor(ic);
         Pointcut pointcut = new Pointcut(classMatcher, methodMatcher);
-        String name = "yaml-" + ic.getClassName() + "-" + (ic.getMethod() != null ? ic.getMethod() : "*");
+        String name = buildInterceptorName(ic);
+        InterceptorDefinition definition = new InterceptorDefinition(name, pointcut, interceptor, ic.getPriority());
+        registry.register(definition);
+    }
 
+    private ClassMatcher buildClassMatcher(WeaverConfig.InterceptorConfig ic) {
+        if (ic.getClassPattern() != null && !ic.getClassPattern().isEmpty()) {
+            return ClassMatcher.byNamePattern(ic.getClassPattern());
+        }
+        if (ic.getClassAnnotation() != null && !ic.getClassAnnotation().isEmpty()) {
+            return ClassMatcher.byAnnotation(ic.getClassAnnotation());
+        }
+        if (ic.getSuperClass() != null && !ic.getSuperClass().isEmpty()) {
+            return ClassMatcher.bySuperClass(ic.getSuperClass());
+        }
+        if (ic.getInterfaceName() != null && !ic.getInterfaceName().isEmpty()) {
+            return ClassMatcher.byInterface(ic.getInterfaceName());
+        }
+        return ClassMatcher.byName(ic.getClassName());
+    }
+
+    private MethodMatcher buildMethodMatcher(WeaverConfig.InterceptorConfig ic) {
+        if (ic.getMethodPattern() != null && !ic.getMethodPattern().isEmpty()) {
+            return MethodMatcher.byNamePattern(ic.getMethodPattern());
+        }
+        if (ic.getMethodAnnotation() != null && !ic.getMethodAnnotation().isEmpty()) {
+            return MethodMatcher.byAnnotation(ic.getMethodAnnotation());
+        }
+        if (ic.getMethodSignature() != null && !ic.getMethodSignature().isEmpty()) {
+            String sig = ic.getMethodSignature();
+            int parenIdx = sig.indexOf('(');
+            if (parenIdx > 0 && sig.endsWith(")")) {
+                String methodName = sig.substring(0, parenIdx);
+                String params = sig.substring(parenIdx + 1, sig.length() - 1);
+                return MethodMatcher.bySignature(methodName, params);
+            }
+            return MethodMatcher.byName(sig);
+        }
+        if (ic.getMethod() != null && !ic.getMethod().isEmpty()) {
+            return MethodMatcher.byName(ic.getMethod());
+        }
+        return MethodMatcher.any();
+    }
+
+    private String buildInterceptorName(WeaverConfig.InterceptorConfig ic) {
+        String classPart;
+        if (ic.getClassPattern() != null && !ic.getClassPattern().isEmpty()) {
+            classPart = ic.getClassPattern();
+        } else if (ic.getClassAnnotation() != null && !ic.getClassAnnotation().isEmpty()) {
+            classPart = "@" + ic.getClassAnnotation();
+        } else if (ic.getSuperClass() != null && !ic.getSuperClass().isEmpty()) {
+            classPart = "extends:" + ic.getSuperClass();
+        } else if (ic.getInterfaceName() != null && !ic.getInterfaceName().isEmpty()) {
+            classPart = "implements:" + ic.getInterfaceName();
+        } else {
+            classPart = ic.getClassName() != null ? ic.getClassName() : "*";
+        }
+
+        String methodPart;
+        if (ic.getMethodPattern() != null && !ic.getMethodPattern().isEmpty()) {
+            methodPart = ic.getMethodPattern();
+        } else if (ic.getMethodAnnotation() != null && !ic.getMethodAnnotation().isEmpty()) {
+            methodPart = "@" + ic.getMethodAnnotation();
+        } else if (ic.getMethodSignature() != null && !ic.getMethodSignature().isEmpty()) {
+            methodPart = ic.getMethodSignature();
+        } else if (ic.getMethod() != null && !ic.getMethod().isEmpty()) {
+            methodPart = ic.getMethod();
+        } else {
+            methodPart = "*";
+        }
+
+        return "yaml-" + classPart + "-" + methodPart;
+    }
+
+    private void registerFromPointcutExpression(WeaverConfig.InterceptorConfig ic, InterceptorRegistry registry) {
+        PointcutExpression expression = PointcutParser.getInstance().parse(ic.getPointcut());
+        Pointcut pointcut = expression.toPointcut();
+        Interceptor interceptor = buildInterceptor(ic);
+        String name = "yaml-pointcut-" + ic.getPointcut().hashCode();
         InterceptorDefinition definition = new InterceptorDefinition(name, pointcut, interceptor, ic.getPriority());
         registry.register(definition);
     }
@@ -233,9 +312,15 @@ public class YamlConfigLoader {
         List<WeaverConfig.InterceptorConfig> valid = new ArrayList<>();
         for (WeaverConfig.InterceptorConfig ic : config.getInterceptors()) {
             List<String> errors = new ArrayList<>();
-            if ((ic.getClassName() == null || ic.getClassName().isEmpty())
-                    && (ic.getClassPattern() == null || ic.getClassPattern().isEmpty())) {
-                errors.add("no className or classPattern specified");
+
+            boolean hasClassTarget = (ic.getClassName() != null && !ic.getClassName().isEmpty())
+                    || (ic.getClassPattern() != null && !ic.getClassPattern().isEmpty())
+                    || (ic.getClassAnnotation() != null && !ic.getClassAnnotation().isEmpty())
+                    || (ic.getSuperClass() != null && !ic.getSuperClass().isEmpty())
+                    || (ic.getInterfaceName() != null && !ic.getInterfaceName().isEmpty())
+                    || (ic.getPointcut() != null && !ic.getPointcut().isEmpty());
+            if (!hasClassTarget) {
+                errors.add("no class target specified (className, classPattern, classAnnotation, superClass, interfaceName, or pointcut)");
             }
             if ((ic.getBefore() == null || ic.getBefore().isEmpty())
                     && (ic.getAfter() == null || ic.getAfter().isEmpty())
