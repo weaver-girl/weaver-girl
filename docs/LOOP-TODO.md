@@ -293,7 +293,7 @@ Agent 自身健康状态的深度诊断能力。
 |------|------|
 | 源代码行数 | ~27,000 |
 | 测试代码行数 | ~30,000 |
-| 测试总数 | 1095 (227 api + 563 core + 283 plugins + 15 agent + 7 sample) / 全部通过 |
+| 测试总数 | 1125 (227 api + 593 core + 283 plugins + 15 agent + 7 sample) / 全部通过 |
 | 提交总数 | 145+ |
 | Maven 模块 | 6 |
 | 内置插件 | 16 |
@@ -327,10 +327,22 @@ Agent 自身健康状态的深度诊断能力。
   - 异常容错 (指标抛异常 → DOWN + error detail)
 - ✅ 30 个测试
 
-### P77: MetricReporter — 指标周期性上报 [MEDIUM] 🔲
+### P77: MetricReporter — 指标周期性上报 [MEDIUM] ✅
 
-- 🔲 MetricReporter 定期指标采集和上报
-- 🔲 支持多种输出格式 (JSON, Prometheus, Log)
+- ✅ MetricReporter (定期指标采集和上报)
+  - 多指标供应器注册 (ConcurrentHashMap)
+  - 可插拔格式化器 (MetricFormatter SPI)
+  - 内置格式化器: JsonFormatter, LogFormatter
+  - 可配置采集间隔和历史保留数量
+  - ScheduledExecutorService 守护线程调度
+  - 优雅 start/stop 生命周期
+  - 有界历史记录 (CopyOnWriteArrayList)
+  - 异常容错 (采集失败记录 error detail)
+- ✅ MetricSnapshot (不可变指标快照)
+  - timestamp + values 不可变 map
+  - toJson() JSON 输出
+- ✅ MetricFormatter SPI (format(MetricSnapshot) 接口)
+- ✅ 30 个测试
 
 ### P78: RateLimiter — 自适应限流 [MEDIUM] 🔲
 

@@ -4,6 +4,25 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## P77 — Metric Reporter (2026-06-04)
+
+### P77: Periodic Metric Reporter
+- `MetricReporter`: periodic metric collection and reporting
+  - Named metric suppliers registered via `registerMetric(name, supplier)`
+  - Pluggable formatters via `MetricFormatter` SPI
+  - Built-in formatters: `JsonFormatter` (structured JSON to SLF4J), `LogFormatter` (human-readable lines)
+  - Configurable collection interval and history retention size
+  - Scheduled daemon thread execution with graceful start/stop
+  - Bounded history (CopyOnWriteArrayList)
+  - Exception-safe: supplier failures recorded as `error:` prefix
+- `MetricSnapshot`: immutable timestamped snapshot of metric values
+  - `toJson()` for endpoint rendering
+  - Unmodifiable values map
+- `MetricFormatter`: functional interface for pluggable output formats
+- 30 tests
+
+---
+
 ## P76 — Health Check Subsystem (2026-06-04)
 
 ### P76: Advanced Health Check Subsystem
