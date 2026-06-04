@@ -5,6 +5,8 @@ import com.github.cc11001100.weavergirl.api.tracing.SpanContext;
 import com.github.cc11001100.weavergirl.core.exporter.SpanData;
 import com.github.cc11001100.weavergirl.core.exporter.SpanExporter;
 
+import java.util.Map;
+
 /**
  * Bridge connecting Tracer to SpanExporter.
  * Implements SpanCompletionListener and submits completed spans to SpanExporter.
@@ -20,16 +22,21 @@ public class TracerSpanExporterBridge implements SpanCompletionListener {
 
     @Override
     public void onSpanComplete(SpanContext span, long durationMs) {
-        SpanData spanData = SpanData.builder()
+        SpanData.Builder spanDataBuilder = SpanData.builder()
                 .traceId(span.getTraceId())
                 .spanId(span.getSpanId())
                 .parentSpanId(span.getParentSpanId())
                 .operationName(span.getOperationName() != null ? span.getOperationName() : "unknown")
                 .startTimeMs(span.getStartTimeMs())
                 .durationMs(durationMs)
-                .status("OK")
-                .build();
-        exporter.submit(spanData);
+                .status("OK");
+
+        // Copy baggage to attributes
+        for (Map.Entry<String, String> entry : span.getBaggage().entrySet()) {
+            spanDataBuilder.attribute("baggage." + entry.getKey(), entry.getValue());
+        }
+
+        exporter.submit(spanDataBuilder.build());
     }
 
     /**

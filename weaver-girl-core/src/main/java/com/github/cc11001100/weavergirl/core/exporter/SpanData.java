@@ -1,7 +1,11 @@
 package com.github.cc11001100.weavergirl.core.exporter;
 
+import com.github.cc11001100.weavergirl.api.tracing.SpanLink;
+
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -17,6 +21,7 @@ public class SpanData {
     private final long durationMs;
     private final Map<String, String> attributes;
     private final String status;
+    private final List<SpanLink> links;
 
     private SpanData(Builder builder) {
         this.traceId = builder.traceId;
@@ -27,6 +32,7 @@ public class SpanData {
         this.durationMs = builder.durationMs;
         this.attributes = Collections.unmodifiableMap(new LinkedHashMap<>(builder.attributes));
         this.status = builder.status;
+        this.links = Collections.unmodifiableList(new ArrayList<>(builder.links));
     }
 
     public String getTraceId() { return traceId; }
@@ -37,6 +43,7 @@ public class SpanData {
     public long getDurationMs() { return durationMs; }
     public Map<String, String> getAttributes() { return attributes; }
     public String getStatus() { return status; }
+    public List<SpanLink> getLinks() { return links; }
 
     /**
      * Convert to OTLP-compatible JSON string.
@@ -64,6 +71,29 @@ public class SpanData {
             }
             sb.append("]");
         }
+        if (!links.isEmpty()) {
+            sb.append(",\"links\":[");
+            boolean firstLink = true;
+            for (SpanLink link : links) {
+                if (!firstLink) sb.append(",");
+                sb.append("{\"traceId\":\"").append(link.getTraceId()).append("\"");
+                sb.append(",\"spanId\":\"").append(link.getSpanId()).append("\"");
+                if (!link.getAttributes().isEmpty()) {
+                    sb.append(",\"attributes\":[");
+                    boolean firstAttr = true;
+                    for (Map.Entry<String, String> attrEntry : link.getAttributes().entrySet()) {
+                        if (!firstAttr) sb.append(",");
+                        sb.append("{\"key\":\"").append(attrEntry.getKey())
+                          .append("\",\"value\":{\"stringValue\":\"").append(attrEntry.getValue()).append("\"}}");
+                        firstAttr = false;
+                    }
+                    sb.append("]");
+                }
+                sb.append("}");
+                firstLink = false;
+            }
+            sb.append("]");
+        }
         sb.append("}");
         return sb.toString();
     }
@@ -85,6 +115,7 @@ public class SpanData {
         private long durationMs;
         private final Map<String, String> attributes = new LinkedHashMap<>();
         private String status = "OK";
+        private final List<SpanLink> links = new ArrayList<>();
 
         public Builder traceId(String v) { this.traceId = v; return this; }
         public Builder spanId(String v) { this.spanId = v; return this; }
@@ -94,6 +125,7 @@ public class SpanData {
         public Builder durationMs(long v) { this.durationMs = v; return this; }
         public Builder status(String v) { this.status = v; return this; }
         public Builder attribute(String key, String value) { attributes.put(key, value); return this; }
+        public Builder links(List<SpanLink> v) { this.links.clear(); this.links.addAll(v); return this; }
 
         public SpanData build() { return new SpanData(this); }
     }
