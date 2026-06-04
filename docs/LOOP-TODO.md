@@ -291,17 +291,61 @@ Agent 自身健康状态的深度诊断能力。
 
 | 指标 | 数值 |
 |------|------|
-| 源代码行数 | ~25,000 |
-| 测试代码行数 | ~27,000 |
-| 测试总数 | 1065 (227 api + 533 core + 283 plugins + 15 agent + 7 sample) / 全部通过 |
-| 提交总数 | 140+ |
+| 源代码行数 | ~27,000 |
+| 测试代码行数 | ~30,000 |
+| 测试总数 | 1095 (227 api + 563 core + 283 plugins + 15 agent + 7 sample) / 全部通过 |
+| 提交总数 | 145+ |
 | Maven 模块 | 6 |
 | 内置插件 | 16 |
-| API 包 | config, tenant, sampling, tracing, security, compat, exporter, alert, topology, metrics, plugin(扩展) |
-| Core 组件 | DynamicConfigManager, PluginManager, Diagnostics, AsyncEventPublisher, CachedRegistry, LoggingExporter, InMemoryExporter, AgentApiServer, ConfigValidator, AgentStateSnapshot, AgentStatePersister |
+| API 包 | config, tenant, sampling, tracing, security, compat, exporter, alert, topology, metrics, plugin, health |
+| Core 组件 | DynamicConfigManager, PluginManager, Diagnostics, AsyncEventPublisher, CachedRegistry, LoggingExporter, InMemoryExporter, AgentApiServer, ConfigValidator, AgentStateSnapshot, AgentStatePersister, PluginCompatibilityChecker, LockFreeObjectPool, AgentMessages, ReleaseInfo, CompositeHealthIndicator |
 | 运维资源 | Grafana 仪表盘 (JVM + 拦截器), 加载脚本, REST API (7 endpoints) |
 
 ---
+
+## 第九阶段：深度运维 (P76-P80) 🔄
+
+### P76: 高级健康检查子系统 [HIGH] ✅
+
+- ✅ HealthIndicator (函数式健康检查接口)
+- ✅ HealthStatus (组件健康状态: UP/DEGRADED/DOWN/UNKNOWN)
+  - Builder 模式 (status/detail/up/down/degraded)
+  - 不可变 details map
+  - isUp()/isDown() 便捷方法
+  - toJson() JSON 输出
+- ✅ HealthReport (聚合健康报告)
+  - 整体状态 (任一 DOWN → DOWN, 任一 DEGRADED → DEGRADED)
+  - 组件级健康详情
+  - 检查耗时统计
+  - upCount/downCount/componentCount
+  - toJson() 完整 JSON 输出
+- ✅ CompositeHealthIndicator (健康检查注册表)
+  - Singleton 模式
+  - register/unregister 动态注册
+  - check() 全量检查
+  - checkComponent(name) 单组件检查
+  - 异常容错 (指标抛异常 → DOWN + error detail)
+- ✅ 30 个测试
+
+### P77: MetricReporter — 指标周期性上报 [MEDIUM] 🔲
+
+- 🔲 MetricReporter 定期指标采集和上报
+- 🔲 支持多种输出格式 (JSON, Prometheus, Log)
+
+### P78: RateLimiter — 自适应限流 [MEDIUM] 🔲
+
+- 🔲 令牌桶/滑动窗口限流器
+- 🔲 自适应限流 (根据系统负载调整)
+
+### P79: SpanExporter — 链路数据导出 [LOW] 🔲
+
+- 🔲 Trace/Span 数据批量导出接口
+- 🔲 OTLP 格式导出
+
+### P80: Agent 自更新机制 [LOW] 🔲
+
+- 🔲 版本检测和更新提示
+- 🔲 滚动升级支持
 
 ## 第八阶段：成熟度提升 (P71-P75) 🔄
 

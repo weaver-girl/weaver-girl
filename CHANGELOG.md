@@ -4,6 +4,29 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## P76 — Health Check Subsystem (2026-06-04)
+
+### P76: Advanced Health Check Subsystem
+- `HealthIndicator`: functional interface for component health checks
+- `HealthStatus`: component health result with builder pattern
+  - Status values: UP, DEGRADED, DOWN, UNKNOWN
+  - Immutable detail map with arbitrary key-value pairs
+  - `isUp()`/`isDown()` convenience methods
+  - `toJson()` for HTTP endpoint rendering
+- `HealthReport`: composite health report
+  - Overall status: DOWN if any component DOWN, DEGRADED if any DEGRADED
+  - Per-component health details
+  - Check duration tracking
+  - `upCount()`/`downCount()`/`componentCount()`
+  - `toJson()` for full JSON output
+- `CompositeHealthIndicator`: singleton health indicator registry
+  - Dynamic register/unregister
+  - `check()` runs all indicators, exception-safe (→ DOWN with error detail)
+  - `checkComponent(name)` for single component
+- 30 tests
+
+---
+
 ## P75 — Release Preparation (2026-06-04)
 
 ### P75: Release Info & Integrity Verification
