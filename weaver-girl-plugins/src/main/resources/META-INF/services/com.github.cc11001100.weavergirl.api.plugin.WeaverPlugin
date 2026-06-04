@@ -11,3 +11,6 @@ com.github.cc11001100.weavergirl.plugins.kafka.KafkaPlugin
 com.github.cc11001100.weavergirl.plugins.mongo.MongoPlugin
 com.github.cc11001100.weavergirl.plugins.logging.LoggingPlugin
 com.github.cc11001100.weavergirl.plugins.hikari.HikariPlugin
+com.github.cc11001100.weavergirl.plugins.okhttp.OkHttpPlugin
+com.github.cc11001100.weavergirl.plugins.rabbitmq.RabbitMQPlugin
+com.github.cc11001100.weavergirl.plugins.elasticsearch.ElasticsearchPlugin

@@ -114,6 +114,7 @@ Agent 自身健康状态的深度诊断能力。
 | P51-P55: 生产级扩展 | ✅ | 2026-06-04 | 2026-06-04 |
 | P56-P60: 生态扩展 | ✅ | 2026-06-04 | 2026-06-04 |
 | P61-P65: 运维体验 | ✅ | 2026-06-04 | 2026-06-04 |
+| P66-P70: 广度扩展 | ✅ | 2026-06-04 | 2026-06-04 |
 
 ---
 
@@ -220,16 +221,117 @@ Agent 自身健康状态的深度诊断能力。
 
 ---
 
+## 第七阶段：广度扩展 (P66-P70) ✅
+
+> P61-P65 已完成。聚焦更多框架覆盖、端到端测试、状态持久化。
+
+### P66: OkHttp 插件 [HIGH] ✅
+
+- ✅ OkHttp 专用插件 (okhttp3.RealCall 拦截 + 连接池监控)
+- ✅ 支持 OkHttp 3.x/4.x (RealCall 路径兼容)
+- ✅ 连接池指标追踪 (idleConnectionCount, connectionCount)
+- ✅ 请求/响应详情提取 (URL, method, code, body size, protocol)
+- ✅ Trace 传播 (X-Trace-Id, X-Span-Id header injection)
+- ✅ 28 个测试
+
+### P67: RabbitMQ 插件 [MEDIUM] ✅
+
+- ✅ 生产者拦截 (basicPublish: exchange, routingKey, message size)
+- ✅ 消费者 ACK 拦截 (basicAck, basicNack, basicReject + deliveryTag)
+- ✅ 连接生命周期拦截 (newConnection: host, port, timing)
+- ✅ AMQP 消息头 Trace 传播 (X-Trace-Id, X-Span-Id)
+- ✅ 28 个测试
+
+### P68: 端到端集成测试 [MEDIUM] ✅
+
+- ✅ FullAgentLifecycleTest: 10 阶段完整生命周期测试
+  - Bootstrap & Registration
+  - Interception & Events
+  - Circuit Breaker (trip, cooldown, reset)
+  - Sampling Controller
+  - Dynamic Config (listener, rollback)
+  - State Persistence
+  - Multi-Plugin Coordination
+  - Concurrent Stress (registration, lookup)
+  - Error Recovery (隔离失败插件)
+  - Graceful Shutdown
+  - Unregistration
+  - Registry Lookup (byInterface)
+- ✅ 16 个测试
+
+### P69: Agent 状态持久化 [LOW] ✅
+
+- ✅ AgentStateSnapshot (Properties 格式持久化)
+  - 拦截器计数、变换类计数、调用计数、错误计数
+  - Agent 运行时间、采样率、熔断阈值
+  - 配置快照、插件状态、自定义指标、健康状态
+  - 链式 API、线程安全 (ConcurrentHashMap)
+- ✅ AgentStatePersister (定期快照调度器)
+  - 可配置的快照间隔和目录
+  - 定时快照 + 优雅关机最终快照
+  - SnapshotListener 回调 (onSnapshot, onRestore)
+  - StateProvider SPI 接口
+- ✅ 32 + 19 = 51 个测试
+
+### P70: Elasticsearch 插件 [LOW] ✅
+
+- ✅ RestHighLevelClient 拦截 (search, index, bulk, delete, update, get, msearch, scroll, reindex, count, exists)
+- ✅ ES 8.x Java Client 拦截 (co.elastic.clients.elasticsearch.ElasticsearchClient)
+- ✅ RestClient 底层拦截 (performRequest + endpoint + statusCode)
+- ✅ 索引名提取 (getIndex/index/indices)
+- ✅ 搜索结果提取 (hitCount via getHits/total/value)
+- ✅ 服务端耗时提取 (took)
+- ✅ Bulk 操作大小追踪
+- ✅ Trace Header 注入 (setHeader/putHeader)
+- ✅ 28 个测试
+
+---
+
 ## 当前统计
 
 | 指标 | 数值 |
 |------|------|
-| 源代码行数 | ~21,000 |
-| 测试代码行数 | ~21,000 |
-| 测试总数 | 360 (core) + 227 (api) / 全部通过 |
+| 源代码行数 | ~25,000 |
+| 测试代码行数 | ~27,000 |
+| 测试总数 | 959 (227 api + 427 core + 283 plugins + 15 agent + 7 sample) / 全部通过 |
 | 提交总数 | 140+ |
 | Maven 模块 | 6 |
-| 内置插件 | 13 |
+| 内置插件 | 16 |
 | API 包 | config, tenant, sampling, tracing, security, compat, exporter, alert, topology, metrics, plugin(扩展) |
-| Core 组件 | DynamicConfigManager, PluginManager, Diagnostics, AsyncEventPublisher, CachedRegistry, LoggingExporter, InMemoryExporter, AgentApiServer, ConfigValidator |
+| Core 组件 | DynamicConfigManager, PluginManager, Diagnostics, AsyncEventPublisher, CachedRegistry, LoggingExporter, InMemoryExporter, AgentApiServer, ConfigValidator, AgentStateSnapshot, AgentStatePersister |
 | 运维资源 | Grafana 仪表盘 (JVM + 拦截器), 加载脚本, REST API (7 endpoints) |
+
+---
+
+## 第八阶段：成熟度提升 (P71-P75) 🔲
+
+> P66-P70 已完成。聚焦文档完善、性能调优、国际化、Benchmark 套件、Plugin 版本兼容性。
+
+### P71: Plugin 版本兼容性检查 [HIGH] 🔲
+
+- 🔲 插件 API 版本兼容性声明
+- 🔲 运行时版本检查和告警
+- 🔲 不兼容插件自动禁用
+
+### P72: 性能调优与 Zero-Allocation 优化 [MEDIUM] 🔲
+
+- 🔲 MethodInvocation 对象池优化
+- 🔅 热路径零分配验证
+- 🔲 JMH Benchmark 基线更新
+
+### P73: 国际化 (i18n) [MEDIUM] 🔲
+
+- 🔲 日志消息国际化
+- 🔲 错误码消息国际化
+
+### P74: 文档完善 [LOW] 🔲
+
+- 🔲 Quick Start 指南改进
+- 🔲 架构图更新 (新增组件)
+- 🔲 Plugin 开发教程完善
+
+### P75: 发布准备 [LOW] 🔲
+
+- 🔲 Release 自动化流程完善
+- 🔲 Maven Central 发布准备
+- 🔲 安全签名和校验

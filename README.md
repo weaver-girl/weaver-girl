@@ -53,7 +53,7 @@ interceptors:
 
 ## Features
 
-- **13 Built-in Plugins**: Servlet, Spring, JDBC, Redis, Kafka, gRPC, MongoDB, HttpClient, HikariCP, MethodTiming, TraceCorrelation, ExceptionMonitor, Logging
+- **16 Built-in Plugins**: Servlet, Spring, JDBC, Redis, Kafka, gRPC, MongoDB, HttpClient, HikariCP, MethodTiming, TraceCorrelation, ExceptionMonitor, Logging, OkHttp, RabbitMQ, Elasticsearch
 - **Three Hook Modes**: Programmatic API, Annotation-driven, YAML configuration
 - **Plugin System**: SPI-based plugin discovery with dependency resolution, ClassLoader isolation, conditional enable/disable, state management, and hot loading
 - **ByteBuddy Advice**: Zero-allocation inlined method interception with skip & return-value override
@@ -81,6 +81,7 @@ interceptors:
 - **W3C Trace Context**: Full traceparent/tracestate propagation across services
 - **Config Validation**: Schema-based config validation with error/warning reporting
 - **Plugin Health**: Runtime health monitoring for all loaded plugins
+- **State Persistence**: Agent state snapshot/restore across JVM restarts
 - **Quality Gates**: JaCoCo (80%+ coverage), SpotBugs, CheckStyle enforced in build
 
 ## Programmatic API
@@ -128,6 +129,9 @@ public class MyInterceptor {
 | `kafka` | Apache Kafka | `slowThreshold` (ms) |
 | `mongo` | MongoDB Driver | `slowThreshold` (ms) |
 | `hikari` | HikariCP | `leakThresholdMs`, `trackAcquisition` |
+| `okhttp` | OkHttp 3.x/4.x | `slowThreshold` (ms), `trackConnectionPool` |
+| `rabbitmq` | RabbitMQ Client | `slowPublishThreshold` (ms), `slowConsumeThreshold` (ms) |
+| `elasticsearch` | ES REST/Java Client | `slowQueryThreshold` (ms), `trackBulkSize` |
 | `timing` | Any method | `slowThreshold` (ms) |
 | `trace-correlation` | HTTP headers | `headerName` |
 | `exception` | Any exception | `maxStackTraceLength` |
@@ -213,7 +217,7 @@ docker-compose up
 | `weaver-girl-api` | Plugin SDK — interfaces and value objects |
 | `weaver-girl-core` | Engine — ByteBuddy transformer, registry, config |
 | `weaver-girl-annotation` | Declarative annotations for interceptors |
-| `weaver-girl-plugins` | 13 built-in instrumentation plugins |
+| `weaver-girl-plugins` | 16 built-in instrumentation plugins |
 | `weaver-girl-agent` | Agent entry point (premain/agentmain) |
 | `weaver-girl-sample` | Sample application demonstrating all modes |
 

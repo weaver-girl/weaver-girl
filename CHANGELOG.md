@@ -4,6 +4,67 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## P66-P70 — Breadth Expansion (2026-06-04)
+
+### P66: OkHttp Plugin
+- `OkHttpPlugin`: dedicated OkHttp instrumentation beyond generic HttpClientPlugin
+- Call lifecycle tracking: `execute()` and `enqueue()` with timing
+- Connection pool metrics: idle/total connection count monitoring
+- Request/Response detail extraction: URL, method, status code, body size, protocol
+- Trace propagation via OkHttp Request builder (X-Trace-Id, X-Span-Id)
+- Compatible with OkHttp 3.x and 4.x (RealCall path variants)
+- 28 tests
+
+### P67: RabbitMQ Plugin
+- `RabbitMQPlugin`: AMQP producer/consumer instrumentation
+- Producer: `basicPublish` timing, exchange/routingKey extraction, message body size
+- Consumer: `basicAck`/`basicNack`/`basicReject` deliveryTag tracking
+- Connection: `newConnection` timing with host/port extraction
+- AMQP message header trace propagation (X-Trace-Id, X-Span-Id)
+- 28 tests
+
+### P68: End-to-End Integration Tests
+- `FullAgentLifecycleTest`: 10-phase comprehensive lifecycle test
+  - Bootstrap & Registration, Interception & Events
+  - Circuit Breaker (trip, cooldown, reset)
+  - Sampling Controller (rate verification)
+  - Dynamic Config (listener, snapshot, rollback)
+  - State Persistence (snapshot/restore roundtrip)
+  - Multi-Plugin Coordination (shared registry)
+  - Concurrent Stress (registration, lookup thread safety)
+  - Error Recovery (isolated plugin failures)
+  - Graceful Shutdown (state capture)
+  - Unregistration & Registry Lookup
+- 16 tests
+
+### P69: Agent State Persistence
+- `AgentStateSnapshot`: Properties-format state persistence
+  - Interceptor/class/invocation/error counts
+  - Agent uptime, sampling rate, circuit breaker threshold
+  - Per-plugin state, configuration snapshot, custom metrics, health status
+  - Chained builder API, thread-safe (ConcurrentHashMap)
+  - Save/load/delete/exists file operations
+- `AgentStatePersister`: periodic snapshot scheduler
+  - Configurable interval and directory
+  - Scheduled snapshots + graceful shutdown final snapshot
+  - SnapshotListener callbacks (onSnapshot, onRestore)
+  - StateProvider SPI for plugging in state capture logic
+- 32 + 19 = 51 tests
+
+### P70: Elasticsearch Plugin
+- `ElasticsearchPlugin`: multi-client ES instrumentation
+- RestHighLevelClient: search, index, bulk, delete, update, get, msearch, scroll, reindex, count, exists
+- ES 8.x Java Client: co.elastic.clients.elasticsearch.ElasticsearchClient
+- RestClient low-level: performRequest with endpoint and status code
+- Index name extraction (getIndex/index/indices)
+- Search result extraction (hitCount via getHits/total/value)
+- Server-side took time extraction
+- Bulk operation size tracking
+- Trace header injection (setHeader/putHeader)
+- 28 tests
+
+---
+
 ## P46-P65 — Enterprise & Ecosystem (2026-06-04)
 
 ### P46: Dynamic Configuration Center
