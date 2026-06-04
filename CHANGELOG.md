@@ -4,6 +4,33 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## P71-P72 — Maturity & Performance (2026-06-04)
+
+### P71: Plugin Version Compatibility Checker
+- `PluginCompatibilityChecker`: runtime plugin compatibility validation
+  - Agent version check: plugins declaring `minimumAgentVersion` are validated
+  - Duplicate detection: same-name same-version or older-version plugins rejected
+  - Newer version warning: same-name newer-version plugins supersede with warning
+  - Dependency presence: all declared plugin `depends` verified against available plugins
+  - Version format validation: semver-like format checked (X.Y.Z with optional -prerelease +build)
+  - Auto-disable: incompatible plugins automatically disabled (configurable)
+  - `CompatibilityReport`: structured result with warnings, errors, autoDisabled flag
+  - `compareVersions()`: semver comparison utility (handles SNAPSHOT, pre-release suffixes)
+  - Report collection: getReports(), getIncompatibleReports(), getCheckedCount(), getCompatibleCount()
+- 40 tests
+
+### P72: Lock-Free Object Pool
+- `LockFreeObjectPool<T>`: high-performance lock-free object pool for hot-path allocation reduction
+  - `ConcurrentLinkedQueue`-based: no locks on borrow/release
+  - Bounded pool size: prevents memory leaks by evicting excess objects
+  - Statistics: borrowCount, returnCount, hitCount, missCount, evictionCount, hitRate
+  - `PoolStats`: immutable statistics snapshot
+  - Thread-safe: verified with 20-thread × 500-operation stress test
+  - Capacity enforcement: pool stays within maxSize under contention
+- 19 tests
+
+---
+
 ## P66-P70 — Breadth Expansion (2026-06-04)
 
 ### P66: OkHttp Plugin
