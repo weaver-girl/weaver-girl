@@ -4,6 +4,21 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## P75 — Release Preparation (2026-06-04)
+
+### P75: Release Info & Integrity Verification
+- `ReleaseInfo`: release metadata singleton loaded from `META-INF/weaver-girl-release.properties`
+  - Version (semantic versioning), build timestamp, git commit hash, build number
+  - SHA-256 checksum for agent JAR integrity verification
+  - `verifyIntegrity()`: compare expected vs actual checksum
+  - `getSummary()`: human-readable release summary
+  - `toMap()`: structured output for APIs
+  - `sha256()`: utility for computing SHA-256 hashes
+  - Dev mode fallback when properties file absent (1.0.0-SNAPSHOT)
+- 15 tests
+
+---
+
 ## P74 — Documentation Update (2026-06-04)
 
 ### P74: Documentation Improvements

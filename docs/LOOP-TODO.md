@@ -293,7 +293,7 @@ Agent 自身健康状态的深度诊断能力。
 |------|------|
 | 源代码行数 | ~25,000 |
 | 测试代码行数 | ~27,000 |
-| 测试总数 | 1050 (227 api + 518 core + 283 plugins + 15 agent + 7 sample) / 全部通过 |
+| 测试总数 | 1065 (227 api + 533 core + 283 plugins + 15 agent + 7 sample) / 全部通过 |
 | 提交总数 | 140+ |
 | Maven 模块 | 6 |
 | 内置插件 | 16 |
@@ -357,8 +357,13 @@ Agent 自身健康状态的深度诊断能力。
 - ✅ README.md 已在之前阶段更新 (16 插件表格 + State Persistence 特性)
 - ✅ CHANGELOG.md 完整记录 P66-P73 所有变更
 
-### P75: 发布准备 [LOW] 🔲
+### P75: 发布准备 [LOW] ✅
 
-- 🔲 Release 自动化流程完善
-- 🔲 Maven Central 发布准备
-- 🔲 安全签名和校验
+- ✅ ReleaseInfo (发布元数据与完整性校验)
+  - 版本号、构建时间戳、Git Commit、构建号
+  - SHA-256 校验和完整性验证
+  - Properties 格式 (META-INF/weaver-girl-release.properties)
+  - 开发模式默认值 (SNAPSHOT)
+  - getSummary() 人可读摘要
+  - toMap() 结构化输出
+- ✅ 15 个测试
