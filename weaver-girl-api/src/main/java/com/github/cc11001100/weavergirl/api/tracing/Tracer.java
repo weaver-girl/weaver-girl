@@ -19,6 +19,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class Tracer {
 
     private static final ThreadLocal<SpanContext> CURRENT_SPAN = new ThreadLocal<>();
+    private static volatile SpanCompletionListener completionListener;
     private static final String TRACE_ID_HEADER = "X-Trace-Id";
     private static final String SPAN_ID_HEADER = "X-Span-Id";
     private static final String PARENT_SPAN_HEADER = "X-Parent-Span-Id";
@@ -26,6 +27,13 @@ public final class Tracer {
     private static final String BAGGAGE_PREFIX = "X-Baggage-";
 
     private Tracer() {
+    }
+
+    /**
+     * Set the completion listener to be notified when spans end.
+     */
+    public static void setCompletionListener(SpanCompletionListener listener) {
+        completionListener = listener;
     }
 
     // ===== Current span management =====
@@ -83,6 +91,43 @@ public final class Tracer {
         SpanContext child = parent.newChild(generateId());
         CURRENT_SPAN.set(child);
         return child;
+    }
+
+    /**
+     * End the current span, notify listener, and clear it.
+     *
+     * @param operationName the operation name for this span
+     * @param status the span status (e.g., "OK", "ERROR")
+     * @return the completed span context, or null if no span was active
+     */
+    public static SpanContext endSpan(String operationName, String status) {
+        SpanContext span = CURRENT_SPAN.get();
+        if (span == null) return null;
+
+        long durationMs = System.currentTimeMillis() - span.getStartTimeMs();
+
+        // Update operation name if provided
+        SpanContext finalSpan = span;
+        if (operationName != null && !operationName.isEmpty()) {
+            finalSpan = SpanContext.builder()
+                    .traceId(span.getTraceId())
+                    .spanId(span.getSpanId())
+                    .parentSpanId(span.getParentSpanId())
+                    .sampled(span.isSampled())
+                    .baggage(span.getBaggage())
+                    .startTimeMs(span.getStartTimeMs())
+                    .operationName(operationName)
+                    .build();
+        }
+
+        CURRENT_SPAN.remove();
+
+        SpanCompletionListener listener = completionListener;
+        if (listener != null) {
+            listener.onSpanComplete(finalSpan, durationMs);
+        }
+
+        return finalSpan;
     }
 
     // ===== Cross-thread propagation =====

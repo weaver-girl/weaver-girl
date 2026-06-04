@@ -17,6 +17,8 @@ public class SpanContext {
     private final String parentSpanId;
     private final Map<String, String> baggage;
     private final boolean sampled;
+    private final long startTimeMs;
+    private final String operationName;
 
     private SpanContext(Builder builder) {
         this.traceId = builder.traceId;
@@ -24,6 +26,8 @@ public class SpanContext {
         this.parentSpanId = builder.parentSpanId;
         this.baggage = Collections.unmodifiableMap(new LinkedHashMap<>(builder.baggage));
         this.sampled = builder.sampled;
+        this.startTimeMs = builder.startTimeMs;
+        this.operationName = builder.operationName;
     }
 
     /** Trace ID (unique per trace). */
@@ -48,6 +52,12 @@ public class SpanContext {
 
     /** Whether this is a root span (no parent). */
     public boolean isRoot() { return parentSpanId == null; }
+
+    /** Start time in milliseconds since epoch. */
+    public long getStartTimeMs() { return startTimeMs; }
+
+    /** Logical name for the operation (e.g., "HTTP GET /api/users"). */
+    public String getOperationName() { return operationName; }
 
     /**
      * Create a child span context from this one.
@@ -81,6 +91,8 @@ public class SpanContext {
         private String parentSpanId;
         private final Map<String, String> baggage = new LinkedHashMap<>();
         private boolean sampled = true;
+        private long startTimeMs = System.currentTimeMillis();
+        private String operationName = "";
 
         public Builder traceId(String traceId) { this.traceId = traceId; return this; }
         public Builder spanId(String spanId) { this.spanId = spanId; return this; }
@@ -88,6 +100,8 @@ public class SpanContext {
         public Builder sampled(boolean sampled) { this.sampled = sampled; return this; }
         public Builder baggage(String key, String value) { this.baggage.put(key, value); return this; }
         public Builder baggage(Map<String, String> items) { this.baggage.putAll(items); return this; }
+        public Builder startTimeMs(long startTimeMs) { this.startTimeMs = startTimeMs; return this; }
+        public Builder operationName(String operationName) { this.operationName = operationName; return this; }
 
         public SpanContext build() {
             if (traceId == null || traceId.isEmpty()) {
@@ -103,6 +117,7 @@ public class SpanContext {
     @Override
     public String toString() {
         return "SpanContext{trace=" + traceId + ", span=" + spanId
-                + ", parent=" + parentSpanId + ", baggage=" + baggage.size() + "}";
+                + ", parent=" + parentSpanId + ", op=" + operationName
+                + ", baggage=" + baggage.size() + "}";
     }
 }
