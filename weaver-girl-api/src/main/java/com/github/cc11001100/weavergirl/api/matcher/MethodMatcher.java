@@ -181,6 +181,11 @@ public class MethodMatcher {
                 if (parenIdx < 0) return false;
                 String patternName = pattern.substring(0, parenIdx);
                 return patternName.equals(methodName);
+            case ANNOTATION:
+                // Annotation matching is resolved by the core engine (ByteBuddy)
+                // at bytecode-instrumentation time. If this method is being called,
+                // the method has already been selected by ByteBuddy's annotation matcher.
+                return true;
             default:
                 return false;
         }

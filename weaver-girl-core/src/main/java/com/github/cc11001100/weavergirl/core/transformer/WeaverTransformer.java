@@ -32,6 +32,7 @@ import static net.bytebuddy.matcher.ElementMatchers.isAbstract;
 import static net.bytebuddy.matcher.ElementMatchers.isInterface;
 import static net.bytebuddy.matcher.ElementMatchers.isAnnotatedWith;
 import static net.bytebuddy.matcher.ElementMatchers.hasSuperType;
+import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
 import static net.bytebuddy.matcher.ElementMatchers.not;
 
 /**
@@ -281,6 +282,27 @@ public class WeaverTransformer {
                 break;
             case NAME_PATTERN:
                 userMatcher = nameMatches(methodMatcher.getPattern());
+                break;
+            case ANNOTATION:
+                userMatcher = isAnnotatedWith(named(methodMatcher.getPattern()));
+                break;
+            case SIGNATURE:
+                // Pattern is "methodName(param1,param2)" — match name and parameter count
+                String sigPattern = methodMatcher.getPattern();
+                int parenIdx = sigPattern.indexOf('(');
+                if (parenIdx < 0) {
+                    userMatcher = named(sigPattern);
+                } else {
+                    String methodName = sigPattern.substring(0, parenIdx);
+                    String paramPart = sigPattern.substring(parenIdx + 1, sigPattern.length() - 1);
+                    userMatcher = named(methodName);
+                    if (paramPart.isEmpty()) {
+                        userMatcher = userMatcher.and(takesArguments(0));
+                    } else {
+                        int paramCount = paramPart.split(",").length;
+                        userMatcher = userMatcher.and(takesArguments(paramCount));
+                    }
+                }
                 break;
             case ANY:
                 userMatcher = isMethod();
