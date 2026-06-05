@@ -200,6 +200,62 @@ public class WeaverGirl {
     }
 
     /**
+     * Start a fluent interceptor definition for classes matching a regex name pattern.
+     *
+     * <p>Example: interceptClassPattern("com\\.example\\..*Service")</p>
+     *
+     * @param classPattern a Java regex pattern for class names
+     * @return a new InterceptBuilder with pattern-based class matching
+     * @since 1.2.0
+     */
+    public InterceptBuilder interceptClassPattern(String classPattern) {
+        ValidationUtils.requireNonEmpty(classPattern, "classPattern");
+        return new InterceptBuilder(this, ClassMatcher.byNamePattern(classPattern));
+    }
+
+    /**
+     * Start a fluent interceptor definition for classes annotated with the given annotation.
+     *
+     * <p>Example: interceptAnnotated("com.example.Monitored")</p>
+     *
+     * @param annotationClassName the fully-qualified annotation class name
+     * @return a new InterceptBuilder with annotation-based class matching
+     * @since 1.2.0
+     */
+    public InterceptBuilder interceptAnnotated(String annotationClassName) {
+        ValidationUtils.requireNonEmpty(annotationClassName, "annotationClassName");
+        return new InterceptBuilder(this, ClassMatcher.byAnnotation(annotationClassName));
+    }
+
+    /**
+     * Start a fluent interceptor definition for classes extending the given superclass.
+     *
+     * <p>Example: interceptSubclassOf("com.example.BaseService")</p>
+     *
+     * @param superClassName the fully-qualified superclass name
+     * @return a new InterceptBuilder with superclass-based class matching
+     * @since 1.2.0
+     */
+    public InterceptBuilder interceptSubclassOf(String superClassName) {
+        ValidationUtils.requireNonEmpty(superClassName, "superClassName");
+        return new InterceptBuilder(this, ClassMatcher.bySuperClass(superClassName));
+    }
+
+    /**
+     * Start a fluent interceptor definition for classes implementing the given interface.
+     *
+     * <p>Example: interceptImplementing("java.io.Serializable")</p>
+     *
+     * @param interfaceName the fully-qualified interface name
+     * @return a new InterceptBuilder with interface-based class matching
+     * @since 1.2.0
+     */
+    public InterceptBuilder interceptImplementing(String interfaceName) {
+        ValidationUtils.requireNonEmpty(interfaceName, "interfaceName");
+        return new InterceptBuilder(this, ClassMatcher.byInterface(interfaceName));
+    }
+
+    /**
      * Start a fluent interceptor definition using a pointcut expression.
      * @since 1.1.0
      */
@@ -261,22 +317,63 @@ public class WeaverGirl {
 
     /**
      * Fluent builder for programmatic interceptor registration.
+     *
+     * <p>Supports all 5 ClassMatcher types and 5 MethodMatcher types,
+     * matching the expressiveness of {@code AbstractPlugin}'s builder API.</p>
+     *
+     * @since 1.0.0
      */
     public static class InterceptBuilder {
         private final WeaverGirl weaverGirl;
-        private final String className;
-        private String methodName = "*";
+        private final ClassMatcher classMatcher;
+        private MethodMatcher methodMatcher;
         private int priority = 0;
         private Interceptor interceptor;
 
         InterceptBuilder(WeaverGirl weaverGirl, String className) {
             this.weaverGirl = weaverGirl;
-            this.className = className;
+            this.classMatcher = ClassMatcher.byName(className);
+            this.methodMatcher = MethodMatcher.any();
         }
 
+        InterceptBuilder(WeaverGirl weaverGirl, ClassMatcher classMatcher) {
+            this.weaverGirl = weaverGirl;
+            this.classMatcher = classMatcher;
+            this.methodMatcher = MethodMatcher.any();
+        }
+
+        /** Match methods by exact name. Passing "*" matches all methods. */
         public InterceptBuilder method(String methodName) {
             ValidationUtils.requireNonEmpty(methodName, "methodName");
-            this.methodName = methodName;
+            this.methodMatcher = "*".equals(methodName)
+                    ? MethodMatcher.any() : MethodMatcher.byName(methodName);
+            return this;
+        }
+
+        /** Match methods by regex name pattern. */
+        public InterceptBuilder methodPattern(String methodPattern) {
+            ValidationUtils.requireNonEmpty(methodPattern, "methodPattern");
+            this.methodMatcher = MethodMatcher.byNamePattern(methodPattern);
+            return this;
+        }
+
+        /** Match methods annotated with the given annotation. */
+        public InterceptBuilder methodAnnotated(String annotationClassName) {
+            ValidationUtils.requireNonEmpty(annotationClassName, "annotationClassName");
+            this.methodMatcher = MethodMatcher.byAnnotation(annotationClassName);
+            return this;
+        }
+
+        /** Match methods by signature: "methodName(paramTypes)". */
+        public InterceptBuilder methodSignature(String methodName, String paramTypes) {
+            ValidationUtils.requireNonEmpty(methodName, "methodName");
+            this.methodMatcher = MethodMatcher.bySignature(methodName, paramTypes);
+            return this;
+        }
+
+        /** Match all methods (default if no method matcher is specified). */
+        public InterceptBuilder anyMethod() {
+            this.methodMatcher = MethodMatcher.any();
             return this;
         }
 
@@ -343,23 +440,21 @@ public class WeaverGirl {
             return this;
         }
 
-        public WeaverGirl install() {
-            ClassMatcher classMatcher = ClassMatcher.byName(className);
-            MethodMatcher methodMatcher = "*".equals(methodName)
-                    ? MethodMatcher.any() : MethodMatcher.byName(methodName);
-            Pointcut pointcut = new Pointcut(classMatcher, methodMatcher);
-            if (interceptor == null) {
-                interceptor = new Interceptor() {};
-            }
-            InterceptorDefinition definition = new InterceptorDefinition(
-                    "programmatic-" + className + "-" + methodName, pointcut, interceptor, priority);
-            weaverGirl.registry.register(definition);
-            return weaverGirl;
-        }
-
         public InterceptBuilder priority(int priority) {
             this.priority = priority;
             return this;
+        }
+
+        public WeaverGirl install() {
+            if (interceptor == null) {
+                interceptor = new Interceptor() {};
+            }
+            Pointcut pointcut = new Pointcut(classMatcher, methodMatcher);
+            InterceptorDefinition definition = new InterceptorDefinition(
+                    "programmatic-" + classMatcher.getPattern() + "-" + methodMatcher.getPattern(),
+                    pointcut, interceptor, priority);
+            weaverGirl.registry.register(definition);
+            return weaverGirl;
         }
     }
 
