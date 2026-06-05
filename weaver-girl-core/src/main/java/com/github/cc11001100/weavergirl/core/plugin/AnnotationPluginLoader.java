@@ -7,6 +7,8 @@ import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
+import com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression;
+import com.github.cc11001100.weavergirl.api.pointcut.PointcutParser;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,10 +44,6 @@ public class AnnotationPluginLoader {
             return;
         }
 
-        ClassMatcher classMatcher = weaveClass.targetPattern().isEmpty()
-                ? ClassMatcher.byName(weaveClass.target())
-                : ClassMatcher.byNamePattern(weaveClass.targetPattern());
-
         Object interceptorInstance;
         try {
             interceptorInstance = clazz.getDeclaredConstructor().newInstance();
@@ -78,6 +76,35 @@ public class AnnotationPluginLoader {
         allTargetMethods.addAll(afterMethods.keySet());
         allTargetMethods.addAll(aroundMethods.keySet());
 
+        // PointcutExpression mode: register a single interceptor with the expression's pointcut
+        boolean usePointcutExpression = !weaveClass.pointcut().isEmpty();
+        if (usePointcutExpression) {
+            PointcutExpression expression = PointcutParser.getInstance().parse(weaveClass.pointcut());
+            Pointcut pointcut = expression.toPointcut();
+            Interceptor interceptor = createReflectiveInterceptor(interceptorInstance,
+                    flattenAll(beforeMethods), flattenAll(afterMethods), flattenAll(aroundMethods));
+            String defName = "annotation-" + clazz.getSimpleName();
+            InterceptorDefinition definition = new InterceptorDefinition(defName, pointcut, interceptor);
+            registry.register(definition);
+            return;
+        }
+
+        // --- Build ClassMatcher from WeaveClass attributes (priority order) ---
+        ClassMatcher classMatcher = buildClassMatcherFromAnnotation(weaveClass);
+
+        // Standard mode: one interceptor per target method
+        if (allTargetMethods.isEmpty()) {
+            // No @Before/@After/@Around methods — register a no-op interceptor matching all methods
+            MethodMatcher methodMatcher = MethodMatcher.any();
+            Interceptor interceptor = createReflectiveInterceptor(interceptorInstance,
+                    Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+            Pointcut pointcut = new Pointcut(classMatcher, methodMatcher);
+            String defName = "annotation-" + clazz.getSimpleName() + "-all";
+            InterceptorDefinition definition = new InterceptorDefinition(defName, pointcut, interceptor);
+            registry.register(definition);
+            return;
+        }
+
         for (String targetMethod : allTargetMethods) {
             List<Method> befores = beforeMethods.getOrDefault(targetMethod, Collections.emptyList());
             List<Method> afters = afterMethods.getOrDefault(targetMethod, Collections.emptyList());
@@ -91,6 +118,34 @@ public class AnnotationPluginLoader {
             InterceptorDefinition definition = new InterceptorDefinition(defName, pointcut, interceptor);
             registry.register(definition);
         }
+    }
+
+    /**
+     * Build a ClassMatcher from @WeaveClass annotation attributes.
+     * Priority order: targetAnnotation > targetSuperClass > targetInterface > targetPattern > target
+     */
+    private ClassMatcher buildClassMatcherFromAnnotation(WeaveClass weaveClass) {
+        if (!weaveClass.targetAnnotation().isEmpty()) {
+            return ClassMatcher.byAnnotation(weaveClass.targetAnnotation());
+        }
+        if (!weaveClass.targetSuperClass().isEmpty()) {
+            return ClassMatcher.bySuperClass(weaveClass.targetSuperClass());
+        }
+        if (!weaveClass.targetInterface().isEmpty()) {
+            return ClassMatcher.byInterface(weaveClass.targetInterface());
+        }
+        if (!weaveClass.targetPattern().isEmpty()) {
+            return ClassMatcher.byNamePattern(weaveClass.targetPattern());
+        }
+        return ClassMatcher.byName(weaveClass.target());
+    }
+
+    private List<Method> flattenAll(Map<String, List<Method>> methodsMap) {
+        List<Method> result = new ArrayList<>();
+        for (List<Method> methods : methodsMap.values()) {
+            result.addAll(methods);
+        }
+        return result;
     }
 
     private Interceptor createReflectiveInterceptor(Object instance,
