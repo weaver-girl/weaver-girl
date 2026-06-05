@@ -131,6 +131,24 @@ public class Pointcut {
         };
     }
 
+    /**
+     * Creates a negated version of this pointcut.
+     * Matches when this pointcut does NOT match.
+     *
+     * @return a new Pointcut that negates this one
+     */
+    public Pointcut negate() {
+        return new Pointcut(
+            this.classMatcher,
+            this.methodMatcher
+        ) {
+            @Override
+            public boolean matches(String className, String methodName) {
+                return !Pointcut.this.matches(className, methodName);
+            }
+        };
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

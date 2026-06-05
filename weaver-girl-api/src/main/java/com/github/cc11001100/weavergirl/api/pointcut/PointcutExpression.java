@@ -19,6 +19,7 @@ import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
  *   <li>{@link Type#SUBCLASS_OF} &mdash; subclass matching pointcut</li>
  *   <li>{@link Type#IMPLEMENTING} &mdash; interface implementation pointcut</li>
  *   <li>{@link Type#AND} / {@link Type#OR} &mdash; composite expressions</li>
+ *   <li>{@link Type#NOT} &mdash; logical negation</li>
  * </ul>
  *
  * <h3>Pattern conversion</h3>
@@ -53,7 +54,9 @@ public class PointcutExpression {
         /** Logical AND of two expressions. */
         AND,
         /** Logical OR of two expressions. */
-        OR
+        OR,
+        /** Logical NOT of an expression. */
+        NOT
     }
 
     private final Type type;
@@ -182,6 +185,17 @@ public class PointcutExpression {
                 null, null, null, null, left, right);
     }
 
+    /**
+     * Creates a NOT expression that negates the given expression.
+     *
+     * @param expr the expression to negate
+     * @return a new NOT expression
+     */
+    public static PointcutExpression not(PointcutExpression expr) {
+        return new PointcutExpression(Type.NOT, null, null, null, null,
+                null, null, null, null, expr, null);
+    }
+
     // ---- Getters ----
 
     /**
@@ -283,6 +297,15 @@ public class PointcutExpression {
         return right;
     }
 
+    /**
+     * Returns the operand for NOT expression.
+     *
+     * @return the negated expression, or null
+     */
+    public PointcutExpression getOperand() {
+        return left;
+    }
+
     // ---- Conversion ----
 
     /**
@@ -314,6 +337,8 @@ public class PointcutExpression {
                 return left.toPointcut().and(right.toPointcut());
             case OR:
                 return left.toPointcut().or(right.toPointcut());
+            case NOT:
+                return left.toPointcut().negate();
             default:
                 throw new IllegalStateException("Unknown expression type: " + type);
         }
@@ -348,6 +373,8 @@ public class PointcutExpression {
                 return left.toPointcutWithClassScope(classScope).and(right.toPointcutWithClassScope(classScope));
             case OR:
                 return left.toPointcutWithClassScope(classScope).or(right.toPointcutWithClassScope(classScope));
+            case NOT:
+                return left.toPointcutWithClassScope(classScope).negate();
             default:
                 throw new IllegalStateException("Unknown expression type: " + type);
         }
@@ -435,6 +462,8 @@ public class PointcutExpression {
                 return "(" + left + " && " + right + ")";
             case OR:
                 return "(" + left + " || " + right + ")";
+            case NOT:
+                return "!(" + left + ")";
             default:
                 return "PointcutExpression{type=" + type + "}";
         }

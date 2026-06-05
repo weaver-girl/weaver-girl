@@ -86,6 +86,16 @@ public class PointcutParser {
             return PointcutExpression.and(left, right);
         }
 
+        // Handle NOT operator: !expr — highest precedence among logical operators
+        if (expr.startsWith("!")) {
+            String rest = expr.substring(1).trim();
+            if (rest.isEmpty()) {
+                throw new IllegalArgumentException("Invalid pointcut expression: dangling '!' operator");
+            }
+            PointcutExpression negated = parseInternal(rest);
+            return PointcutExpression.not(negated);
+        }
+
         // Parse atomic expression
         return parseAtomic(expr);
     }
