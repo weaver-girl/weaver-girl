@@ -33,7 +33,7 @@ public class DefaultDynamicConfigManager implements DynamicConfigManager {
     private static final int MAX_SNAPSHOTS = 50;
     private static final int MAX_AUDIT_ENTRIES = 1000;
 
-    private final ConcurrentHashMap<String, String> config = new ConcurrentHashMap<>();
+    private volatile ConcurrentHashMap<String, String> config = new ConcurrentHashMap<>();
     private final CopyOnWriteArrayList<ConfigChangeListener> globalListeners = new CopyOnWriteArrayList<>();
     private final ConcurrentHashMap<String, CopyOnWriteArrayList<ConfigChangeListener>> keyListeners = new ConcurrentHashMap<>();
     private final CopyOnWriteArrayList<ConfigSnapshot> snapshots = new CopyOnWriteArrayList<>();
@@ -189,8 +189,9 @@ public class DefaultDynamicConfigManager implements DynamicConfigManager {
 
         // Clear current config and apply snapshot
         Map<String, String> oldConfig = new LinkedHashMap<>(config);
-        config.clear();
-        config.putAll(target.getConfig());
+        // Atomic swap: build new config from target, then replace the reference entirely
+        ConcurrentHashMap<String, String> newConfig = new ConcurrentHashMap<>(target.getConfig());
+        this.config = newConfig;
 
         // Fire change events for each changed key
         String source = "rollback-to-v" + target.getVersion();

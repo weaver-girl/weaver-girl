@@ -68,9 +68,9 @@ public class PrometheusExporter implements InterceptorEventListener {
             byte[] bytes = body.getBytes("UTF-8");
             exchange.getResponseHeaders().set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
             exchange.sendResponseHeaders(200, bytes.length);
-            OutputStream os = exchange.getResponseBody();
-            os.write(bytes);
-            os.close();
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(bytes);
+            }
         });
         server.setExecutor(null);
         server.start();
