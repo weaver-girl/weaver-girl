@@ -44,6 +44,25 @@ public final class MetricRegistry {
     }
 
     /**
+     * Get or create an aggregator with a custom window, logging a warning
+     * if the requested window differs from the existing aggregator's window.
+     *
+     * @param name     metric name
+     * @param windowMs time window in milliseconds
+     * @return the aggregator
+     */
+    public static TimeWindowAggregator getOrCreateStrict(String name, long windowMs) {
+        TimeWindowAggregator existing = aggregators.get(name);
+        if (existing != null && existing.getWindowMs() != windowMs) {
+            System.getLogger(MetricRegistry.class.getName())
+                    .log(System.Logger.Level.WARNING,
+                            "Metric '" + name + "' already exists with window "
+                                    + existing.getWindowMs() + "ms, ignoring requested window " + windowMs + "ms");
+        }
+        return getOrCreate(name, windowMs);
+    }
+
+    /**
      * Record a value to a named metric.
      *
      * @param name  metric name

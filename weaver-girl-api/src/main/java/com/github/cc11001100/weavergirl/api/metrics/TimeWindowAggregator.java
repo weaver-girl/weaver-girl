@@ -59,7 +59,8 @@ public class TimeWindowAggregator {
 
         long count = values.size();
         if (count == 0) {
-            return new MetricSnapshot(now - windowMs, now, name, 0, 0, 0, 0, null);
+            return new MetricSnapshot(now - windowMs, now, name, 0, 0,
+                    Double.MAX_VALUE, Double.MIN_VALUE, Collections.emptyMap());
         }
 
         double sum = 0, min = Double.MAX_VALUE, max = Double.MIN_VALUE;
