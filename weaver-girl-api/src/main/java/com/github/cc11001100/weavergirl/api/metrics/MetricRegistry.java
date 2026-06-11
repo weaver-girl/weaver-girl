@@ -85,6 +85,64 @@ public final class MetricRegistry {
     }
 
     /**
+     * Record a value with labels/tags.
+     * The metric key is composed as "name{key1=val1,key2=val2}".
+     *
+     * @param name   metric name
+     * @param labels label key-value pairs
+     * @param value  the value
+     */
+    public static void record(String name, Map<String, String> labels, double value) {
+        String key = labeledKey(name, labels);
+        getOrCreate(key).record(value);
+    }
+
+    /**
+     * Take a snapshot of a labeled metric.
+     *
+     * @param name   metric name
+     * @param labels label key-value pairs
+     * @return snapshot with labels attached, or null if metric doesn't exist
+     */
+    public static MetricSnapshot snapshot(String name, Map<String, String> labels) {
+        String key = labeledKey(name, labels);
+        MetricSnapshot snap = snapshot(key);
+        if (snap == null) return null;
+        return new MetricSnapshot(snap.getWindowStartMs(), snap.getWindowEndMs(),
+                snap.getMetricName(), snap.getCount(), snap.getSum(), snap.getMin(), snap.getMax(),
+                snap.getPercentiles(), labels);
+    }
+
+    /**
+     * Get all metric names that match a base name (with or without labels).
+     *
+     * @param baseName the base metric name
+     * @return list of matching full metric keys
+     */
+    public static List<String> getMetricsByName(String baseName) {
+        List<String> result = new ArrayList<>();
+        for (String key : aggregators.keySet()) {
+            if (key.equals(baseName) || key.startsWith(baseName + "{")) {
+                result.add(key);
+            }
+        }
+        return result;
+    }
+
+    private static String labeledKey(String name, Map<String, String> labels) {
+        if (labels == null || labels.isEmpty()) return name;
+        StringBuilder sb = new StringBuilder(name).append("{");
+        boolean first = true;
+        for (Map.Entry<String, String> e : new TreeMap<>(labels).entrySet()) {
+            if (!first) sb.append(",");
+            sb.append(e.getKey()).append("=").append(e.getValue());
+            first = false;
+        }
+        sb.append("}");
+        return sb.toString();
+    }
+
+    /**
      * Remove a metric.
      */
     public static void remove(String name) {

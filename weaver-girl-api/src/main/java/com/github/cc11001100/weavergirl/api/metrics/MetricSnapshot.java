@@ -18,10 +18,17 @@ public class MetricSnapshot {
     private final double max;
     private final double avg;
     private final Map<Double, Double> percentiles;
+    private final Map<String, String> labels;
 
     public MetricSnapshot(long windowStartMs, long windowEndMs, String metricName,
                           long count, double sum, double min, double max,
                           Map<Double, Double> percentiles) {
+        this(windowStartMs, windowEndMs, metricName, count, sum, min, max, percentiles, Collections.emptyMap());
+    }
+
+    public MetricSnapshot(long windowStartMs, long windowEndMs, String metricName,
+                          long count, double sum, double min, double max,
+                          Map<Double, Double> percentiles, Map<String, String> labels) {
         this.windowStartMs = windowStartMs;
         this.windowEndMs = windowEndMs;
         this.metricName = metricName;
@@ -32,6 +39,9 @@ public class MetricSnapshot {
         this.avg = count > 0 ? sum / count : 0;
         this.percentiles = percentiles != null
                 ? Collections.unmodifiableMap(new LinkedHashMap<>(percentiles))
+                : Collections.emptyMap();
+        this.labels = labels != null
+                ? Collections.unmodifiableMap(new LinkedHashMap<>(labels))
                 : Collections.emptyMap();
     }
 
@@ -59,6 +69,9 @@ public class MetricSnapshot {
     /** Average value. */
     public double getAvg() { return avg; }
 
+    /** Metric labels/tags. */
+    public Map<String, String> getLabels() { return labels; }
+
     /** Percentile values (e.g. 0.5 → p50, 0.99 → p99). */
     public Map<Double, Double> getPercentiles() { return percentiles; }
 
@@ -75,7 +88,8 @@ public class MetricSnapshot {
 
     @Override
     public String toString() {
-        return String.format("MetricSnapshot{%s: count=%d, avg=%.2f, p99=%.2f}",
-                metricName, count, avg, getPercentile(0.99));
+        String labelStr = labels.isEmpty() ? "" : labels.toString();
+        return String.format("MetricSnapshot{%s%s: count=%d, avg=%.2f, p99=%.2f}",
+                metricName, labelStr, count, avg, getPercentile(0.99));
     }
 }
