@@ -19,6 +19,8 @@ public class WeaverConfig {
     private Integer maxTransformations;      // max number of classes to transform
     private List<String> onlyInterceptPackages; // limit instrumentation to these packages
     private List<String> disabledPlugins;     // plugin names to skip during loading
+    /** Alert rule configurations. */
+    private List<AlertRuleConfig> alertRules = new ArrayList<>();
 
     public List<InterceptorConfig> getInterceptors() {
         return interceptors;
@@ -90,6 +92,65 @@ public class WeaverConfig {
 
     public void setDisabledPlugins(List<String> disabledPlugins) {
         this.disabledPlugins = disabledPlugins;
+    }
+
+    public List<AlertRuleConfig> getAlertRules() {
+        return alertRules != null ? alertRules : new ArrayList<>();
+    }
+
+    public void setAlertRules(List<AlertRuleConfig> alertRules) {
+        this.alertRules = alertRules;
+    }
+
+    /**
+     * Configuration for an alert rule, loaded from YAML.
+     */
+    public static class AlertRuleConfig {
+        private String name;
+        private String type = "custom";
+        private String metric;
+        private String operator = "gt";
+        private double threshold;
+        private long windowMs = 60000;
+        private String severity = "warning";
+        private String message;
+        private boolean enabled = true;
+
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public String getType() { return type; }
+        public void setType(String type) { this.type = type; }
+        public String getMetric() { return metric; }
+        public void setMetric(String metric) { this.metric = metric; }
+        public String getOperator() { return operator; }
+        public void setOperator(String operator) { this.operator = operator; }
+        public double getThreshold() { return threshold; }
+        public void setThreshold(double threshold) { this.threshold = threshold; }
+        public long getWindowMs() { return windowMs; }
+        public void setWindowMs(long windowMs) { this.windowMs = windowMs; }
+        public String getSeverity() { return severity; }
+        public void setSeverity(String severity) { this.severity = severity; }
+        public String getMessage() { return message; }
+        public void setMessage(String message) { this.message = message; }
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+        /**
+         * Convert to an AlertRule instance.
+         */
+        public com.github.cc11001100.weavergirl.api.alert.AlertRule toAlertRule() {
+            return com.github.cc11001100.weavergirl.api.alert.AlertRule.builder()
+                    .name(name)
+                    .type(type)
+                    .metric(metric)
+                    .operator(operator)
+                    .threshold(threshold)
+                    .windowMs(windowMs)
+                    .severity(severity)
+                    .message(message)
+                    .enabled(enabled)
+                    .build();
+        }
     }
 
     public static class InterceptorConfig {
