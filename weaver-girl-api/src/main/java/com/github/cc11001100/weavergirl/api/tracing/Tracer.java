@@ -19,7 +19,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class Tracer {
 
     private static final ThreadLocal<SpanContext> CURRENT_SPAN = new ThreadLocal<>();
-    private static volatile SpanCompletionListener completionListener;
+    private static final CompositeSpanCompletionListener completionListeners = new CompositeSpanCompletionListener();
     private static final String TRACE_ID_HEADER = "X-Trace-Id";
     private static final String SPAN_ID_HEADER = "X-Span-Id";
     private static final String PARENT_SPAN_HEADER = "X-Parent-Span-Id";
@@ -30,10 +30,28 @@ public final class Tracer {
     }
 
     /**
-     * Set the completion listener to be notified when spans end.
+     * Set a single completion listener, replacing any previously set listeners.
+     * For adding multiple listeners, use {@link #addCompletionListener} instead.
      */
     public static void setCompletionListener(SpanCompletionListener listener) {
-        completionListener = listener;
+        completionListeners.getListeners().forEach(completionListeners::removeListener);
+        if (listener != null) {
+            completionListeners.addListener(listener);
+        }
+    }
+
+    /**
+     * Add a completion listener. Multiple listeners can be registered.
+     */
+    public static void addCompletionListener(SpanCompletionListener listener) {
+        completionListeners.addListener(listener);
+    }
+
+    /**
+     * Remove a previously added completion listener.
+     */
+    public static void removeCompletionListener(SpanCompletionListener listener) {
+        completionListeners.removeListener(listener);
     }
 
     // ===== Current span management =====
@@ -122,9 +140,8 @@ public final class Tracer {
 
         CURRENT_SPAN.remove();
 
-        SpanCompletionListener listener = completionListener;
-        if (listener != null) {
-            listener.onSpanComplete(finalSpan, durationMs);
+        if (completionListeners.size() > 0) {
+            completionListeners.onSpanComplete(finalSpan, durationMs);
         }
 
         return finalSpan;
