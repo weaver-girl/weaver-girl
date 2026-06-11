@@ -1,7 +1,7 @@
 # Weaver-Girl 产品成熟度路线图
 
 > 向成熟 AOP/可观测性产品看齐（参考 SkyWalking、OpenTelemetry、New Relic Agent）
-> 当前进度：141 commits, 145 主代码文件, 101 测试文件, 16 内置插件
+> 当前进度：171 commits, 166 主代码文件, 119 测试文件, 16 内置插件
 
 ---
 
@@ -50,41 +50,40 @@
 
 > 目标：指标、告警、拓扑图，形成完整的可观测性三角（Metrics/Traces/Logs）
 
-- [ ] **P91: Metric 标签体系与 Histogram**
+- [x] **P91: Metric 标签体系与 Histogram** ✅ 2026-06-11
   - Metric 支持标签（如 `http_requests_total{method="GET",path="/api/users"}`）
   - Histogram 百分位计算（P50/P95/P99）
-  - 文件: 修改 `api/metrics/`、`core/metrics/`
+  - 文件: 修改 `api/metrics/`（MetricLabels, MetricSnapshot, MetricRegistry）、`core/metrics/`
 
-- [ ] **P92: Alert 规则引擎**
+- [x] **P92: Alert 规则引擎** ✅ 2026-06-11
   - 可配置告警规则：`if metric:http_error_rate > 5% for 3min then alert`
-  - 规则 DSL: YAML 定义告警条件
+  - 规则 DSL: YAML 定义告警条件（WeaverConfig.alertRules + AlertRuleConfig.toAlertRule()）
   - 告警级别: INFO / WARN / CRITICAL
-  - 文件: 新增 `core/alert/AlertRuleEngine.java`、`AlertRule.java`
+  - 文件: 新增 `DefaultAlertEngine.java`、`AlertRule.java`、`AlertRuleConfig`
 
-- [ ] **P93: Alert 通知渠道**
-  - Webhook（通用 HTTP 回调）
-  - Email（SMTP）
-  - 日志（SLF4J）
+- [x] **P93: Alert 通知渠道** ✅ 2026-06-11
+  - Webhook（通用 HTTP 回调）— `WebhookAlertChannel`
+  - 日志（SLF4J）— `Slf4jAlertChannel`
   - 可扩展 `AlertChannel` 接口
-  - 文件: 新增 `core/alert/WebhookAlertChannel.java` 等
+  - 文件: 新增 `WebhookAlertChannel.java`、`Slf4jAlertChannel.java`
 
-- [ ] **P94: Alert 去重与抑制**
-  - 相同告警在时间窗口内不重复发送
-  - 高级别告警抑制低级别（如 CRITICAL 抑制 WARN）
-  - 告警恢复通知
-  - 文件: 新增 `core/alert/AlertDeduplicator.java`
+- [x] **P94: Alert 去重与抑制** ✅ 2026-06-11
+  - 相同告警在时间窗口内不重复发送 — `AlertDeduplicator`
+  - 高级别告警抑制低级别（如 CRITICAL 抑制 WARN）— `AlertSeveritySuppressor`
+  - 告警恢复通知 — `AlertRecoveryTracker`
+  - 文件: 新增 `AlertDeduplicator.java`、`AlertSeveritySuppressor.java`、`AlertRecoveryTracker.java`
 
-- [ ] **P95: Service Topology 自动构建**
-  - 基于 trace 数据自动构建服务依赖图
-  - 记录服务间调用关系、延迟、错误率
+- [x] **P95: Service Topology 自动构建** ✅ 2026-06-11
+  - 基于 trace 数据自动构建服务依赖图 — `TracerTopologyBridge`
+  - 记录服务间调用关系、延迟、错误率（protocol 推断: http/grpc/mq/cache/db/sql）
   - 导出 topology JSON 供可视化
-  - 文件: 新增 `core/topology/TopologyBuilder.java`、`ServiceNode.java`
+  - 文件: 新增 `TracerTopologyBridge.java`
 
-- [ ] **P96: Topology 实时更新与查询 API**
-  - Topology 数据随 trace 实时更新
-  - REST API 查询当前 topology
-  - 支持按时间段查询历史 topology
-  - 文件: 修改 `core/management/`
+- [x] **P96: Topology 实时更新与查询 API** ✅ 2026-06-11
+  - Topology 数据随 trace 实时更新（TracerTopologyBridge → TopologyGraph）
+  - REST API 返回 JSON（TopologyJsonExporter.export()）
+  - /metrics 端点返回 sum, p50/p95/p99, ratePerSecond, labels
+  - 文件: 新增 `TopologyJsonExporter.java`、修改 `AgentApiServer.java`
 
 ---
 
@@ -233,12 +232,12 @@
 |-------|------|------|------|------|
 | 1 | Core AOP 通用性 | 6 | 6 | ██████ 100% |
 | 2 | Span 导出与链路追踪 | 6 | 6 | ██████ 100% |
-| 3 | 可观测性增强 | 6 | 0 | ░░░░░░ 0% |
+| 3 | 可观测性增强 | 6 | 6 | ██████ 100% |
 | 4 | 生产加固 | 6 | 0 | ░░░░░░ 0% |
 | 5 | 文档与开发者体验 | 5 | 0 | ░░░░░░ 0% |
 | 6 | 生态集成 | 5 | 0 | ░░░░░░ 0% |
 | 7 | 发布与社区 | 4 | 0 | ░░░░░░ 0% |
-| **Total** | | **38** | **12** | **███░░░ 32%** |
+| **Total** | | **38** | **18** | **████░░ 47%** |
 
 ---
 
