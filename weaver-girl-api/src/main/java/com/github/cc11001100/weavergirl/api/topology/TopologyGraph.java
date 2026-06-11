@@ -139,9 +139,9 @@ public final class TopologyGraph {
         final String source;
         final String target;
         final String protocol;
-        long callCount;
-        long errorCount;
-        long totalDurationMs;
+        final java.util.concurrent.atomic.AtomicLong callCount = new java.util.concurrent.atomic.AtomicLong(0);
+        final java.util.concurrent.atomic.AtomicLong errorCount = new java.util.concurrent.atomic.AtomicLong(0);
+        final java.util.concurrent.atomic.AtomicLong totalDurationMs = new java.util.concurrent.atomic.AtomicLong(0);
 
         EdgeAccumulator(String source, String target, String protocol) {
             this.source = source;
@@ -149,15 +149,16 @@ public final class TopologyGraph {
             this.protocol = protocol;
         }
 
-        synchronized void record(long durationMs, boolean error) {
-            callCount++;
-            totalDurationMs += durationMs;
-            if (error) errorCount++;
+        void record(long durationMs, boolean error) {
+            callCount.incrementAndGet();
+            totalDurationMs.addAndGet(durationMs);
+            if (error) errorCount.incrementAndGet();
         }
 
         ServiceEdge toEdge() {
-            double avg = callCount > 0 ? (double) totalDurationMs / callCount : 0;
-            return new ServiceEdge(source, target, protocol, callCount, errorCount, avg);
+            long count = callCount.get();
+            double avg = count > 0 ? (double) totalDurationMs.get() / count : 0;
+            return new ServiceEdge(source, target, protocol, count, errorCount.get(), avg);
         }
     }
 }
