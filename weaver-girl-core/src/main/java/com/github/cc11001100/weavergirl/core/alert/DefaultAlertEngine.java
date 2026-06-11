@@ -157,16 +157,15 @@ public class DefaultAlertEngine {
     // ---- History ----
 
     /**
-     * Get alert history.
+     * Get alert history as an unmodifiable snapshot.
+     * Uses iteration instead of drain+re-offer to avoid data loss under concurrency.
      *
-     * @return list of past alert events
+     * @return unmodifiable list of past alert events
      */
     public List<AlertEvent> getHistory() {
         List<AlertEvent> snapshot = new ArrayList<>();
-        history.drainTo(snapshot);
-        // Put them back so history is not consumed by reading
-        for (AlertEvent event : snapshot) {
-            history.offer(event);
+        for (AlertEvent event : history) {
+            snapshot.add(event);
         }
         return Collections.unmodifiableList(snapshot);
     }

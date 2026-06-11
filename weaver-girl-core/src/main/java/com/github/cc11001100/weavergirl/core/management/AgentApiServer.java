@@ -1,6 +1,7 @@
 package com.github.cc11001100.weavergirl.core.management;
 
 import com.github.cc11001100.weavergirl.api.alert.AlertEngine;
+import com.github.cc11001100.weavergirl.core.alert.DefaultAlertEngine;
 import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
 import com.github.cc11001100.weavergirl.api.plugin.PluginManager;
 import com.github.cc11001100.weavergirl.api.topology.TopologyGraph;
@@ -36,9 +37,15 @@ public class AgentApiServer {
 
     private HttpServer server;
     private final int port;
+    private final DefaultAlertEngine alertEngine;
 
     public AgentApiServer(int port) {
+        this(port, null);
+    }
+
+    public AgentApiServer(int port, DefaultAlertEngine alertEngine) {
         this.port = port;
+        this.alertEngine = alertEngine;
     }
 
     /**
@@ -118,7 +125,8 @@ public class AgentApiServer {
     }
 
     private void handleAlerts(HttpExchange exchange) throws IOException {
-        List<com.github.cc11001100.weavergirl.api.alert.AlertEvent> alerts = AlertEngine.getHistory();
+        List<com.github.cc11001100.weavergirl.api.alert.AlertEvent> alerts = alertEngine != null ? alertEngine.getHistory()
+                : AlertEngine.getHistory();
         StringBuilder json = new StringBuilder("{\"alerts\":[");
         for (int i = 0; i < alerts.size(); i++) {
             if (i > 0) json.append(",");
