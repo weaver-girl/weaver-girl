@@ -28,6 +28,8 @@ public class DefaultAlertEngine {
     private final CopyOnWriteArrayList<AlertChannel> channels = new CopyOnWriteArrayList<>();
     private final LinkedBlockingQueue<AlertEvent> history = new LinkedBlockingQueue<>(MAX_HISTORY);
     private final AlertDeduplicator deduplicator;
+    private final AlertSeveritySuppressor severitySuppressor = new AlertSeveritySuppressor();
+    private final AlertRecoveryTracker recoveryTracker = new AlertRecoveryTracker();
 
     /**
      * Create a DefaultAlertEngine with the default 1-minute deduplication window.
@@ -118,27 +120,36 @@ public class DefaultAlertEngine {
             if (!metricName.equals(rule.getMetric())) {
                 continue;
             }
-            if (!rule.evaluate(value)) {
-                continue;
+            boolean alertFired = false;
+            if (rule.evaluate(value)) {
+                // Severity suppression: skip if higher-severity alert is active for same metric
+                if (severitySuppressor.shouldSuppress(metricName, rule.getSeverity())) {
+                    log.debug("Suppressed lower-severity alert for rule {} on metric {}", rule.getName(), metricName);
+                    // Still mark as active for recovery tracking
+                    alertFired = true;
+                } else if (deduplicator.shouldSuppress(rule.getName())) {
+                    log.debug("Suppressed duplicate alert for rule {}", rule.getName());
+                    alertFired = true;
+                } else {
+                    deduplicator.recordFire(rule.getName());
+                    severitySuppressor.recordActive(metricName, rule.getSeverity());
+                    AlertEvent event = new AlertEvent(
+                            System.currentTimeMillis(),
+                            rule.getName(),
+                            rule.getSeverity(),
+                            rule.getMessage() != null ? rule.getMessage()
+                                    : rule.getMetric() + " " + rule.getOperator() + " " + rule.getThreshold(),
+                            value,
+                            rule.getThreshold()
+                    );
+                    triggered.add(event);
+                    addToHistory(event);
+                    notifyChannels(event);
+                    alertFired = true;
+                }
             }
-            // Deduplication check
-            if (deduplicator.shouldSuppress(rule.getName())) {
-                log.debug("Suppressed duplicate alert for rule {}", rule.getName());
-                continue;
-            }
-            deduplicator.recordFire(rule.getName());
-            AlertEvent event = new AlertEvent(
-                    System.currentTimeMillis(),
-                    rule.getName(),
-                    rule.getSeverity(),
-                    rule.getMessage() != null ? rule.getMessage()
-                            : rule.getMetric() + " " + rule.getOperator() + " " + rule.getThreshold(),
-                    value,
-                    rule.getThreshold()
-            );
-            triggered.add(event);
-            addToHistory(event);
-            notifyChannels(event);
+            // Recovery detection
+            recoveryTracker.updateAndCheckRecovery(rule, value, alertFired, channels);
         }
         return triggered;
     }
@@ -168,6 +179,8 @@ public class DefaultAlertEngine {
         channels.clear();
         history.clear();
         deduplicator.clear();
+        severitySuppressor.clear();
+        recoveryTracker.clear();
     }
 
     // ---- Deduplication configuration ----
