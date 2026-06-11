@@ -47,9 +47,11 @@ class AgentApiServerTest {
     }
 
     @Test
-    void topologyEndpoint_returnsText() throws Exception {
+    void topologyEndpoint_returnsJson() throws Exception {
         String response = get("/topology");
-        assertTrue(response.contains("Service Topology"));
+        assertTrue(response.contains("\"nodes\""));
+        assertTrue(response.contains("\"edges\""));
+        assertTrue(response.contains("\"nodeCount\""));
     }
 
     @Test

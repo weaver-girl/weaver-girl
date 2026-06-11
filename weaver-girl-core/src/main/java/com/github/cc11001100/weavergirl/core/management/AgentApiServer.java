@@ -113,8 +113,8 @@ public class AgentApiServer {
     }
 
     private void handleTopology(HttpExchange exchange) throws IOException {
-        String text = TopologyGraph.toText();
-        sendText(exchange, text);
+        String json = com.github.cc11001100.weavergirl.core.topology.TopologyJsonExporter.export();
+        sendJson(exchange, json);
     }
 
     private void handleAlerts(HttpExchange exchange) throws IOException {
@@ -147,10 +147,24 @@ public class AgentApiServer {
             com.github.cc11001100.weavergirl.api.metrics.MetricSnapshot s = e.getValue();
             json.append("\"").append(esc(e.getKey())).append("\":{");
             json.append("\"count\":").append(s.getCount()).append(",");
+            json.append("\"sum\":").append(String.format("%.2f", s.getSum())).append(",");
             json.append("\"avg\":").append(String.format("%.2f", s.getAvg())).append(",");
             json.append("\"min\":").append(String.format("%.2f", s.getMin())).append(",");
             json.append("\"max\":").append(String.format("%.2f", s.getMax())).append(",");
-            json.append("\"p99\":").append(String.format("%.2f", s.getPercentile(0.99)));
+            json.append("\"p50\":").append(String.format("%.2f", s.getPercentile(0.50))).append(",");
+            json.append("\"p95\":").append(String.format("%.2f", s.getPercentile(0.95))).append(",");
+            json.append("\"p99\":").append(String.format("%.2f", s.getPercentile(0.99))).append(",");
+            json.append("\"ratePerSecond\":").append(String.format("%.2f", s.getRatePerSecond()));
+            if (!s.getLabels().isEmpty()) {
+                json.append(",\"labels\":{");
+                boolean lf = true;
+                for (java.util.Map.Entry<String, String> le : s.getLabels().entrySet()) {
+                    if (!lf) json.append(",");
+                    lf = false;
+                    json.append("\"").append(esc(le.getKey())).append("\":\"").append(esc(le.getValue())).append("\"");
+                }
+                json.append("}");
+            }
             json.append("}");
         }
         json.append("}}");
