@@ -18,7 +18,8 @@ import java.util.*;
 
 /**
  * Scans classes for weaver-girl annotations and registers them as interceptor definitions.
- * Supports @WeaveClass with @Before, @After, and @Around method annotations.
+ * Supports @WeaveClass with @Before, @After, @Around, @OnException, @AfterReturning,
+ * and @Order annotations.
  */
 public class AnnotationPluginLoader {
 
@@ -44,6 +45,13 @@ public class AnnotationPluginLoader {
             return;
         }
 
+        // Read @Order priority if present
+        int priority = 0;
+        Order orderAnnotation = clazz.getAnnotation(Order.class);
+        if (orderAnnotation != null) {
+            priority = orderAnnotation.value();
+        }
+
         Object interceptorInstance;
         try {
             interceptorInstance = clazz.getDeclaredConstructor().newInstance();
@@ -55,6 +63,8 @@ public class AnnotationPluginLoader {
         Map<String, List<Method>> beforeMethods = new HashMap<>();
         Map<String, List<Method>> afterMethods = new HashMap<>();
         Map<String, List<Method>> aroundMethods = new HashMap<>();
+        Map<String, List<Method>> onExceptionMethods = new HashMap<>();
+        Map<String, List<Method>> afterReturningMethods = new HashMap<>();
 
         for (Method m : clazz.getDeclaredMethods()) {
             if (m.isAnnotationPresent(Before.class)) {
@@ -69,12 +79,22 @@ public class AnnotationPluginLoader {
                 String targetMethod = m.getAnnotation(Around.class).value();
                 aroundMethods.computeIfAbsent(targetMethod, k -> new ArrayList<>()).add(m);
             }
+            if (m.isAnnotationPresent(OnException.class)) {
+                String targetMethod = m.getAnnotation(OnException.class).value();
+                onExceptionMethods.computeIfAbsent(targetMethod, k -> new ArrayList<>()).add(m);
+            }
+            if (m.isAnnotationPresent(AfterReturning.class)) {
+                String targetMethod = m.getAnnotation(AfterReturning.class).value();
+                afterReturningMethods.computeIfAbsent(targetMethod, k -> new ArrayList<>()).add(m);
+            }
         }
 
         Set<String> allTargetMethods = new HashSet<>();
         allTargetMethods.addAll(beforeMethods.keySet());
         allTargetMethods.addAll(afterMethods.keySet());
         allTargetMethods.addAll(aroundMethods.keySet());
+        allTargetMethods.addAll(onExceptionMethods.keySet());
+        allTargetMethods.addAll(afterReturningMethods.keySet());
 
         // PointcutExpression mode: register a single interceptor with the expression's pointcut
         boolean usePointcutExpression = !weaveClass.pointcut().isEmpty();
@@ -82,9 +102,10 @@ public class AnnotationPluginLoader {
             PointcutExpression expression = PointcutParser.getInstance().parse(weaveClass.pointcut());
             Pointcut pointcut = expression.toPointcut();
             Interceptor interceptor = createReflectiveInterceptor(interceptorInstance,
-                    flattenAll(beforeMethods), flattenAll(afterMethods), flattenAll(aroundMethods));
+                    flattenAll(beforeMethods), flattenAll(afterMethods), flattenAll(aroundMethods),
+                    flattenAll(onExceptionMethods), flattenAll(afterReturningMethods));
             String defName = "annotation-" + clazz.getSimpleName();
-            InterceptorDefinition definition = new InterceptorDefinition(defName, pointcut, interceptor);
+            InterceptorDefinition definition = new InterceptorDefinition(defName, pointcut, interceptor, priority);
             registry.register(definition);
             return;
         }
@@ -94,13 +115,14 @@ public class AnnotationPluginLoader {
 
         // Standard mode: one interceptor per target method
         if (allTargetMethods.isEmpty()) {
-            // No @Before/@After/@Around methods — register a no-op interceptor matching all methods
+            // No advice methods — register a no-op interceptor matching all methods
             MethodMatcher methodMatcher = MethodMatcher.any();
             Interceptor interceptor = createReflectiveInterceptor(interceptorInstance,
-                    Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+                    Collections.emptyList(), Collections.emptyList(), Collections.emptyList(),
+                    Collections.emptyList(), Collections.emptyList());
             Pointcut pointcut = new Pointcut(classMatcher, methodMatcher);
             String defName = "annotation-" + clazz.getSimpleName() + "-all";
-            InterceptorDefinition definition = new InterceptorDefinition(defName, pointcut, interceptor);
+            InterceptorDefinition definition = new InterceptorDefinition(defName, pointcut, interceptor, priority);
             registry.register(definition);
             return;
         }
@@ -109,13 +131,16 @@ public class AnnotationPluginLoader {
             List<Method> befores = beforeMethods.getOrDefault(targetMethod, Collections.emptyList());
             List<Method> afters = afterMethods.getOrDefault(targetMethod, Collections.emptyList());
             List<Method> arounds = aroundMethods.getOrDefault(targetMethod, Collections.emptyList());
+            List<Method> onExceptions = onExceptionMethods.getOrDefault(targetMethod, Collections.emptyList());
+            List<Method> afterReturnings = afterReturningMethods.getOrDefault(targetMethod, Collections.emptyList());
 
             MethodMatcher methodMatcher = MethodMatcher.byName(targetMethod);
-            Interceptor interceptor = createReflectiveInterceptor(interceptorInstance, befores, afters, arounds);
+            Interceptor interceptor = createReflectiveInterceptor(interceptorInstance,
+                    befores, afters, arounds, onExceptions, afterReturnings);
             Pointcut pointcut = new Pointcut(classMatcher, methodMatcher);
 
             String defName = "annotation-" + clazz.getSimpleName() + "-" + targetMethod;
-            InterceptorDefinition definition = new InterceptorDefinition(defName, pointcut, interceptor);
+            InterceptorDefinition definition = new InterceptorDefinition(defName, pointcut, interceptor, priority);
             registry.register(definition);
         }
     }
@@ -149,7 +174,8 @@ public class AnnotationPluginLoader {
     }
 
     private Interceptor createReflectiveInterceptor(Object instance,
-                                                    List<Method> befores, List<Method> afters, List<Method> arounds) {
+                                                    List<Method> befores, List<Method> afters, List<Method> arounds,
+                                                    List<Method> onExceptions, List<Method> afterReturnings) {
         return new Interceptor() {
             @Override
             public void before(MethodInvocation invocation) {
@@ -161,11 +187,15 @@ public class AnnotationPluginLoader {
             public void after(MethodInvocation invocation) {
                 invokeMethods(instance, arounds, invocation);
                 invokeMethods(instance, afters, invocation);
+                // @AfterReturning methods are only called on successful return (not on exception)
+                invokeMethods(instance, afterReturnings, invocation);
             }
 
             @Override
             public void onException(MethodInvocation invocation) {
                 invokeMethods(instance, arounds, invocation);
+                // @OnException methods are only called when an exception occurs
+                invokeMethods(instance, onExceptions, invocation);
             }
 
             private void invokeMethods(Object inst, List<Method> methods, MethodInvocation inv) {
