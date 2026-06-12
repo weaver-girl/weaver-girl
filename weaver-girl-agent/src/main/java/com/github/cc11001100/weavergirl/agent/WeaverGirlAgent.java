@@ -28,6 +28,7 @@ import java.util.Map;
  *   java -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml -jar app.jar
  *   java -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml,watch=true -jar app.jar
  *   java -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml,plugins=/path/to/plugins -jar app.jar
+ *   java -javaagent:weaver-girl-agent.jar=annotationPackages=com.example.hooks;com.example.aspects -jar app.jar
  * </pre>
  */
 public class WeaverGirlAgent {
@@ -141,6 +142,19 @@ public class WeaverGirlAgent {
                 PluginLoader pluginLoader = new PluginLoader();
                 pluginLoader.loadPluginsFromDirectory(pluginDir, weaverGirl.getRegistry(), args);
                 log.info("Plugins loaded from directory: {}", pluginDir);
+            }
+
+            // Scan for @WeaveClass-annotated interceptors if annotationPackages is specified
+            // Usage: -javaagent:weaver-girl-agent.jar=annotationPackages=com.example.interceptors,com.example.aspects
+            String annotationPackages = args.get("annotationPackages");
+            if (annotationPackages != null && !annotationPackages.isEmpty()) {
+                String[] packages = annotationPackages.split(";");
+                com.github.cc11001100.weavergirl.core.scanner.AnnotatedClassScanner scanner =
+                        new com.github.cc11001100.weavergirl.core.scanner.AnnotatedClassScanner();
+                int found = scanner.scanAndLoad(weaverGirl.getRegistry(),
+                        java.util.Arrays.stream(packages).map(String::trim).toArray(String[]::new));
+                log.info("Scanned {} annotation package(s), loaded {} @WeaveClass interceptors",
+                        packages.length, found);
             }
 
             // If dynamically attached, retransform already-loaded classes
