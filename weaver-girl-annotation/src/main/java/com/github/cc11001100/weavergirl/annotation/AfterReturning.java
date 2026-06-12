@@ -18,20 +18,6 @@ import java.lang.annotation.Target;
  * on successful return (not on exception). This provides cleaner semantics
  * when you need to post-process the return value.</p>
  *
- * <h3>Example:</h3>
- * <pre>
- * &#64;WeaveClass(target = "com.example.UserService")
- * public class UserResultTransformer {
- *     &#64;AfterReturning("findById")
- *     public void maskSensitiveFields(MethodInvocation inv) {
- *         User user = (User) inv.getReturnValue();
- *         if (user != null) {
- *             user.setPassword(null); // mask sensitive data
- *         }
- *     }
- * }
- * </pre>
- *
  * @see WeaveClass
  * @see Before
  * @see After
@@ -48,4 +34,13 @@ public @interface AfterReturning {
      * @return the target method name
      */
     String value();
+
+    /**
+     * Fully-qualified parameter type names to disambiguate overloaded methods.
+     * When empty (default), matches the method by name only.
+     *
+     * @return parameter type names, or empty array to match by name only
+     * @since 1.4.0
+     */
+    String[] parameterTypes() default {};
 }

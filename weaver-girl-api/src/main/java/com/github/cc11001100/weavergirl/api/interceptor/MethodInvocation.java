@@ -1,6 +1,8 @@
 package com.github.cc11001100.weavergirl.api.interceptor;
 
 import java.lang.reflect.Method;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Context object passed to {@link Interceptor} callbacks at runtime, encapsulating
@@ -71,6 +73,7 @@ public class MethodInvocation {
     private boolean isSkipped;
     private boolean returnOverridden;
     private boolean exceptionSuppressed;
+    private Map<String, Object> attachments;
 
     /**
      * Constructs a new MethodInvocation.
@@ -126,6 +129,9 @@ public class MethodInvocation {
         this.isSkipped = false;
         this.returnOverridden = false;
         this.exceptionSuppressed = false;
+        if (this.attachments != null) {
+            this.attachments.clear();
+        }
     }
 
     /**
@@ -143,6 +149,91 @@ public class MethodInvocation {
         this.isSkipped = false;
         this.returnOverridden = false;
         this.exceptionSuppressed = false;
+        if (this.attachments != null) {
+            this.attachments.clear();
+        }
+    }
+
+    // --- Attachment API (state passing between @Before and @After) ---
+
+    /**
+     * Stores an attachment value identified by the given key.
+     *
+     * <p>Attachments allow state to be passed between interceptor callbacks.
+     * For example, a {@code @Before} advice can store a start timestamp,
+     * and the corresponding {@code @After} advice can retrieve it to compute
+     * the elapsed time.</p>
+     *
+     * <h3>Example:</h3>
+     * <pre>
+     * // In @Before:
+     * invocation.setAttachment("startTime", System.nanoTime());
+     *
+     * // In @After:
+     * Long start = (Long) invocation.getAttachment("startTime");
+     * long elapsedNanos = System.nanoTime() - start;</pre>
+     *
+     * @param key   the attachment key
+     * @param value the attachment value (may be null)
+     * @see #getAttachment(String)
+     * @see #removeAttachment(String)
+     * @since 1.4.0
+     */
+    public void setAttachment(String key, Object value) {
+        if (this.attachments == null) {
+            this.attachments = new HashMap<>();
+        }
+        this.attachments.put(key, value);
+    }
+
+    /**
+     * Retrieves an attachment value by key.
+     *
+     * @param key the attachment key
+     * @return the attachment value, or {@code null} if not found
+     * @see #setAttachment(String, Object)
+     * @since 1.4.0
+     */
+    public Object getAttachment(String key) {
+        return this.attachments != null ? this.attachments.get(key) : null;
+    }
+
+    /**
+     * Retrieves an attachment value by key, with a typed convenience cast.
+     *
+     * @param key   the attachment key
+     * @param type  the expected type
+     * @param <T>   the expected type
+     * @return the attachment value cast to the expected type, or {@code null} if not found
+     * @throws ClassCastException if the value is not of the expected type
+     * @since 1.4.0
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T getAttachment(String key, Class<T> type) {
+        Object value = getAttachment(key);
+        return value != null ? (T) value : null;
+    }
+
+    /**
+     * Removes an attachment value by key.
+     *
+     * @param key the attachment key
+     * @return the previous value associated with the key, or {@code null}
+     * @since 1.4.0
+     */
+    public Object removeAttachment(String key) {
+        return this.attachments != null ? this.attachments.remove(key) : null;
+    }
+
+    /**
+     * Returns whether an attachment with the given key exists.
+     *
+     * @param key the attachment key
+     * @return true if an attachment with this key exists
+     * @since 1.4.0
+     */
+    public boolean hasAttachment(String key) {
+        return this.attachments != null && this.attachments.containsKey(key);
     }
 
     /**

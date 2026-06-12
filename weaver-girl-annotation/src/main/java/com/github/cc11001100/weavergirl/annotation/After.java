@@ -10,6 +10,8 @@ import java.lang.annotation.Target;
  * Called after the target method returns successfully.
  *
  * <p>The annotated method must accept a single MethodInvocation parameter.</p>
+ *
+ * @since 1.0.0
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
@@ -19,4 +21,13 @@ public @interface After {
      * Name of the target method to intercept.
      */
     String value();
+
+    /**
+     * Fully-qualified parameter type names to disambiguate overloaded methods.
+     * When empty (default), matches the method by name only.
+     *
+     * @return parameter type names, or empty array to match by name only
+     * @since 1.4.0
+     */
+    String[] parameterTypes() default {};
 }

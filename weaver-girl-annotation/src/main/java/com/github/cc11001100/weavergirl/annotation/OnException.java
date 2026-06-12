@@ -13,19 +13,11 @@ import java.lang.annotation.Target;
  * The annotated method must accept a single {@code MethodInvocation} parameter.
  * The thrown exception is available via {@code invocation.getThrowable()}.</p>
  *
- * <h3>Example:</h3>
+ * <h3>Exception type filtering:</h3>
+ * <p>Use {@link #exceptionType()} to only handle specific exception types:</p>
  * <pre>
- * &#64;WeaveClass(target = "com.example.PaymentService")
- * public class PaymentErrorHandler {
- *     &#64;OnException("processPayment")
- *     public void handlePaymentError(MethodInvocation inv) {
- *         Throwable error = inv.getThrowable();
- *         log.error("Payment failed: {}", error.getMessage());
- *         // Optionally suppress the exception:
- *         // inv.suppressException();
- *         // inv.setReturnValue(fallbackValue);
- *     }
- * }
+ * &#64;OnException(value = "save", exceptionType = IOException.class)
+ * public void handleIOError(MethodInvocation inv) { ... }
  * </pre>
  *
  * @see WeaveClass
@@ -44,4 +36,26 @@ public @interface OnException {
      * @return the target method name
      */
     String value();
+
+    /**
+     * Fully-qualified parameter type names to disambiguate overloaded methods.
+     * When empty (default), matches the method by name only.
+     *
+     * @return parameter type names, or empty array to match by name only
+     * @since 1.4.0
+     */
+    String[] parameterTypes() default {};
+
+    /**
+     * Filter exceptions by type. Only exceptions that are instances of
+     * the specified type will trigger this advice.
+     * When not specified (default), all exceptions are handled.
+     *
+     * <p>Example: {@code exceptionType = IOException.class} will only
+     * handle IOException and its subclasses.</p>
+     *
+     * @return the exception type to filter by, or {@code Throwable.class} for all
+     * @since 1.4.0
+     */
+    Class<? extends Throwable> exceptionType() default Throwable.class;
 }
