@@ -41,6 +41,13 @@ host must never observe a broken agent.
 - **Bootstrap loader** — JDK classes, plus the advice-bridge helpers that
   `AgentBuilder.InjectionStrategy.UsingInstrumentation` injects so that
   *bootstrap-loaded* instrumented targets (rare in practice) can resolve the bridge.
+  In practice this path is **not triggered**: the built-in plugins match
+  **implementations** via `ClassMatcher.byInterface` (e.g. an app-loaded
+  `org.h2.jdbc.JdbcStatement`, not the JDK's own `java.sql.Statement`), so the
+  inlined advice always runs on an app/system-loaded target where the parent-first
+  bridge resolves correctly. (If a future plugin *does* instrument a bootstrap
+  class directly, the injected bridge copy would be a distinct `Class` from the
+  system-loaded one `setRegistry` targets — that is the one caveat to revisit.)
 - **System (app) loader** — the host app, plus the agent jar (that is how
   `-javaagent` works), plus the **advice-bridge classes** (see below).
 - **`AgentClassLoader`** — a child-first `URLClassLoader` (parent = system loader)
