@@ -250,10 +250,17 @@ public class WeaverGirlAgent {
 
     /**
      * Start a lightweight HTTP health check endpoint.
-     * Exposes two paths:
+     * Exposes four paths:
      * <ul>
      *   <li>{@code /health} — liveness probe (always 200 if agent is running)</li>
      *   <li>{@code /ready} — readiness probe (200 once agent has interceptors)</li>
+     *   <li>{@code /stats} — live instrumentation counters: classes transformed and
+     *       interceptors actually <em>fired</em> at runtime (vs. merely registered).
+     *       This is the positive signal that instrumentation is taking effect —
+     *       {@code interceptorInvocationCount > 0} means at least one instrumented
+     *       method has executed. Essential for APM/IAST operators and for tests that
+     *       must verify interception survives a packaging/classloader change.</li>
+     *   <li>{@code /agent/interception} — runtime toggle for the global kill-switch</li>
      * </ul>
      *
      * @param port the port to bind
@@ -322,6 +329,40 @@ public class WeaverGirlAgent {
                         .setInterceptionEnabled(desired, "rest:/agent/interception");
                 String json = "{\"enabled\":" + desired + "}";
                 byte[] bytes = json.getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, bytes.length);
+                exchange.getResponseBody().write(bytes);
+                exchange.getResponseBody().close();
+            } catch (Exception e) {
+                exchange.sendResponseHeaders(500, 0);
+                exchange.getResponseBody().close();
+            }
+        });
+
+        // Live instrumentation counters. interceptorInvocationCount is incremented by
+        // the inlined advice on EVERY instrumented method execution, so a non-zero value
+        // is positive proof interception is wired end-to-end (advice -> registry -> plugin).
+        // The smoke harness asserts this is non-zero after driving instrumented traffic,
+        // which catches the silent "null registry" failure mode of a classloader split.
+        healthServer.createContext("/stats", exchange -> {
+            try {
+                AgentStatus status = AgentStatus.getInstance();
+                long uptimeSec = (System.currentTimeMillis() - startTimeMs) / 1000;
+                // Prefer the live registry count (kept accurate as plugins register) over
+                // the cached AgentStatus value, which is only set on certain code paths.
+                WeaverGirl wg = weaverGirlInstance;
+                int registered = (wg != null) ? wg.getRegistry().getAllDefinitions().size()
+                        : status.getRegisteredInterceptorCount();
+                StringBuilder sb = new StringBuilder(256);
+                sb.append("{\"status\":\"UP\",\"uptimeSeconds\":").append(uptimeSec)
+                  .append(",\"transformationCount\":").append(status.getTransformationCount())
+                  .append(",\"transformationErrorCount\":").append(status.getTransformationErrorCount())
+                  .append(",\"interceptorInvocationCount\":").append(status.getInterceptorInvocationCount())
+                  .append(",\"interceptorErrorCount\":").append(status.getInterceptorErrorCount())
+                  .append(",\"registeredInterceptorCount\":").append(registered)
+                  .append(",\"activePluginCount\":").append(status.getActivePluginCount())
+                  .append("}");
+                byte[] bytes = sb.toString().getBytes("UTF-8");
                 exchange.getResponseHeaders().set("Content-Type", "application/json");
                 exchange.sendResponseHeaders(200, bytes.length);
                 exchange.getResponseBody().write(bytes);

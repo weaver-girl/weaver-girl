@@ -89,7 +89,32 @@ for JAVA in "${JDKS[@]}"; do
   if [ "$ok" -eq 1 ]; then
     curl -sf "http://localhost:$HPORT/health" | grep -q '"status":"UP"'    || { echo "FAIL: /health";  ok=0; }
     curl -sf "http://localhost:$HPORT/ready"  | grep -q '"status":"READY"' || { echo "FAIL: /ready";   ok=0; }
+    curl -sf "http://localhost:$HPORT/stats"  | grep -q 'interceptorInvocationCount' || { echo "FAIL: /stats"; ok=0; }
     curl -sf "http://localhost:$MPORT/metrics" | grep -q 'weavergirl'      || { echo "FAIL: /metrics"; ok=0; }
+
+    # POSITIVE interception assertion: the agent's /ready fires during premain,
+    # BEFORE the sample binds Jetty, so poll the app port until it answers, then
+    # drive servlet traffic and confirm the agent actually intercepted it.
+    # weavergirl_operation_duration_ms_count{plugin="servlet"} > 0 is the signal:
+    # the servlet plugin publishes a "request" event on every service() call. A
+    # classloader-split regression (advice -> null registry) makes this stay absent.
+    if [ "$ok" -eq 1 ]; then
+      for _ in $(seq 1 60); do
+        code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$SPORT/health" 2>/dev/null || true)
+        { [ "$code" != "000" ] && [ -n "$code" ]; } && break
+        if ! kill -0 "$PID" 2>/dev/null; then echo "FAIL: app exited before Jetty bound" >&2; ok=0; break; fi
+        sleep 1
+      done
+    fi
+    if [ "$ok" -eq 1 ]; then
+      for ep in /users /health /users; do
+        curl -s -o /dev/null "http://127.0.0.1:$SPORT$ep" >/dev/null 2>&1 || true
+      done
+      sleep 2
+      curl -sf "http://localhost:$MPORT/metrics" \
+        | grep -qE '^weavergirl_operation_duration_ms_count\{plugin="servlet"\} [1-9]' \
+        || { echo "FAIL: no servlet interception signal (interception broken?)"; ok=0; }
+    fi
   fi
 
   kill "$PID" 2>/dev/null || true
