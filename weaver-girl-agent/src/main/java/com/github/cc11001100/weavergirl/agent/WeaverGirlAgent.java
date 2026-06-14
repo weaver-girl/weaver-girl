@@ -73,6 +73,17 @@ public class WeaverGirlAgent {
                 log.info("Diagnostic mode enabled (weavergirl.debug=true)");
             }
 
+            // Emergency global kill-switch: start with interception disabled.
+            // Triggered by agent arg emergencyDisable=true or -Dweavergirl.emergency.disable=true.
+            // Flipped back on at runtime via POST /agent/interception on the health port.
+            boolean emergencyDisable = "true".equalsIgnoreCase(args.get("emergencyDisable"))
+                    || "true".equalsIgnoreCase(System.getProperty("weavergirl.emergency.disable"));
+            if (emergencyDisable) {
+                com.github.cc11001100.weavergirl.core.InterceptorHolder
+                        .setInterceptionEnabled(false, "config:weavergirl.emergency.disable");
+                log.warn("Agent starting with interception DISABLED (emergency mode)");
+            }
+
             // Enable structured JSON event output if jsonEvents=true
             if ("true".equals(args.get("jsonEvents"))) {
                 com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher.getInstance()
@@ -282,6 +293,38 @@ public class WeaverGirlAgent {
                     exchange.sendResponseHeaders(503, bytes.length);
                     exchange.getResponseBody().write(bytes);
                 }
+                exchange.getResponseBody().close();
+            } catch (Exception e) {
+                exchange.sendResponseHeaders(500, 0);
+                exchange.getResponseBody().close();
+            }
+        });
+
+        // Runtime toggle for the global interception kill-switch.
+        // POST /agent/interception  {"enabled":true|false}  -> flips the switch live.
+        healthServer.createContext("/agent/interception", exchange -> {
+            try {
+                if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
+                    exchange.sendResponseHeaders(405, -1);
+                    return;
+                }
+                java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[256];
+                int n;
+                java.io.InputStream is = exchange.getRequestBody();
+                while ((n = is.read(buf)) != -1) {
+                    bos.write(buf, 0, n);
+                }
+                String body = new String(bos.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
+                boolean desired = body.contains("\"enabled\":true")
+                        || body.contains("\"enabled\": true");
+                com.github.cc11001100.weavergirl.core.InterceptorHolder
+                        .setInterceptionEnabled(desired, "rest:/agent/interception");
+                String json = "{\"enabled\":" + desired + "}";
+                byte[] bytes = json.getBytes("UTF-8");
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, bytes.length);
+                exchange.getResponseBody().write(bytes);
                 exchange.getResponseBody().close();
             } catch (Exception e) {
                 exchange.sendResponseHeaders(500, 0);

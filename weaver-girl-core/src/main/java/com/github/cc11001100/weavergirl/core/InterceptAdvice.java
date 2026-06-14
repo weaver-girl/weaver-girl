@@ -40,6 +40,10 @@ public class InterceptAdvice {
             @Advice.This(optional = true) Object target,
             @Advice.AllArguments Object[] arguments) {
         try {
+            // Global kill-switch: one volatile read; when disabled, incur zero dispatch cost.
+            if (!InterceptorHolder.isInterceptionEnabled()) {
+                return null;
+            }
             InterceptorHolder.incrementInterceptorInvocationCount();
             InterceptorRegistry registry = InterceptorHolder.getRegistry();
             if (registry == null) {
@@ -104,6 +108,14 @@ public class InterceptAdvice {
             @Advice.Thrown(readOnly = false, typing = Assigner.Typing.DYNAMIC) Throwable throwable,
             @Advice.Return(readOnly = false, typing = Assigner.Typing.DYNAMIC) Object returnValue) {
         try {
+            // Global kill-switch: when disabled, skip all after/onException callbacks.
+            // Release any pooled invocation that enter may have returned (skip case).
+            if (!InterceptorHolder.isInterceptionEnabled()) {
+                if (invocation != null) {
+                    try { MethodInvocationPool.release(invocation); } catch (Throwable ignored) {}
+                }
+                return;
+            }
             // If onMethodEnter returned null (no skip), acquire a fresh MethodInvocation
             // from the pool for the after/onException callbacks.
             // If onMethodEnter returned an invocation (skip triggered), reuse it.

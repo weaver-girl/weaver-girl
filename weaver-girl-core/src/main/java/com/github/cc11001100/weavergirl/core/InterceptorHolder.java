@@ -3,6 +3,7 @@ package com.github.cc11001100.weavergirl.core;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.circuit.InterceptorCircuitBreaker;
 import com.github.cc11001100.weavergirl.core.management.AgentMonitor;
+import com.github.cc11001100.weavergirl.core.switches.GlobalInterceptionSwitch;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +35,21 @@ public class InterceptorHolder {
 
     public static InterceptorRegistry getRegistry() {
         return registry;
+    }
+
+    // --- Global interception switch delegates ---
+
+    /**
+     * @return true if global interception is enabled. Consulted by {@code InterceptAdvice}
+     *     on every enter/exit as a single volatile read.
+     */
+    public static boolean isInterceptionEnabled() {
+        return GlobalInterceptionSwitch.isEnabled();
+    }
+
+    /** Process-wide kill-switch toggle. */
+    public static void setInterceptionEnabled(boolean enabledFlag, String source) {
+        GlobalInterceptionSwitch.setEnabled(enabledFlag, source);
     }
 
     // --- AgentStatus delegates ---
