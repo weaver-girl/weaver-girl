@@ -1,0 +1,11 @@
+{{- if .Values.config.configFile }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "weaver-girl.fullname" . }}-config
+  labels:
+    {{- include "weaver-girl.labels" . | nindent 4 }}
+data:
+  weaver.yml: |
+    {{- .Values.yamlConfig | default "# Empty configuration\n" | nindent 4 }}
+{{- end }}

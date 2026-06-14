@@ -1,0 +1,16 @@
+com.github.cc11001100.weavergirl.plugins.timing.MethodTimingPlugin
+com.github.cc11001100.weavergirl.plugins.servlet.ServletPlugin
+com.github.cc11001100.weavergirl.plugins.jdbc.JdbcPlugin
+com.github.cc11001100.weavergirl.plugins.trace.TraceCorrelationPlugin
+com.github.cc11001100.weavergirl.plugins.spring.SpringPlugin
+com.github.cc11001100.weavergirl.plugins.exception.ExceptionMonitorPlugin
+com.github.cc11001100.weavergirl.plugins.redis.RedisPlugin
+com.github.cc11001100.weavergirl.plugins.httpclient.HttpClientPlugin
+com.github.cc11001100.weavergirl.plugins.grpc.GrpcPlugin
+com.github.cc11001100.weavergirl.plugins.kafka.KafkaPlugin
+com.github.cc11001100.weavergirl.plugins.mongo.MongoPlugin
+com.github.cc11001100.weavergirl.plugins.logging.LoggingPlugin
+com.github.cc11001100.weavergirl.plugins.hikari.HikariPlugin
+com.github.cc11001100.weavergirl.plugins.okhttp.OkHttpPlugin
+com.github.cc11001100.weavergirl.plugins.rabbitmq.RabbitMQPlugin
+com.github.cc11001100.weavergirl.plugins.elasticsearch.ElasticsearchPlugin

@@ -1,0 +1,41 @@
+# Weaver-Girl Configuration Example
+# Place this file as weaver.yml and pass it to the agent:
+#   java -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml -jar your-app.jar
+#
+# You can also pass multiple options:
+#   java -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml,watch=true -jar your-app.jar
+
+# Agent-level settings
+# samplingThreshold: 100      # Invocations/second threshold for adaptive sampling
+# circuitBreakerFailures: 5   # Consecutive failures before circuit opens
+# circuitBreakerCooldown: 30000 # Cooldown in milliseconds after circuit opens
+# excludedClasses:            # Class name patterns to exclude from instrumentation
+#   - "com.example.internal.*"
+# onlyInterceptPackages: []   # Only instrument classes in these packages (empty = all)
+# maxTransformations: 10000   # Max number of classes to transform (increase for large apps)
+# logLevel: INFO              # TRACE, DEBUG, INFO, WARN, ERROR
+# disabledPlugins:            # Built-in plugins to disable (by name)
+#   - servlet                 # Disable Servlet plugin
+#   - kafka                   # Disable Kafka plugin
+
+# Built-in plugin names for disabledPlugins:
+#   servlet, spring, jdbc, mongo, redis, httpclient, grpc, kafka,
+#   timing, trace-correlation, exception, logging
+
+# Interceptor definitions (YAML-based, for custom advice classes)
+# NOTE: Advice classes must implement com.github.cc11001100.weavergirl.api.interceptor.Interceptor
+interceptors:
+  # Example: intercept a specific method on a specific class
+  # - className: com.example.Service    # exact class name match
+  #   method: process                    # exact method name match
+  #   before: com.example.interceptor.ProcessBeforeAdvice
+
+  # Example: intercept all methods matching a regex pattern
+  # - classNamePattern: com\.example\..*Service  # regex class name match
+  #   methodPattern: handle.*                      # regex method name match
+  #   after: com.example.interceptor.GenericAfterAdvice
+
+  # Example: intercept methods with a specific annotation
+  # - classAnnotation: org.springframework.web.bind.annotation.RestController
+  #   method: "*"
+  #   before: com.example.interceptor.RestControllerAdvice

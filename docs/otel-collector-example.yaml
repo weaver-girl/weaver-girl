@@ -1,0 +1,68 @@
+# OpenTelemetry Collector Configuration for Weaver-Girl Agent
+#
+# This config receives traces from the Weaver-Girl OTel Span Bridge
+# and exports them to Jaeger and/or Prometheus.
+#
+# Usage:
+#   otelcol --config=otel-collector-example.yaml
+#
+# Docker:
+#   docker run -v $(pwd)/otel-collector-example.yaml:/etc/otelcol/config.yaml \
+#     otel/opentelemetry-collector-contrib:latest
+#
+receivers:
+  # Receive OTLP over HTTP (from Weaver-Girl Span Bridge)
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+  # Receive Prometheus metrics from Weaver-Girl agent
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'weaver-girl'
+          scrape_interval: 15s
+          static_configs:
+            - targets: ['host.docker.internal:9400']
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+  # Add resource attributes
+  resource:
+    attributes:
+      - key: service.name
+        value: weaver-girl-agent
+        action: upsert
+
+exporters:
+  # Export to Jaeger (all-in-one)
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  # Export to console for debugging
+  logging:
+    loglevel: debug
+
+  # Export to Prometheus for metrics
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [otlp/jaeger, logging]
+
+    metrics:
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [prometheus, logging]

@@ -1,0 +1,13 @@
+version: "3.8"
+services:
+  sample-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - APP_JAR=/opt/app/sample-app.jar
+      - JAVA_AGENT_OPTS=-javaagent:/opt/weaver-girl/weaver-girl-agent.jar=config=/opt/weaver-girl/weaver-example.yml
+    volumes:
+      - ./weaver-girl-sample/target/weaver-girl-sample-1.0.0-SNAPSHOT.jar:/opt/app/sample-app.jar:ro
+    ports:
+      - "8080:8080"

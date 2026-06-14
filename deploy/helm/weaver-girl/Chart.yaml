@@ -1,0 +1,16 @@
+apiVersion: v2
+name: weaver-girl
+description: Weaver-Girl Java Agent sidecar injector for Kubernetes
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/cc11001100/weaver-girl
+maintainers:
+  - name: cc11001100
+    url: https://github.com/cc11001100
+keywords:
+  - java-agent
+  - instrumentation
+  - observability
+  - bytecode
+  - monitoring

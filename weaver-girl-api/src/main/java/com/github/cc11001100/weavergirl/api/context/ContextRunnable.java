@@ -1,0 +1,72 @@
+package com.github.cc11001100.weavergirl.api.context;
+
+import java.util.Map;
+
+/**
+ * {@link Runnable} wrapper that captures the {@link ThreadContext} at creation time
+ * and restores it in the executing thread.
+ *
+ * <p>Use this wrapper when submitting work to an {@link java.util.concurrent.Executor}
+ * or {@link java.util.concurrent.ExecutorService} to automatically propagate the
+ * calling thread's context into the worker thread. The original context of the
+ * worker thread is saved before restoration and restored after execution, ensuring
+ * no side effects on the worker thread.</p>
+ *
+ * <h3>When to use</h3>
+ * <p>Use this class when you need to propagate {@link ThreadContext} across thread
+ * boundaries for a fire-and-forget task (i.e., a {@code Runnable} with no return
+ * value). For tasks that return a value, use {@link ContextCallable} instead.</p>
+ *
+ * <h3>Usage example</h3>
+ * <pre>
+ * // In an interceptor before() callback:
+ * ThreadContext.put("traceId", currentTraceId);
+ *
+ * // Submit work that needs access to the trace ID:
+ * executor.submit(new ContextRunnable(() -&gt; {
+ *     String traceId = ThreadContext.get("traceId"); // available here
+ *     processWithTrace(traceId);
+ * }));</pre>
+ *
+ * @see ThreadContext
+ * @see ContextCallable
+ * @since 1.0.0
+ */
+public class ContextRunnable implements Runnable {
+
+    private final Runnable delegate;
+    private final Map<String, Object> capturedContext;
+
+    /**
+     * Creates a new ContextRunnable that wraps the given delegate.
+     *
+     * <p>The current thread's context is captured at construction time.
+     * When {@link #run()} is executed (possibly in another thread), the captured
+     * context is restored before the delegate runs, and the executing thread's
+     * original context is restored afterward.</p>
+     *
+     * @param delegate the Runnable to wrap; must not be null
+     */
+    public ContextRunnable(Runnable delegate) {
+        this.delegate = delegate;
+        this.capturedContext = ThreadContext.capture();
+    }
+
+    /**
+     * Executes the delegate runnable with the captured context restored.
+     *
+     * <p>The executing thread's original context is saved, the captured context
+     * is restored, the delegate runs, and then the original context is restored
+     * in a finally block to ensure cleanup even if the delegate throws.</p>
+     */
+    @Override
+    public void run() {
+        Map<String, Object> previous = ThreadContext.capture();
+        try {
+            ThreadContext.restore(capturedContext);
+            delegate.run();
+        } finally {
+            ThreadContext.restore(previous);
+        }
+    }
+}
