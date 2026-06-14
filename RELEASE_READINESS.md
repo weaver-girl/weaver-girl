@@ -12,6 +12,41 @@ shippable **APM Hook base**. (IAST readiness is a separate, larger effort — se
 | JaCoCo coverage (`weaver-girl-api`) | 80% instr / 70% branch | **~51% instr / ~40% branch** | ❌ RED |
 | Checkstyle (google_checks, max 200) | ≤ 200 violations/module | annotation **0** (fixed); api **~3200**, others pending | ❌ RED |
 | SpotBugs (threshold High) | 0 High | see `target/spotbugsXml.xml` | ⚠️ verify |
+| Packaged agent attach (`-javaagent`) | bootstraps on real app | **verified working** | ✅ GREEN (was ❌ P0 — see below) |
+
+## Critical fix: the packaged agent jar now bootstraps (was a P0 blocker)
+
+**This was the single most important release-readiness finding.** Until commit
+`66b6627`, the packaged `weaver-girl-agent.jar` could **not attach to any real
+application** — every `-javaagent` invocation failed during `WeaverGirl.bootstrap()`
+with `NoClassDefFoundError` or a `loader-constraint violation`. The framework's
+1376 unit tests never caught it because they attach **in-process**, never
+exercising the shaded `-javaagent` jar. For an APM/IAST hook base, an agent that
+cannot attach is the worst possible release blocker.
+
+Root causes (both fixed in `66b6627`):
+
+1. **ByteBuddy relocation** (`net.bytebuddy` → `shaded.net.bytebuddy`) in the shade
+   plugin. ByteBuddy loads some of its own classes (e.g. `AgentBuilder$Listener$Adapter`)
+   by their **original** name via the bootstrap classloader at runtime, which the
+   shade plugin cannot rewrite → `NoClassDefFoundError`. Relocation removed.
+2. **Custom `BootstrapInjection`** appended the *whole* agent JAR (which bundles all
+   of ByteBuddy) to the bootstrap classloader while the same JAR was already on the
+   app classpath via `-javaagent`. `net.bytebuddy` classes then resolved to different
+   `Class` objects in the app vs bootstrap loaders → loader-constraint violation.
+   The redundant custom injection was removed; ByteBuddy's own
+   `AgentBuilder.InjectionStrategy.UsingInstrumentation` (already configured) injects
+   only the needed helper classes into a temp JAR, avoiding the split.
+
+The CI **agent-smoke** workflow (`.github/workflows/agent-smoke.yml`) now guards
+against regressions of this class: it attaches the packaged jar to the sample app
+and asserts `/health`, `/ready`, `/metrics` respond.
+
+**Trade-off:** ByteBuddy is now bundled un-shaded. If a host app also bundles a
+conflicting ByteBuddy, the agent's version (prepended via `-javaagent`) wins. A
+proper dual-classloader agent architecture (thin bootstrap jar + child
+`URLClassLoader` for the agent body) would restore relocation safety and is the
+recommended follow-up for a hardened release.
 
 ## What this means
 
