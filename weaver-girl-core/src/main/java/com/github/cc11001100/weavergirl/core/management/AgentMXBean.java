@@ -45,6 +45,9 @@ public interface AgentMXBean {
     /** Number of classes excluded from transformation. */
     int getExcludedClassCount();
 
+    /** Agent bootstrap time in ms (-1 if not measured). */
+    long getStartupMillis();
+
     /** Reset all counters to zero. */
     void resetCounters();
 }

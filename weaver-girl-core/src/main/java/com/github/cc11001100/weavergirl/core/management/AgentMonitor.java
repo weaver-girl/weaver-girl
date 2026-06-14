@@ -167,6 +167,11 @@ public class AgentMonitor implements AgentMXBean {
     }
 
     @Override
+    public long getStartupMillis() {
+        return StartupMetrics.totalMillis();
+    }
+
+    @Override
     public void resetCounters() {
         interceptCount.set(0);
         interceptTimeNanos.set(0);

@@ -77,64 +77,81 @@ public class WeaverGirl {
      * @param weaverConfig YAML configuration (may be null)
      */
     public static WeaverGirl bootstrap(Instrumentation instrumentation, java.util.Map<String, String> config, WeaverConfig weaverConfig) {
-        ValidationUtils.requireNonNull(instrumentation, "instrumentation");
-        log.info("WeaverGirl agent starting...");
-        WeaverGirl weaverGirl = new WeaverGirl();
-        weaverGirl.instrumentation = instrumentation;
+        // Measure total bootstrap + per-phase timing (see StartupMetrics / AgentMonitor).
+        com.github.cc11001100.weavergirl.core.management.StartupMetrics.begin();
+        try {
+            ValidationUtils.requireNonNull(instrumentation, "instrumentation");
+            log.info("WeaverGirl agent starting...");
+            WeaverGirl weaverGirl = new WeaverGirl();
+            weaverGirl.instrumentation = instrumentation;
 
-        InterceptorHolder.setRegistry(weaverGirl.registry);
+            InterceptorHolder.setRegistry(weaverGirl.registry);
 
-        // Merge disabledPlugins from WeaverConfig into the config map for PluginLoader
-        java.util.Map<String, String> pluginConfig = config != null ? config : new java.util.HashMap<>();
-        if (weaverConfig != null && weaverConfig.getDisabledPlugins() != null
-                && !weaverConfig.getDisabledPlugins().isEmpty()) {
-            String disabledStr = String.join(",", weaverConfig.getDisabledPlugins());
-            pluginConfig.put("disabledPlugins", disabledStr);
-            log.info("Disabled plugins from config: {}", disabledStr);
+            // Merge disabledPlugins from WeaverConfig into the config map for PluginLoader
+            java.util.Map<String, String> pluginConfig = config != null ? config : new java.util.HashMap<>();
+            if (weaverConfig != null && weaverConfig.getDisabledPlugins() != null
+                    && !weaverConfig.getDisabledPlugins().isEmpty()) {
+                String disabledStr = String.join(",", weaverConfig.getDisabledPlugins());
+                pluginConfig.put("disabledPlugins", disabledStr);
+                log.info("Disabled plugins from config: {}", disabledStr);
+            }
+
+            long pluginLoadStart = System.nanoTime();
+            weaverGirl.pluginLoader.loadPlugins(WeaverGirl.class.getClassLoader(), weaverGirl.registry,
+                    pluginConfig);
+            com.github.cc11001100.weavergirl.core.management.StartupMetrics
+                    .recordPhase("pluginLoad", System.nanoTime() - pluginLoadStart);
+
+            WeaverTransformer transformer = new WeaverTransformer(weaverGirl.registry);
+
+            if (weaverConfig != null && weaverConfig.getExcludedClasses() != null) {
+                transformer.setExcludedClassPatterns(weaverConfig.getExcludedClasses());
+            }
+
+            if (weaverConfig != null) {
+                transformer.setWeaverConfig(weaverConfig);
+            }
+
+            transformer.install(instrumentation);
+            weaverGirl.transformer = transformer;
+
+            // Apply configuration to core components
+            applyCoreConfig(pluginConfig);
+
+            // Initialize DynamicConfigManager with initial config and runtime listener
+            weaverGirl.dynamicConfigManager.loadFromSource(pluginConfig, "bootstrap");
+            weaverGirl.dynamicConfigManager.addListener(weaverGirl.new DynamicCoreConfigListener());
+            weaverGirl.dynamicConfigManager.snapshot("initial-bootstrap");
+
+            JmxRegistrar.register();
+
+            // Register JMX monitoring MBean
+            AgentMonitor monitor = AgentMonitor.getInstance();
+            monitor.register();
+            monitor.setInterceptorDefinitionCount(weaverGirl.registry.getAllDefinitions().size());
+            monitor.setPluginCount(weaverGirl.pluginLoader.getLoadedPlugins().size());
+
+            SamplingMonitor samplingMonitor = new SamplingMonitor(SamplingController.getInstance());
+            samplingMonitor.start();
+            weaverGirl.samplingMonitor = samplingMonitor;
+
+            // Initialize PluginManager for runtime plugin lifecycle management
+            weaverGirl.pluginManager = new DefaultPluginManager(weaverGirl.pluginLoader, weaverGirl.registry);
+
+            log.info("WeaverGirl agent started with {} interceptor definitions",
+                    weaverGirl.registry.getAllDefinitions().size());
+            return weaverGirl;
+        } finally {
+            com.github.cc11001100.weavergirl.core.management.StartupMetrics.end();
+            long startupMs = com.github.cc11001100.weavergirl.core.management.StartupMetrics.totalMillis();
+            log.info("WeaverGirl agent startup took {}ms (budget {}ms)", startupMs,
+                    com.github.cc11001100.weavergirl.core.management.StartupMetrics.STARTUP_BUDGET_MS);
+            if (com.github.cc11001100.weavergirl.core.management.StartupMetrics.overBudget()) {
+                log.warn("Agent startup took {}ms (budget {}ms) — see P99 startup optimization",
+                        startupMs,
+                        com.github.cc11001100.weavergirl.core.management.StartupMetrics.STARTUP_BUDGET_MS);
+            }
         }
-
-        weaverGirl.pluginLoader.loadPlugins(WeaverGirl.class.getClassLoader(), weaverGirl.registry,
-                pluginConfig);
-
-        WeaverTransformer transformer = new WeaverTransformer(weaverGirl.registry);
-
-        if (weaverConfig != null && weaverConfig.getExcludedClasses() != null) {
-            transformer.setExcludedClassPatterns(weaverConfig.getExcludedClasses());
-        }
-
-        if (weaverConfig != null) {
-            transformer.setWeaverConfig(weaverConfig);
-        }
-
-        transformer.install(instrumentation);
-        weaverGirl.transformer = transformer;
-
-        // Apply configuration to core components
-        applyCoreConfig(pluginConfig);
-
-        // Initialize DynamicConfigManager with initial config and runtime listener
-        weaverGirl.dynamicConfigManager.loadFromSource(pluginConfig, "bootstrap");
-        weaverGirl.dynamicConfigManager.addListener(weaverGirl.new DynamicCoreConfigListener());
-        weaverGirl.dynamicConfigManager.snapshot("initial-bootstrap");
-
-        JmxRegistrar.register();
-
-        // Register JMX monitoring MBean
-        AgentMonitor monitor = AgentMonitor.getInstance();
-        monitor.register();
-        monitor.setInterceptorDefinitionCount(weaverGirl.registry.getAllDefinitions().size());
-        monitor.setPluginCount(weaverGirl.pluginLoader.getLoadedPlugins().size());
-
-        SamplingMonitor samplingMonitor = new SamplingMonitor(SamplingController.getInstance());
-        samplingMonitor.start();
-        weaverGirl.samplingMonitor = samplingMonitor;
-
-        // Initialize PluginManager for runtime plugin lifecycle management
-        weaverGirl.pluginManager = new DefaultPluginManager(weaverGirl.pluginLoader, weaverGirl.registry);
-
-        log.info("WeaverGirl agent started with {} interceptor definitions",
-                weaverGirl.registry.getAllDefinitions().size());
-        return weaverGirl;
     }
 
     /**
