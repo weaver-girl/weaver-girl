@@ -42,16 +42,50 @@ public class WeaverGirlAgent {
 
     /**
      * Premain entry — called before application main() when using -javaagent flag.
+     *
+     * <p>Boots the agent body in an {@link com.github.cc11001100.weavergirl.agent.classloader.AgentClassLoader
+     * isolated child-first ClassLoader} so the agent's ByteBuddy and internals are not
+     * resolved against the host's system ClassLoader. The advice-bridge classes stay
+     * parent-first on the system loader, so interception wiring is unchanged. If the
+     * isolated loader cannot be set up, it falls back to the system loader.</p>
      */
     public static void premain(String agentArgs, Instrumentation instrumentation) {
-        init(agentArgs, instrumentation, false);
+        run(agentArgs, instrumentation, false);
     }
 
     /**
      * Agentmain entry — called when dynamically attaching to a running JVM.
      */
     public static void agentmain(String agentArgs, Instrumentation instrumentation) {
-        init(agentArgs, instrumentation, true);
+        run(agentArgs, instrumentation, true);
+    }
+
+    /**
+     * Boot the agent body in the isolated ClassLoader, invoking {@link #init} on the
+     * isolated copy of this class. On any failure to build/use the isolated loader we
+     * fall back to running {@link #init} directly on the system loader, so the agent
+     * always still functions.
+     */
+    private static void run(String agentArgs, Instrumentation instrumentation, boolean isAttach) {
+        try {
+            com.github.cc11001100.weavergirl.agent.classloader.AgentClassLoader iso =
+                    com.github.cc11001100.weavergirl.agent.classloader.AgentClassLoader
+                            .create(WeaverGirlAgent.class);
+            Class<?> agentCls = Class.forName(WeaverGirlAgent.class.getName(), true, iso);
+            java.lang.reflect.Method init = agentCls
+                    .getDeclaredMethod("init", String.class, Instrumentation.class, Boolean.TYPE);
+            init.setAccessible(true);
+            init.invoke(null, agentArgs, instrumentation, isAttach);
+            return;
+        } catch (Throwable t) {
+            // Isolation setup failed (e.g. agent jar location undetectable, or a class
+            // could not be resolved in the isolated loader). Fall back to the system
+            // loader so the agent still attaches. Use JUL (no slf4j dependency here).
+            java.util.logging.Logger.getLogger(WeaverGirlAgent.class.getName()).warning(
+                    "Isolated agent ClassLoader unavailable; running on the system loader: "
+                            + t);
+        }
+        init(agentArgs, instrumentation, isAttach);
     }
 
     private static void init(String agentArgs, Instrumentation instrumentation, boolean isAttach) {
@@ -265,6 +299,26 @@ public class WeaverGirlAgent {
      *
      * @param port the port to bind
      */
+    /**
+     * Simple name of the ClassLoader that defines the named class, resolved through the
+     * same loader as this agent class. Used by {@code /stats} to prove ByteBuddy is loaded
+     * by the isolated {@code AgentClassLoader} rather than the host system loader. Returns
+     * {@code "bootstrap"} for JDK classes, {@code "unloaded"} if the class cannot be found.
+     */
+    private static String loaderName(String className) {
+        try {
+            Class<?> c = Class.forName(className, false, WeaverGirlAgent.class.getClassLoader());
+            ClassLoader cl = c.getClassLoader();
+            if (cl == null) {
+                return "bootstrap";
+            }
+            String simple = cl.getClass().getSimpleName();
+            return simple.isEmpty() ? cl.getClass().getName() : simple;
+        } catch (Throwable t) {
+            return "unloaded";
+        }
+    }
+
     private static void startHealthEndpoint(int port) throws Exception {
         healthServer = HttpServer.create(new InetSocketAddress(port), 0);
 
@@ -353,6 +407,12 @@ public class WeaverGirlAgent {
                 WeaverGirl wg = weaverGirlInstance;
                 int registered = (wg != null) ? wg.getRegistry().getAllDefinitions().size()
                         : status.getRegisteredInterceptorCount();
+                // Isolation diagnostic: report which ClassLoader resolved ByteBuddy and the
+                // agent transformer. If both show the isolated AgentClassLoader, the agent's
+                // ByteBuddy is provably not on the host's system ClassLoader. Loaded by name
+                // so this class has no compile-time dependency on ByteBuddy.
+                String byteBuddyLoader = loaderName("net.bytebuddy.ByteBuddy");
+                String agentBodyLoader = loaderName(WeaverGirlAgent.class.getName());
                 StringBuilder sb = new StringBuilder(256);
                 sb.append("{\"status\":\"UP\",\"uptimeSeconds\":").append(uptimeSec)
                   .append(",\"transformationCount\":").append(status.getTransformationCount())
@@ -361,6 +421,8 @@ public class WeaverGirlAgent {
                   .append(",\"interceptorErrorCount\":").append(status.getInterceptorErrorCount())
                   .append(",\"registeredInterceptorCount\":").append(registered)
                   .append(",\"activePluginCount\":").append(status.getActivePluginCount())
+                  .append(",\"byteBuddyClassLoader\":\"").append(byteBuddyLoader).append("\"")
+                  .append(",\"agentBodyClassLoader\":\"").append(agentBodyLoader).append("\"")
                   .append("}");
                 byte[] bytes = sb.toString().getBytes("UTF-8");
                 exchange.getResponseHeaders().set("Content-Type", "application/json");

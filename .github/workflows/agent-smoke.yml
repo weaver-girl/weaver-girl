@@ -78,6 +78,10 @@ jobs:
           # /stats exposes the live instrumentation counters — verifies the
           # observation plumbing (JMX-backed AgentStatus -> HTTP) loads on this JDK.
           curl -sf http://localhost:9501/stats  | grep -q 'interceptorInvocationCount'
+          # Isolation: ByteBuddy must be loaded by the agent's isolated child-first
+          # AgentClassLoader, not the host system loader — proves the agent's ByteBuddy
+          # is not leaking onto the host classpath on this JDK.
+          curl -sf http://localhost:9501/stats  | grep -q '"byteBuddyClassLoader":"AgentClassLoader"'
           curl -sf http://localhost:9500/metrics | grep -q 'weavergirl'
           kill "$APP_PID" 2>/dev/null || true
           wait "$APP_PID" 2>/dev/null || true
@@ -152,6 +156,8 @@ jobs:
           sleep 2
           curl -sf http://localhost:9400/metrics | grep -qE '^weavergirl_operation_duration_ms_count\{plugin="servlet"\} [1-9]'
           curl -sf http://localhost:9401/stats   | grep -q '"interceptorInvocationCount"'
+          # ByteBuddy must resolve in the isolated AgentClassLoader, not the system loader.
+          curl -sf http://localhost:9401/stats   | grep -q '"byteBuddyClassLoader":"AgentClassLoader"'
           echo "Interception verified: servlet events recorded, invocation count advancing."
           kill "$APP_PID" 2>/dev/null || true
           wait "$APP_PID" 2>/dev/null || true

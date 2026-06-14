@@ -90,6 +90,11 @@ for JAVA in "${JDKS[@]}"; do
     curl -sf "http://localhost:$HPORT/health" | grep -q '"status":"UP"'    || { echo "FAIL: /health";  ok=0; }
     curl -sf "http://localhost:$HPORT/ready"  | grep -q '"status":"READY"' || { echo "FAIL: /ready";   ok=0; }
     curl -sf "http://localhost:$HPORT/stats"  | grep -q 'interceptorInvocationCount' || { echo "FAIL: /stats"; ok=0; }
+    # Isolation: ByteBuddy must resolve in the agent's isolated child-first loader, NOT
+    # the host system loader. If this shows anything other than AgentClassLoader, the
+    # agent's ByteBuddy is leaking onto the host classpath (version-collision risk).
+    curl -sf "http://localhost:$HPORT/stats"  | grep -q '"byteBuddyClassLoader":"AgentClassLoader"' \
+      || { echo "FAIL: ByteBuddy not isolated"; ok=0; }
     curl -sf "http://localhost:$MPORT/metrics" | grep -q 'weavergirl'      || { echo "FAIL: /metrics"; ok=0; }
 
     # POSITIVE interception assertion: the agent's /ready fires during premain,
