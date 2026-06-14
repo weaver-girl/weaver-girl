@@ -31,7 +31,9 @@ import java.sql.*;
  */
 public class SampleApplication {
 
-    private static final int PORT = 8080;
+    // Port is overridable via -Dsample.port=N so the CI smoke test (and concurrent
+    // local runs) can avoid conflicts. Defaults to 8080 for the documented usage.
+    private static final int PORT = Integer.getInteger("sample.port", 8080);
     private static final String DB_URL = "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1";
 
     public static void main(String[] args) throws Exception {
