@@ -10,7 +10,7 @@
     <packaging>pom</packaging>
 
     <name>Weaver Girl</name>
-    <description>A Java Agent framework for bytecode instrumentation</description>
+    <description>Modular Java bytecode instrumentation framework — a Hook base for APM/IAST tooling.</description>
 
     <modules>
         <module>weaver-girl-annotation</module>
@@ -353,6 +353,42 @@
                                 </configuration>
                             </execution>
                         </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Release profile: sign artifacts (GPG) + deploy to Maven Central via the
+             Central Publishing Portal. Activated only with -Prelease (e.g. from the
+             release.yml workflow on a v* tag). Sources + javadoc jars are already
+             attached by the globally-bound maven-source/maven-javadoc plugins, so this
+             profile intentionally does NOT re-bind them (that would duplicate executions). -->
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>0.4.0</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <tokenAuth>true</tokenAuth>
+                        </configuration>
                     </plugin>
                 </plugins>
             </build>

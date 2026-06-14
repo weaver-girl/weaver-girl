@@ -7,17 +7,24 @@ on:
 
 jobs:
   release:
-    name: Build & Release
+    name: Build, Deploy & Release
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 8
+      - name: Set up JDK 17 (release)
         uses: actions/setup-java@v4
         with:
-          java-version: 8
+          # The compiler plugin still targets Java 1.8 bytecode; JDK 17 is used so the
+          # Maven release tooling (central-publishing-maven-plugin) and GPG signing run.
+          java-version: 17
           distribution: temurin
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_TOKEN
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Cache Maven packages
         uses: actions/cache@v4
@@ -30,13 +37,17 @@ jobs:
         run: |
           TAG_VERSION=${GITHUB_REF_NAME#v}
           echo "Setting Maven version to $TAG_VERSION"
-          mvn versions:set -DnewVersion=$TAG_VERSION -B
+          ./mvnw versions:set -DnewVersion=$TAG_VERSION -B
 
-      - name: Build and test
-        run: mvn clean install -B -V -e
-
-      - name: Package agent JAR
-        run: mvn package -DskipTests -B
+      - name: Deploy to Maven Central
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        # clean deploy runs the full lifecycle (tests + package + sign + publish).
+        # quality-gate is explicitly disabled here only to avoid re-running the
+        # coverage check twice; every PR already enforces it in ci.yml.
+        run: ./mvnw -B -Prelease,-quality-gate clean deploy
 
       - name: Verify agent JAR
         run: |
@@ -73,9 +84,23 @@ jobs:
             java -javaagent:weaver-girl-agent.jar -jar your-app.jar
             ```
 
+            ## Maven Central
+
+            Artifacts are published to Maven Central under
+            `com.github.cc11001100:weaver-girl-*`.
+
+            ```xml
+            <dependency>
+              <groupId>com.github.cc11001100</groupId>
+              <artifactId>weaver-girl-core</artifactId>
+              <version>${{ github.ref_name }}</version>
+            </dependency>
+            ```
+
             ## What's Included
             - 12 built-in plugins: Servlet, Spring, JDBC, Redis, Kafka, gRPC, MongoDB, HttpClient, MethodTiming, TraceCorrelation, ExceptionMonitor, Logging
             - Adaptive sampling, circuit breaker, JMX diagnostics
+            - Global emergency kill-switch
             - Hot-reload support
 
             ## Requirements
