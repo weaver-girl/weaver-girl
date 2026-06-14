@@ -1,0 +1,76 @@
+name: Agent Smoke
+
+# Exercises the PACKAGED agent jar the way a real user attaches it: build the
+# agent, run the sample app (embedded Jetty + H2) with `-javaagent`, and assert
+# the agent's health / readiness / metrics endpoints respond. This is the test
+# the in-process unit suite cannot cover — it catches packaging bugs such as a
+# broken ByteBuddy relocation or a classloader split that only manifest under a
+# real -javaagent attach (see RELEASE_READINESS.md and the agent packaging fix).
+#
+# The sample module has no fat-jar plugin (it ships an exec:java main only), so
+# we assemble its runtime classpath with dependency:copy-dependencies. Crucially
+# we copy ONLY runtime-scope deps: byte-buddy / core are test-scoped transitives
+# and are excluded, because the AGENT jar (attached via -javaagent) provides
+# them — putting a second copy on the app classpath recreates the classloader
+# split that breaks bootstrap.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  attach:
+    name: Attach packaged agent to sample app
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Build packaged agent jar
+        run: ./mvnw -B -pl weaver-girl-agent -am package -DskipTests
+
+      - name: Compile sample + assemble runtime classpath
+        run: |
+          ./mvnw -B -pl weaver-girl-sample -am test-compile -DskipTests
+          ./mvnw -B -pl weaver-girl-sample dependency:copy-dependencies \
+            -DincludeScope=runtime -DoutputDirectory=target/sample-libs
+
+      - name: Attach agent; verify health / ready / metrics
+        run: |
+          set -e
+          AGENT_JAR=$(ls weaver-girl-agent/target/weaver-girl-agent-*.jar | grep -vE 'sources|javadoc' | head -1)
+          test -n "$AGENT_JAR"
+          CP="weaver-girl-sample/target/classes:weaver-girl-sample/target/sample-libs/*"
+          # Non-default ports so a stray local service can't shadow the sample.
+          java -Dsample.port=18080 \
+               -javaagent:"$AGENT_JAR"=metricsPort=9400,healthPort=9401 \
+               -cp "$CP" \
+               com.github.cc11001100.weavergirl.sample.app.SampleApplication &
+          APP_PID=$!
+          # Wait (bounded) for the agent readiness endpoint — once it responds
+          # the agent has fully bootstrapped and the endpoints are stable.
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:9401/ready && break
+            sleep 1
+          done
+          curl -sf http://localhost:9401/health | grep -q '"status":"UP"'
+          curl -sf http://localhost:9401/ready  | grep -q '"status":"READY"'
+          curl -sf http://localhost:9400/metrics | grep -q 'weavergirl'
+          kill "$APP_PID" 2>/dev/null || true
+          wait "$APP_PID" 2>/dev/null || true
+          echo "Agent smoke test PASSED: agent attached, health/ready/metrics responded."
