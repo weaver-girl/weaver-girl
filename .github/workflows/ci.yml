@@ -38,7 +38,13 @@ jobs:
           restore-keys: ${{ runner.os }}-m2-
 
       - name: Build and test
-        run: mvn clean install -B -V -e
+        # `test` (not `install`): compile + run unit tests, then stop before the
+        # verify phase. install/verify would also run the coverage/checkstyle/
+        # spotbugs gates (bound to verify), all currently RED and enforced
+        # separately by the quality-gate job below — keeping them out of this
+        # job means its signal (compiles + tests pass, per JDK) is meaningful
+        # instead of perpetually red. Verified: `mvn clean test` is green on 17.
+        run: mvn clean test -B -V
 
       - name: Upload test reports
         if: failure()
