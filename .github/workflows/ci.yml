@@ -11,8 +11,14 @@ jobs:
     name: Build & Test (JDK ${{ matrix.java }})
     runs-on: ubuntu-latest
     strategy:
+      # Build + test the reactor on JDK 9+ only. All main sources compile with
+      # --release 8 (parent pom), which is NOT a valid flag on a JDK 8 javac, so
+      # the reactor cannot build on JDK 8. JDK 8 *runtime* compatibility is
+      # instead verified by agent-smoke.yml's bare-attach matrix, which builds on
+      # JDK 17 with --release 8 and runs the packaged agent on JDK 8/11/17/21.
+      # This is the conventional layout for a library that targets old bytecode.
       matrix:
-        java: [ 8, 11, 17, 21 ]
+        java: [ 11, 17, 21 ]
       fail-fast: false
 
     steps:
@@ -89,10 +95,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 8
+      - name: Set up JDK 17 (build)
+        # The reactor cannot build on JDK 8: all main sources use --release 8,
+        # which is not a valid javac flag on JDK 8. JDK 17 is the build JDK; the
+        # resulting agent jar is --release 8 bytecode and still loads on JDK 8
+        # (verified by agent-smoke.yml's bare-attach matrix).
         uses: actions/setup-java@v4
         with:
-          java-version: 8
+          java-version: 17
           distribution: temurin
 
       - name: Package

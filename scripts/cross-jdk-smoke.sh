@@ -41,8 +41,12 @@ for j in "${JDKS[@]}"; do printf '  %s\n' "$j"; done
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
   echo ""
   echo "== Building packaged agent + sample =="
-  "$MVNW" -B -pl weaver-girl-agent -am package -DskipTests -q
-  "$MVNW" -B -pl weaver-girl-sample -am test-compile -DskipTests -q
+  # install (not package) so weaver-girl-api/core/plugins JARs land in the local
+  # .m2 repo — dependency:copy-dependencies resolves them from there. On a clean
+  # box the package-only build left them "absent". Skip the verify-phase quality
+  # gates (coverage/checkstyle/spotbugs, all RED and tracked separately) + tests.
+  "$MVNW" -B install -DskipTests \
+    -Djacoco.skip=true -Dcheckstyle.skip=true -Dspotbugs.skip=true -q
   "$MVNW" -B -pl weaver-girl-sample dependency:copy-dependencies \
     -DincludeScope=runtime -DoutputDirectory=target/sample-libs -q
 fi

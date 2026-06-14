@@ -106,14 +106,19 @@ jobs:
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2-
 
-      - name: Build packaged agent jar
-        run: ./mvnw -B -pl weaver-girl-agent -am package -DskipTests
+      - name: Build + install all modules to local repo
+        # install (not package) so weaver-girl-api/core/plugins JARs land in the
+        # local .m2 repo — dependency:copy-dependencies below resolves them from
+        # there, which the previous package-only build left "absent". The verify
+        # phase (which `install` reaches) binds three quality gates — coverage,
+        # checkstyle, spotbugs — all currently RED and tracked in
+        # RELEASE_READINESS.md; none is this smoke job's concern, so all three are
+        # skipped. Tests are skipped too; this job verifies the *agent*, not units.
+        run: ./mvnw -B install -DskipTests -Djacoco.skip=true -Dcheckstyle.skip=true -Dspotbugs.skip=true
 
-      - name: Compile sample + assemble runtime classpath
-        run: |
-          ./mvnw -B -pl weaver-girl-sample -am test-compile -DskipTests
-          ./mvnw -B -pl weaver-girl-sample dependency:copy-dependencies \
-            -DincludeScope=runtime -DoutputDirectory=target/sample-libs
+      - name: Assemble sample runtime classpath
+        run: ./mvnw -B -pl weaver-girl-sample dependency:copy-dependencies \
+                 -DincludeScope=runtime -DoutputDirectory=target/sample-libs
 
       - name: Attach agent; verify interception is actually firing
         run: |
