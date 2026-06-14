@@ -117,8 +117,7 @@ jobs:
         run: ./mvnw -B install -DskipTests -Djacoco.skip=true -Dcheckstyle.skip=true -Dspotbugs.skip=true
 
       - name: Assemble sample runtime classpath
-        run: ./mvnw -B -pl weaver-girl-sample dependency:copy-dependencies \
-                 -DincludeScope=runtime -DoutputDirectory=target/sample-libs
+        run: ./mvnw -B -pl weaver-girl-sample dependency:copy-dependencies -DincludeScope=runtime -DoutputDirectory=target/sample-libs
 
       - name: Attach agent; verify interception is actually firing
         run: |
