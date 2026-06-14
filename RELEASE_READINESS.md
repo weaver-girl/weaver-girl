@@ -71,11 +71,18 @@ The CI **agent-smoke** workflow (`.github/workflows/agent-smoke.yml`) now guards
 against regressions of this class: it attaches the packaged jar to the sample app
 and asserts `/health`, `/ready`, `/metrics` respond.
 
-**Trade-off:** ByteBuddy is now bundled un-shaded. If a host app also bundles a
-conflicting ByteBuddy, the agent's version (prepended via `-javaagent`) wins. A
-proper dual-classloader agent architecture (thin bootstrap jar + child
-`URLClassLoader` for the agent body) would restore relocation safety and is the
-recommended follow-up for a hardened release.
+**Trade-off (now resolved):** the recommended follow-up — a dual-classloader agent
+architecture — has been **implemented**. The agent body now runs in an isolated
+child-first `AgentClassLoader` (`weaver-girl-agent/.../classloader/AgentClassLoader.java`),
+and ByteBuddy is relocated again (`net.bytebuddy` → `shaded.net.bytebuddy`) under
+that isolation. The advice-bridge constraint (the inlined advice must resolve its
+bridge classes to the same `Class` objects `setRegistry` targets) is handled by
+keeping the bridge closure parent-first; see `docs/classloader-architecture.md`. The
+cross-JDK smoke now also asserts interception actually fires
+(`weavergirl_operation_duration_ms_count{plugin="servlet"} > 0`) and that ByteBuddy
+resolves in the isolated loader (`byteBuddyClassLoader=AgentClassLoader` in `/stats`),
+closing the blind spot where a split-bridge regression silently broke instrumentation
+while every endpoint stayed green.
 
 ## What this means
 
