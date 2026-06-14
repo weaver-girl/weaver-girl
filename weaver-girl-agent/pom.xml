@@ -65,15 +65,23 @@
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <!--
-                                Relocations: snakeyaml + slf4j only.
-                                ByteBuddy is intentionally NOT relocated. Relocating net.bytebuddy
-                                breaks agent bootstrap: ByteBuddy loads some of its own classes
-                                (e.g. AgentBuilder$Listener$Adapter) by their ORIGINAL name via the
-                                bootstrap classloader at runtime, which the shade plugin cannot
-                                rewrite, producing NoClassDefFoundError on every real -javaagent
-                                attach. Bundling ByteBuddy un-shaded keeps the agent functional.
-                                Trade-off: if the host app also bundles a different ByteBuddy, the
-                                agent's version (prepended to the classpath via -javaagent) wins.
+                                Relocations: snakeyaml + slf4j + ByteBuddy.
+                                ByteBuddy is now relocated (net.bytebuddy -> shaded.net.bytebuddy).
+                                This previously broke bootstrap because the agent ran on the system
+                                ClassLoader and ByteBuddy loaded some of its own classes by their
+                                original name; under the isolated AgentClassLoader (see
+                                AgentClassLoader + WeaverGirlAgent.run) the agent's ByteBuddy is
+                                resolved child-first from this jar, so relocation holds. Verified by
+                                the cross-JDK smoke + interception assertion; /stats reports
+                                byteBuddyClassLoader=AgentClassLoader.
+
+                                Isolation is provided PRIMARILY by the child-first AgentClassLoader;
+                                relocation is defense-in-depth so the agent's ByteBuddy can never
+                                collide with a host's own net.bytebuddy even via the bootstrap
+                                injection path used for bootstrap-loaded instrumented targets. The
+                                smoke exercises app-loaded targets; the bootstrap-injection path is
+                                not covered by it and is expected to be rare (plugins match app-loaded
+                                implementations, not bootstrap-loaded JDK interfaces).
                             -->
                             <relocations>
                                 <relocation>
@@ -83,6 +91,10 @@
                                 <relocation>
                                     <pattern>org.slf4j</pattern>
                                     <shadedPattern>com.github.cc11001100.weavergirl.shade.org.slf4j</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>net.bytebuddy</pattern>
+                                    <shadedPattern>shaded.net.bytebuddy</shadedPattern>
                                 </relocation>
                             </relocations>
                             <transformers>

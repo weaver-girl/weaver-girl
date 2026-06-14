@@ -319,6 +319,28 @@ public class WeaverGirlAgent {
         }
     }
 
+    /**
+     * Loader name of the first of {@code candidateNames} that resolves (in class-loading
+     * order); {@code "unloaded"} if none resolve. Used so the ByteBuddy isolation diagnostic
+     * works whether or not ByteBuddy is shaded.
+     */
+    private static String firstLoadedLoaderName(String... candidateNames) {
+        for (String name : candidateNames) {
+            try {
+                Class<?> c = Class.forName(name, false, WeaverGirlAgent.class.getClassLoader());
+                ClassLoader cl = c.getClassLoader();
+                if (cl == null) {
+                    return "bootstrap";
+                }
+                String simple = cl.getClass().getSimpleName();
+                return simple.isEmpty() ? cl.getClass().getName() : simple;
+            } catch (Throwable ignored) {
+                // try next candidate
+            }
+        }
+        return "unloaded";
+    }
+
     private static void startHealthEndpoint(int port) throws Exception {
         healthServer = HttpServer.create(new InetSocketAddress(port), 0);
 
@@ -409,9 +431,11 @@ public class WeaverGirlAgent {
                         : status.getRegisteredInterceptorCount();
                 // Isolation diagnostic: report which ClassLoader resolved ByteBuddy and the
                 // agent transformer. If both show the isolated AgentClassLoader, the agent's
-                // ByteBuddy is provably not on the host's system ClassLoader. Loaded by name
-                // so this class has no compile-time dependency on ByteBuddy.
-                String byteBuddyLoader = loaderName("net.bytebuddy.ByteBuddy");
+                // ByteBuddy is provably not on the host's system ClassLoader. ByteBuddy is
+                // shaded to shaded.net.bytebuddy; try the relocated name first, then the
+                // original, so this stays correct if relocation is ever toggled off.
+                String byteBuddyLoader = firstLoadedLoaderName(
+                        "shaded.net.bytebuddy.ByteBuddy", "net.bytebuddy.ByteBuddy");
                 String agentBodyLoader = loaderName(WeaverGirlAgent.class.getName());
                 StringBuilder sb = new StringBuilder(256);
                 sb.append("{\"status\":\"UP\",\"uptimeSeconds\":").append(uptimeSec)
