@@ -54,10 +54,11 @@ public final class MetricRegistry {
     public static TimeWindowAggregator getOrCreateStrict(String name, long windowMs) {
         TimeWindowAggregator existing = aggregators.get(name);
         if (existing != null && existing.getWindowMs() != windowMs) {
-            System.getLogger(MetricRegistry.class.getName())
-                    .log(System.Logger.Level.WARNING,
-                            "Metric '" + name + "' already exists with window "
-                                    + existing.getWindowMs() + "ms, ignoring requested window " + windowMs + "ms");
+            // java.util.logging (not System.Logger, which is JDK 9+) keeps the API
+            // module dependency-free AND runnable on JDK 8.
+            java.util.logging.Logger.getLogger(MetricRegistry.class.getName())
+                    .warning("Metric '" + name + "' already exists with window "
+                            + existing.getWindowMs() + "ms, ignoring requested window " + windowMs + "ms");
         }
         return getOrCreate(name, windowMs);
     }
