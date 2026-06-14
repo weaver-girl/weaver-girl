@@ -6,12 +6,13 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Ensures the intercepted method is idempotent — multiple calls with
- * the same arguments produce the same result and side effects.
+ * Ensures the intercepted method is idempotent — multiple calls with the same arguments produce the
+ * same result and side effects.
  *
- * <p>Must be used within a class annotated with {@link WeaveClass}.</p>
+ * <p>Must be used within a class annotated with {@link WeaveClass}.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.PaymentService")
  * public class PaymentIdempotency {
@@ -28,19 +29,12 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Idempotent {
 
-    /**
-     * Name of the target method to intercept.
-     */
-    String value();
+  /** Name of the target method to intercept. */
+  String value();
 
-    /**
-     * Time-to-live for idempotency keys in milliseconds.
-     */
-    long ttlMs() default 3600000;
+  /** Time-to-live for idempotency keys in milliseconds. */
+  long ttlMs() default 3600000;
 
-    /**
-     * Indices of arguments to use for the idempotency key.
-     * When empty, all arguments are used.
-     */
-    int[] keyArgIndices() default {};
+  /** Indices of arguments to use for the idempotency key. When empty, all arguments are used. */
+  int[] keyArgIndices() default {};
 }

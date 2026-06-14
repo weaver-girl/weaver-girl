@@ -6,10 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Injects the return value of the target method into the advice method parameter.
- * Only valid in {@link After} and {@link AfterReturning} advice methods.
+ * Injects the return value of the target method into the advice method parameter. Only valid in
+ * {@link After} and {@link AfterReturning} advice methods.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.UserService")
  * public class UserResultInterceptor {
@@ -24,5 +25,4 @@ import java.lang.annotation.Target;
  */
 @Target(ElementType.PARAMETER)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface Return {
-}
+public @interface Return {}

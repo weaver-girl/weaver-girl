@@ -6,10 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Ensures a method argument is not null.
- * Applied to parameters of advice methods within a {@link WeaveClass} interceptor.
+ * Ensures a method argument is not null. Applied to parameters of advice methods within a {@link
+ * WeaveClass} interceptor.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.UserService")
  * public class NotNullGuard {
@@ -26,8 +27,6 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface NotNull {
 
-    /**
-     * Error message when the argument is null.
-     */
-    String message() default "Argument must not be null";
+  /** Error message when the argument is null. */
+  String message() default "Argument must not be null";
 }

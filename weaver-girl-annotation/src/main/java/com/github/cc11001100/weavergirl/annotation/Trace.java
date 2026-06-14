@@ -6,12 +6,13 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks an interceptor method as creating a distributed trace span around
- * the intercepted method execution.
+ * Marks an interceptor method as creating a distributed trace span around the intercepted method
+ * execution.
  *
- * <p>Must be used within a class annotated with {@link WeaveClass}.</p>
+ * <p>Must be used within a class annotated with {@link WeaveClass}.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.OrderService")
  * public class OrderTracing {
@@ -29,23 +30,15 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Trace {
 
-    /**
-     * Name of the target method to intercept.
-     */
-    String value();
+  /** Name of the target method to intercept. */
+  String value();
 
-    /**
-     * Custom span name. When empty, the target method name is used.
-     */
-    String spanName() default "";
+  /** Custom span name. When empty, the target method name is used. */
+  String spanName() default "";
 
-    /**
-     * Span kind: INTERNAL, SERVER, CLIENT, PRODUCER, CONSUMER.
-     */
-    SpanKind kind() default SpanKind.INTERNAL;
+  /** Span kind: INTERNAL, SERVER, CLIENT, PRODUCER, CONSUMER. */
+  SpanKind kind() default SpanKind.INTERNAL;
 
-    /**
-     * Whether to record exception details in the span.
-     */
-    boolean recordException() default true;
+  /** Whether to record exception details in the span. */
+  boolean recordException() default true;
 }

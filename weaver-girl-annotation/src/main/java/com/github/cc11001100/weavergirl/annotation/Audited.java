@@ -6,10 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Audits method invocations by logging who called what and when.
- * Applied at the method level within a {@link WeaveClass} interceptor.
+ * Audits method invocations by logging who called what and when. Applied at the method level within
+ * a {@link WeaveClass} interceptor.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.FinanceService")
  * public class FinanceAudit {
@@ -26,23 +27,15 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Audited {
 
-    /**
-     * Name of the target method to intercept.
-     */
-    String value();
+  /** Name of the target method to intercept. */
+  String value();
 
-    /**
-     * Action name for the audit log.
-     */
-    String action() default "";
+  /** Action name for the audit log. */
+  String action() default "";
 
-    /**
-     * Whether to include method arguments in the audit log.
-     */
-    boolean includeArgs() default false;
+  /** Whether to include method arguments in the audit log. */
+  boolean includeArgs() default false;
 
-    /**
-     * Whether to include the return value in the audit log.
-     */
-    boolean includeResult() default false;
+  /** Whether to include the return value in the audit log. */
+  boolean includeResult() default false;
 }

@@ -6,10 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Injects the target instance (this) into the advice method parameter.
- * Only valid in non-static target methods.
+ * Injects the target instance (this) into the advice method parameter. Only valid in non-static
+ * target methods.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.UserService")
  * public class UserThisInterceptor {
@@ -24,5 +25,4 @@ import java.lang.annotation.Target;
  */
 @Target(ElementType.PARAMETER)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface This {
-}
+public @interface This {}

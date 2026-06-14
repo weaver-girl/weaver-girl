@@ -6,10 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Intercepts field read access (getfield) on the target class.
- * Must be used within a class annotated with {@link WeaveClass}.
+ * Intercepts field read access (getfield) on the target class. Must be used within a class
+ * annotated with {@link WeaveClass}.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.ConfigService")
  * public class ConfigFieldMonitor {
@@ -27,8 +28,6 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface OnFieldGet {
 
-    /**
-     * Name of the field to intercept.
-     */
-    String value();
+  /** Name of the field to intercept. */
+  String value();
 }

@@ -6,10 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Ensures the intercepted method is executed under synchronization.
- * Applied at the method level within a {@link WeaveClass} interceptor.
+ * Ensures the intercepted method is executed under synchronization. Applied at the method level
+ * within a {@link WeaveClass} interceptor.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.CounterService")
  * public class CounterSync {
@@ -26,18 +27,12 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Synchronized {
 
-    /**
-     * Name of the target method to intercept.
-     */
-    String value();
+  /** Name of the target method to intercept. */
+  String value();
 
-    /**
-     * Lock key prefix. When empty, the target class name is used.
-     */
-    String lockKey() default "";
+  /** Lock key prefix. When empty, the target class name is used. */
+  String lockKey() default "";
 
-    /**
-     * Whether to lock on the target instance (this) or a class-level lock.
-     */
-    boolean instanceLevel() default true;
+  /** Whether to lock on the target instance (this) or a class-level lock. */
+  boolean instanceLevel() default true;
 }

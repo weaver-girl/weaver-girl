@@ -6,13 +6,13 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Applies circuit breaker pattern to the intercepted method.
- * When failures exceed the threshold, the circuit opens and subsequent
- * calls fail fast without invoking the target method.
+ * Applies circuit breaker pattern to the intercepted method. When failures exceed the threshold,
+ * the circuit opens and subsequent calls fail fast without invoking the target method.
  *
- * <p>Must be used within a class annotated with {@link WeaveClass}.</p>
+ * <p>Must be used within a class annotated with {@link WeaveClass}.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.PaymentService")
  * public class PaymentCircuitBreaker {
@@ -30,29 +30,18 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface CircuitBreaker {
 
-    /**
-     * Name of the target method to intercept.
-     */
-    String value();
+  /** Name of the target method to intercept. */
+  String value();
 
-    /**
-     * Number of consecutive failures before opening the circuit.
-     */
-    int failureThreshold() default 5;
+  /** Number of consecutive failures before opening the circuit. */
+  int failureThreshold() default 5;
 
-    /**
-     * Time in milliseconds the circuit stays open before half-opening.
-     */
-    long openTimeoutMs() default 30000;
+  /** Time in milliseconds the circuit stays open before half-opening. */
+  long openTimeoutMs() default 30000;
 
-    /**
-     * Number of successful calls in half-open state to close the circuit.
-     */
-    int successThreshold() default 3;
+  /** Number of successful calls in half-open state to close the circuit. */
+  int successThreshold() default 3;
 
-    /**
-     * Exception types that count as failures.
-     * When empty, all exceptions count.
-     */
-    Class<? extends Throwable>[] failureTypes() default {};
+  /** Exception types that count as failures. When empty, all exceptions count. */
+  Class<? extends Throwable>[] failureTypes() default {};
 }

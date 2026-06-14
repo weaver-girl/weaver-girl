@@ -6,13 +6,13 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Caches the return value of the intercepted method.
- * Subsequent calls with the same arguments return the cached value
- * without invoking the target method.
+ * Caches the return value of the intercepted method. Subsequent calls with the same arguments
+ * return the cached value without invoking the target method.
  *
- * <p>Must be used within a class annotated with {@link WeaveClass}.</p>
+ * <p>Must be used within a class annotated with {@link WeaveClass}.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.UserService")
  * public class UserCache {
@@ -30,29 +30,18 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface CacheResult {
 
-    /**
-     * Name of the target method to intercept.
-     */
-    String value();
+  /** Name of the target method to intercept. */
+  String value();
 
-    /**
-     * Time-to-live in milliseconds. 0 means no expiration.
-     */
-    long ttlMs() default 0;
+  /** Time-to-live in milliseconds. 0 means no expiration. */
+  long ttlMs() default 0;
 
-    /**
-     * Maximum number of cached entries.
-     */
-    int maxSize() default 1000;
+  /** Maximum number of cached entries. */
+  int maxSize() default 1000;
 
-    /**
-     * Cache key prefix. When empty, the method name is used.
-     */
-    String keyPrefix() default "";
+  /** Cache key prefix. When empty, the method name is used. */
+  String keyPrefix() default "";
 
-    /**
-     * Indices of arguments to include in the cache key.
-     * When empty, all arguments are used.
-     */
-    int[] keyArgIndices() default {};
+  /** Indices of arguments to include in the cache key. When empty, all arguments are used. */
+  int[] keyArgIndices() default {};
 }

@@ -6,10 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Records a metric value for the intercepted method.
- * Applied at the method level within a {@link WeaveClass} interceptor.
+ * Records a metric value for the intercepted method. Applied at the method level within a {@link
+ * WeaveClass} interceptor.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.OrderService")
  * public class OrderMetrics {
@@ -26,23 +27,15 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Metric {
 
-    /**
-     * Name of the target method to intercept.
-     */
-    String value();
+  /** Name of the target method to intercept. */
+  String value();
 
-    /**
-     * Metric name.
-     */
-    String name();
+  /** Metric name. */
+  String name();
 
-    /**
-     * Index of the argument to record as the metric value.
-     */
-    int argIndex() default -1;
+  /** Index of the argument to record as the metric value. */
+  int argIndex() default -1;
 
-    /**
-     * Whether to use the return value as the metric value.
-     */
-    boolean useReturn() default false;
+  /** Whether to use the return value as the metric value. */
+  boolean useReturn() default false;
 }

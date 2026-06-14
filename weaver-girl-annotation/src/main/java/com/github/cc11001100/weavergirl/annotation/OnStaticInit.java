@@ -6,10 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Intercepts the static initializer (&lt;clinit&gt;) of the target class.
- * Must be used within a class annotated with {@link WeaveClass}.
+ * Intercepts the static initializer (&lt;clinit&gt;) of the target class. Must be used within a
+ * class annotated with {@link WeaveClass}.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.HeavyConfig")
  * public class StaticInitMonitor {
@@ -24,5 +25,4 @@ import java.lang.annotation.Target;
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface OnStaticInit {
-}
+public @interface OnStaticInit {}

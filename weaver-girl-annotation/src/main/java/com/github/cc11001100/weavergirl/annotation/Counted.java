@@ -6,10 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Counts method invocations using a named counter.
- * Applied at the method level within a {@link WeaveClass} interceptor.
+ * Counts method invocations using a named counter. Applied at the method level within a {@link
+ * WeaveClass} interceptor.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.OrderService")
  * public class OrderMetrics {
@@ -26,23 +27,15 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Counted {
 
-    /**
-     * Name of the target method to intercept.
-     */
-    String value();
+  /** Name of the target method to intercept. */
+  String value();
 
-    /**
-     * Counter metric name.
-     */
-    String name() default "";
+  /** Counter metric name. */
+  String name() default "";
 
-    /**
-     * Description for the counter metric.
-     */
-    String description() default "";
+  /** Description for the counter metric. */
+  String description() default "";
 
-    /**
-     * Whether to record success/failure separately.
-     */
-    boolean recordFailuresOnly() default false;
+  /** Whether to record success/failure separately. */
+  boolean recordFailuresOnly() default false;
 }

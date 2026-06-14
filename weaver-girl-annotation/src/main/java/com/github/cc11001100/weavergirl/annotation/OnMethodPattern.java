@@ -6,13 +6,14 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks a method as a before-advice matching target methods by regex pattern.
- * Unlike {@link Before} which matches by exact method name, this annotation
- * uses a regular expression to match method names.
+ * Marks a method as a before-advice matching target methods by regex pattern. Unlike {@link Before}
+ * which matches by exact method name, this annotation uses a regular expression to match method
+ * names.
  *
- * <p>Must be used within a class annotated with {@link WeaveClass}.</p>
+ * <p>Must be used within a class annotated with {@link WeaveClass}.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.UserService")
  * public class UserServiceInterceptor {
@@ -31,10 +32,10 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface OnMethodPattern {
 
-    /**
-     * Regex pattern to match target method names.
-     *
-     * @return a Java regex pattern (e.g., {@code "find.*"}, {@code "save|update"})
-     */
-    String value();
+  /**
+   * Regex pattern to match target method names.
+   *
+   * @return a Java regex pattern (e.g., {@code "find.*"}, {@code "save|update"})
+   */
+  String value();
 }

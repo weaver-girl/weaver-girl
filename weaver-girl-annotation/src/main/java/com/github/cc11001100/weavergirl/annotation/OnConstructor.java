@@ -6,12 +6,13 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Marks a method as an advice that intercepts the constructor of the target class.
- * Called when a new instance of the target class is created.
+ * Marks a method as an advice that intercepts the constructor of the target class. Called when a
+ * new instance of the target class is created.
  *
- * <p>Must be used within a class annotated with {@link WeaveClass}.</p>
+ * <p>Must be used within a class annotated with {@link WeaveClass}.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.UserService")
  * public class UserServiceConstructorInterceptor {
@@ -29,11 +30,11 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface OnConstructor {
 
-    /**
-     * Fully-qualified parameter type names to match a specific constructor overload.
-     * When empty (default), matches all constructors.
-     *
-     * @return parameter type names, or empty array to match all constructors
-     */
-    String[] parameterTypes() default {};
+  /**
+   * Fully-qualified parameter type names to match a specific constructor overload. When empty
+   * (default), matches all constructors.
+   *
+   * @return parameter type names, or empty array to match all constructors
+   */
+  String[] parameterTypes() default {};
 }

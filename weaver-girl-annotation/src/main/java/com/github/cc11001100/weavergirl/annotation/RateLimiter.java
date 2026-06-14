@@ -4,13 +4,13 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
-import java.util.concurrent.TimeUnit;
 
 /**
- * Limits the rate of method invocations.
- * Applied at the method level within a {@link WeaveClass} interceptor.
+ * Limits the rate of method invocations. Applied at the method level within a {@link WeaveClass}
+ * interceptor.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.ApiService")
  * public class ApiRateLimiter {
@@ -27,19 +27,12 @@ import java.util.concurrent.TimeUnit;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RateLimiter {
 
-    /**
-     * Name of the target method to intercept.
-     */
-    String value();
+  /** Name of the target method to intercept. */
+  String value();
 
-    /**
-     * Number of permits per second.
-     */
-    double permitsPerSecond() default 100;
+  /** Number of permits per second. */
+  double permitsPerSecond() default 100;
 
-    /**
-     * Maximum time to wait for a permit in milliseconds.
-     * 0 means no waiting (fail fast).
-     */
-    long acquireTimeoutMs() default 0;
+  /** Maximum time to wait for a permit in milliseconds. 0 means no waiting (fail fast). */
+  long acquireTimeoutMs() default 0;
 }

@@ -6,10 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Records a gauge value for the intercepted method.
- * Applied at the method level within a {@link WeaveClass} interceptor.
+ * Records a gauge value for the intercepted method. Applied at the method level within a {@link
+ * WeaveClass} interceptor.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.OrderService")
  * public class OrderMetrics {
@@ -26,23 +27,15 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Gauge {
 
-    /**
-     * Name of the target method to intercept.
-     */
-    String value();
+  /** Name of the target method to intercept. */
+  String value();
 
-    /**
-     * Gauge metric name.
-     */
-    String name();
+  /** Gauge metric name. */
+  String name();
 
-    /**
-     * Index of the argument to use as the gauge value.
-     */
-    int argIndex() default -1;
+  /** Index of the argument to use as the gauge value. */
+  int argIndex() default -1;
 
-    /**
-     * Whether to use the return value as the gauge value.
-     */
-    boolean useReturn() default false;
+  /** Whether to use the return value as the gauge value. */
+  boolean useReturn() default false;
 }

@@ -9,6 +9,7 @@ import java.lang.annotation.Target;
  * Injects the original {@link java.lang.reflect.Method} into the advice method parameter.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.UserService")
  * public class UserOriginInterceptor {
@@ -23,5 +24,4 @@ import java.lang.annotation.Target;
  */
 @Target(ElementType.PARAMETER)
 @Retention(RetentionPolicy.RUNTIME)
-public @interface Origin {
-}
+public @interface Origin {}

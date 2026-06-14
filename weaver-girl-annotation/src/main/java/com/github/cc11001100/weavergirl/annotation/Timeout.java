@@ -6,13 +6,13 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Sets a maximum execution time for the intercepted method.
- * If the method exceeds the timeout, it is interrupted and
- * a fallback value or exception is used instead.
+ * Sets a maximum execution time for the intercepted method. If the method exceeds the timeout, it
+ * is interrupted and a fallback value or exception is used instead.
  *
- * <p>Must be used within a class annotated with {@link WeaveClass}.</p>
+ * <p>Must be used within a class annotated with {@link WeaveClass}.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.SlowService")
  * public class TimeoutGuard {
@@ -30,18 +30,12 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Timeout {
 
-    /**
-     * Name of the target method to intercept.
-     */
-    String value();
+  /** Name of the target method to intercept. */
+  String value();
 
-    /**
-     * Maximum execution time in milliseconds.
-     */
-    long durationMs() default 30000;
+  /** Maximum execution time in milliseconds. */
+  long durationMs() default 30000;
 
-    /**
-     * Whether to cancel the thread on timeout.
-     */
-    boolean cancelOnTimeout() default true;
+  /** Whether to cancel the thread on timeout. */
+  boolean cancelOnTimeout() default true;
 }

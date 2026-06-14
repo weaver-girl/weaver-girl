@@ -6,10 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Injects a specific method argument into the advice method parameter.
- * Applied to parameters of advice methods within a {@link WeaveClass} interceptor.
+ * Injects a specific method argument into the advice method parameter. Applied to parameters of
+ * advice methods within a {@link WeaveClass} interceptor.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.UserService")
  * public class UserArgInterceptor {
@@ -28,8 +29,6 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Arg {
 
-    /**
-     * Index of the method argument to inject.
-     */
-    int value();
+  /** Index of the method argument to inject. */
+  int value();
 }

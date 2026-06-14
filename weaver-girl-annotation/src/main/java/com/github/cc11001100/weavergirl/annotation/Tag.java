@@ -6,10 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Adds a tag (key-value metadata) to the current trace span.
- * Applied at the method level within a {@link WeaveClass} interceptor.
+ * Adds a tag (key-value metadata) to the current trace span. Applied at the method level within a
+ * {@link WeaveClass} interceptor.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.OrderService")
  * public class OrderTagger {
@@ -27,29 +28,21 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Tag {
 
-    /**
-     * Name of the target method to intercept.
-     */
-    String value();
+  /** Name of the target method to intercept. */
+  String value();
 
-    /**
-     * Tag key name.
-     */
-    String key();
+  /** Tag key name. */
+  String key();
 
-    /**
-     * Static tag value. Use when the value is known at compile time.
-     */
-    String tagValue() default "";
+  /** Static tag value. Use when the value is known at compile time. */
+  String tagValue() default "";
 
-    /**
-     * Index of the method argument to use as the tag value.
-     * Only used when {@link #tagValue()} is empty.
-     */
-    int argIndex() default -1;
+  /**
+   * Index of the method argument to use as the tag value. Only used when {@link #tagValue()} is
+   * empty.
+   */
+  int argIndex() default -1;
 
-    /**
-     * Whether to use the return value as the tag value.
-     */
-    boolean useReturn() default false;
+  /** Whether to use the return value as the tag value. */
+  boolean useReturn() default false;
 }

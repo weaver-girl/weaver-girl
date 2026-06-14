@@ -6,10 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Logs method entry, exit, and exception information.
- * Applied at the method level within a {@link WeaveClass} interceptor.
+ * Logs method entry, exit, and exception information. Applied at the method level within a {@link
+ * WeaveClass} interceptor.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.OrderService")
  * public class OrderLogger {
@@ -26,33 +27,21 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Logged {
 
-    /**
-     * Name of the target method to intercept.
-     */
-    String value();
+  /** Name of the target method to intercept. */
+  String value();
 
-    /**
-     * Log level: TRACE, DEBUG, INFO, WARN, ERROR.
-     */
-    String level() default "DEBUG";
+  /** Log level: TRACE, DEBUG, INFO, WARN, ERROR. */
+  String level() default "DEBUG";
 
-    /**
-     * Whether to log method arguments.
-     */
-    boolean logArgs() default false;
+  /** Whether to log method arguments. */
+  boolean logArgs() default false;
 
-    /**
-     * Whether to log the return value.
-     */
-    boolean logResult() default false;
+  /** Whether to log the return value. */
+  boolean logResult() default false;
 
-    /**
-     * Whether to log execution time.
-     */
-    boolean logTime() default true;
+  /** Whether to log execution time. */
+  boolean logTime() default true;
 
-    /**
-     * Custom log message prefix.
-     */
-    String prefix() default "";
+  /** Custom log message prefix. */
+  String prefix() default "";
 }

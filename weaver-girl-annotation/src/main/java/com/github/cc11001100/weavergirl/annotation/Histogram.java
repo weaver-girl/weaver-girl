@@ -6,10 +6,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Records execution time as a histogram metric.
- * Applied at the method level within a {@link WeaveClass} interceptor.
+ * Records execution time as a histogram metric. Applied at the method level within a {@link
+ * WeaveClass} interceptor.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.OrderService")
  * public class OrderMetrics {
@@ -26,18 +27,12 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Histogram {
 
-    /**
-     * Name of the target method to intercept.
-     */
-    String value();
+  /** Name of the target method to intercept. */
+  String value();
 
-    /**
-     * Histogram metric name.
-     */
-    String name() default "";
+  /** Histogram metric name. */
+  String name() default "";
 
-    /**
-     * Bucket boundaries in milliseconds.
-     */
-    long[] buckets() default {1, 5, 10, 50, 100, 500, 1000};
+  /** Bucket boundaries in milliseconds. */
+  long[] buckets() default {1, 5, 10, 50, 100, 500, 1000};
 }

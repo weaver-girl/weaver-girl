@@ -8,17 +8,19 @@ import java.lang.annotation.Target;
 /**
  * Marks a class as an interceptor for target classes matching the specified criteria.
  *
- * <p>Multiple matching strategies are supported (evaluated in priority order):</p>
+ * <p>Multiple matching strategies are supported (evaluated in priority order):
+ *
  * <ol>
- *   <li>{@link #pointcut()} — PointcutExpression DSL (highest priority, ignores all other fields)</li>
- *   <li>{@link #targetAnnotation()} — match classes bearing a specific annotation</li>
- *   <li>{@link #targetSuperClass()} — match classes extending a specific superclass</li>
- *   <li>{@link #targetInterface()} — match classes implementing a specific interface</li>
- *   <li>{@link #targetPattern()} — match classes by regex name pattern</li>
- *   <li>{@link #target()} — match a single class by exact name (lowest priority)</li>
+ *   <li>{@link #pointcut()} — PointcutExpression DSL (highest priority, ignores all other fields)
+ *   <li>{@link #targetAnnotation()} — match classes bearing a specific annotation
+ *   <li>{@link #targetSuperClass()} — match classes extending a specific superclass
+ *   <li>{@link #targetInterface()} — match classes implementing a specific interface
+ *   <li>{@link #targetPattern()} — match classes by regex name pattern
+ *   <li>{@link #target()} — match a single class by exact name (lowest priority)
  * </ol>
  *
  * <h3>Examples:</h3>
+ *
  * <pre>
  * // Exact class name
  * &#64;WeaveClass(target = "com.example.UserService")
@@ -47,52 +49,44 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface WeaveClass {
 
-    /**
-     * Exact fully-qualified class name to intercept.
-     * Ignored when {@link #pointcut()}, {@link #targetAnnotation()},
-     * {@link #targetSuperClass()}, {@link #targetInterface()}, or {@link #targetPattern()} is set.
-     */
-    String target() default "";
+  /**
+   * Exact fully-qualified class name to intercept. Ignored when {@link #pointcut()}, {@link
+   * #targetAnnotation()}, {@link #targetSuperClass()}, {@link #targetInterface()}, or {@link
+   * #targetPattern()} is set.
+   */
+  String target() default "";
 
-    /**
-     * Regex pattern for class names to intercept.
-     * Ignored when {@link #pointcut()}, {@link #targetAnnotation()},
-     * {@link #targetSuperClass()}, or {@link #targetInterface()} is set.
-     */
-    String targetPattern() default "";
+  /**
+   * Regex pattern for class names to intercept. Ignored when {@link #pointcut()}, {@link
+   * #targetAnnotation()}, {@link #targetSuperClass()}, or {@link #targetInterface()} is set.
+   */
+  String targetPattern() default "";
 
-    /**
-     * Fully-qualified annotation class name.
-     * Match all classes annotated with this annotation.
-     * Ignored when {@link #pointcut()}, {@link #targetSuperClass()},
-     * or {@link #targetInterface()} is set.
-     */
-    String targetAnnotation() default "";
+  /**
+   * Fully-qualified annotation class name. Match all classes annotated with this annotation.
+   * Ignored when {@link #pointcut()}, {@link #targetSuperClass()}, or {@link #targetInterface()} is
+   * set.
+   */
+  String targetAnnotation() default "";
 
-    /**
-     * Fully-qualified superclass name.
-     * Match all classes that extend this superclass.
-     * Ignored when {@link #pointcut()} or {@link #targetInterface()} is set.
-     */
-    String targetSuperClass() default "";
+  /**
+   * Fully-qualified superclass name. Match all classes that extend this superclass. Ignored when
+   * {@link #pointcut()} or {@link #targetInterface()} is set.
+   */
+  String targetSuperClass() default "";
 
-    /**
-     * Fully-qualified interface name.
-     * Match all classes that implement this interface.
-     * Ignored when {@link #pointcut()} is set.
-     */
-    String targetInterface() default "";
+  /**
+   * Fully-qualified interface name. Match all classes that implement this interface. Ignored when
+   * {@link #pointcut()} is set.
+   */
+  String targetInterface() default "";
 
-    /**
-     * PointcutExpression DSL — highest priority, ignores all other fields when set.
-     *
-     * <p>Supported forms:</p>
-     * <pre>
-     * execution(* com.example..*(..))
-     * @within(com.example.Monitored)
-     * subclassOf(com.example.BaseService)
-     * execution(* com.example..*(..)) && @annotation(com.example.Traced)
-     * </pre>
-     */
-    String pointcut() default "";
+  /**
+   * PointcutExpression DSL — highest priority, ignores all other fields when set.
+   *
+   * <p>Supported forms include {@code execution(* com.example..*(..))}, {@code
+   * @within(com.example.Monitored)}, {@code subclassOf(com.example.BaseService)}, and {@code
+   * execution(* com.example..*(..)) && @annotation(com.example.Traced)}.
+   */
+  String pointcut() default "";
 }

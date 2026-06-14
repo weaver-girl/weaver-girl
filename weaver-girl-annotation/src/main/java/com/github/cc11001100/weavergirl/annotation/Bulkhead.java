@@ -6,12 +6,13 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Limits the number of concurrent executions of the intercepted method.
- * When the limit is reached, additional calls are rejected or queued.
+ * Limits the number of concurrent executions of the intercepted method. When the limit is reached,
+ * additional calls are rejected or queued.
  *
- * <p>Must be used within a class annotated with {@link WeaveClass}.</p>
+ * <p>Must be used within a class annotated with {@link WeaveClass}.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * &#64;WeaveClass(target = "com.example.HeavyService")
  * public class ConcurrencyGuard {
@@ -28,19 +29,12 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Bulkhead {
 
-    /**
-     * Name of the target method to intercept.
-     */
-    String value();
+  /** Name of the target method to intercept. */
+  String value();
 
-    /**
-     * Maximum number of concurrent executions.
-     */
-    int maxConcurrent() default 10;
+  /** Maximum number of concurrent executions. */
+  int maxConcurrent() default 10;
 
-    /**
-     * Maximum time to wait for a slot in milliseconds.
-     * 0 means no waiting (fail fast).
-     */
-    long maxWaitMs() default 0;
+  /** Maximum time to wait for a slot in milliseconds. 0 means no waiting (fail fast). */
+  long maxWaitMs() default 0;
 }
