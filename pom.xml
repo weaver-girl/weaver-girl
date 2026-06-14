@@ -329,6 +329,34 @@
                 </plugins>
             </build>
         </profile>
+
+        <!-- Run JMH micro-benchmarks: ./mvnw -Pbench -DskipTests integration-test -pl weaver-girl-core -->
+        <!-- Tune precision via -Djmh.wi=N -Djmh.i=N -Djmh.f=N -->
+        <profile>
+            <id>bench</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.1.0</version>
+                        <executions>
+                            <execution>
+                                <id>run-jmh</id>
+                                <phase>integration-test</phase>
+                                <goals>
+                                    <goal>java</goal>
+                                </goals>
+                                <configuration>
+                                    <mainClass>com.github.cc11001100.weavergirl.core.bench.InterceptorBenchmarkRunner</mainClass>
+                                    <classpathScope>test</classpathScope>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 
 </project>
