@@ -97,10 +97,16 @@ public class WeaverTransformer {
     public void install(Instrumentation instrumentation) {
         this.instrumentation = instrumentation;
 
-        // Inject helper classes into Bootstrap ClassLoader so advice code
-        // is visible when instrumenting java.* / javax.* classes
-        BootstrapInjection bootstrapInjection = new BootstrapInjection();
-        bootstrapInjection.inject(instrumentation);
+        // NOTE: the previous custom BootstrapInjection.append(agentJar) was removed.
+        // Appending the whole agent JAR (which bundles ByteBuddy) to the bootstrap
+        // classloader while the same JAR is also on the app classpath (via -javaagent)
+        // produced a classloader split — net.bytebuddy classes resolved to different
+        // Class objects in the app vs bootstrap loaders, raising a loader-constraint
+        // violation on every real -javaagent attach. Bootstrap injection of the
+        // advice helper classes is instead handled by ByteBuddy's own
+        // AgentBuilder.InjectionStrategy.UsingInstrumentation configured below, which
+        // extracts ONLY the needed helper classes into a temp JAR (no ByteBuddy on the
+        // bootstrap path), avoiding the split.
 
         // Build the ignore matcher: always exclude JDK internals;
         // optionally exclude the agent's own classes and shaded dependencies

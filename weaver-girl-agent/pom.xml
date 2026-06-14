@@ -64,15 +64,18 @@
                         </goals>
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <!--
+                                Relocations: snakeyaml + slf4j only.
+                                ByteBuddy is intentionally NOT relocated. Relocating net.bytebuddy
+                                breaks agent bootstrap: ByteBuddy loads some of its own classes
+                                (e.g. AgentBuilder$Listener$Adapter) by their ORIGINAL name via the
+                                bootstrap classloader at runtime, which the shade plugin cannot
+                                rewrite, producing NoClassDefFoundError on every real -javaagent
+                                attach. Bundling ByteBuddy un-shaded keeps the agent functional.
+                                Trade-off: if the host app also bundles a different ByteBuddy, the
+                                agent's version (prepended to the classpath via -javaagent) wins.
+                            -->
                             <relocations>
-                                <relocation>
-                                    <pattern>net.bytebuddy</pattern>
-                                    <shadedPattern>shaded.net.bytebuddy</shadedPattern>
-                                </relocation>
-                                <relocation>
-                                    <pattern>org.objectweb.asm</pattern>
-                                    <shadedPattern>shaded.org.objectweb.asm</shadedPattern>
-                                </relocation>
                                 <relocation>
                                     <pattern>org.yaml.snakeyaml</pattern>
                                     <shadedPattern>shaded.org.yaml.snakeyaml</shadedPattern>
