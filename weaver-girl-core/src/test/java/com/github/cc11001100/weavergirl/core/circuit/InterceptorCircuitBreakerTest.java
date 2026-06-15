@@ -78,4 +78,63 @@ class InterceptorCircuitBreakerTest {
         assertFalse(cb.shouldInvoke("interceptor-A"));
         assertTrue(cb.shouldInvoke("interceptor-B"));
     }
+
+    // --- recordOutcome: latency-based (slow-call) auto-degradation ---
+
+    @Test
+    void recordOutcomeTripsAfterConsecutiveSlowCallsEvenOnSuccess() {
+        // threshold 1us, trip after 3 consecutive slow calls
+        InterceptorCircuitBreaker cb = new InterceptorCircuitBreaker(100, 60_000, 1_000L, 3);
+        // These succeed but are slow -> should still trip via slow-call logic
+        cb.recordOutcome("slow-hook", true, 10_000L);
+        cb.recordOutcome("slow-hook", true, 10_000L);
+        assertTrue(cb.shouldInvoke("slow-hook")); // only 2 slow, below limit
+
+        cb.recordOutcome("slow-hook", true, 10_000L); // 3rd consecutive slow
+        assertFalse(cb.shouldInvoke("slow-hook")); // tripped OPEN
+    }
+
+    @Test
+    void recordOutcomeFastCallResetsConsecutiveSlowCount() {
+        InterceptorCircuitBreaker cb = new InterceptorCircuitBreaker(100, 60_000, 1_000L, 3);
+        cb.recordOutcome("slow-hook", true, 10_000L); // slow=1
+        cb.recordOutcome("slow-hook", true, 10_000L); // slow=2
+        cb.recordOutcome("slow-hook", true, 100L);    // fast -> resets to 0
+        cb.recordOutcome("slow-hook", true, 10_000L); // slow=1
+        cb.recordOutcome("slow-hook", true, 10_000L); // slow=2
+        // Never reached 3 consecutive slow, never failed -> still allowed
+        assertTrue(cb.shouldInvoke("slow-hook"));
+    }
+
+    @Test
+    void recordOutcomeFailureTripsViaFailureThreshold() {
+        // slow tripping disabled (threshold <= 0); rely on failure threshold only
+        InterceptorCircuitBreaker cb = new InterceptorCircuitBreaker(3, 60_000, 0L, 10);
+        cb.recordOutcome("failing-hook", false, 100L);
+        cb.recordOutcome("failing-hook", false, 100L);
+        assertTrue(cb.shouldInvoke("failing-hook"));
+        cb.recordOutcome("failing-hook", false, 100L); // 3rd failure
+        assertFalse(cb.shouldInvoke("failing-hook"));
+    }
+
+    @Test
+    void recordOutcomeSuccessResetsFailureCount() {
+        InterceptorCircuitBreaker cb = new InterceptorCircuitBreaker(3, 60_000, 0L, 10);
+        cb.recordOutcome("hook", false, 100L);
+        cb.recordOutcome("hook", false, 100L);
+        cb.recordOutcome("hook", true, 100L); // success resets failures
+        cb.recordOutcome("hook", false, 100L);
+        cb.recordOutcome("hook", false, 100L); // only 2 consecutive since reset
+        assertTrue(cb.shouldInvoke("hook"));
+    }
+
+    @Test
+    void recordOutcomeDoesNotTripWhenSlowThresholdDisabled() {
+        // threshold <= 0 disables slow-call tripping entirely
+        InterceptorCircuitBreaker cb = new InterceptorCircuitBreaker(100, 60_000, 0L, 2);
+        for (int i = 0; i < 50; i++) {
+            cb.recordOutcome("slow-hook", true, 999_999_999L); // very slow, but disabled
+        }
+        assertTrue(cb.shouldInvoke("slow-hook"));
+    }
 }

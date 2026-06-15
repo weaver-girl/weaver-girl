@@ -80,4 +80,14 @@ public class InterceptorHolder {
     public static void recordInterceptorFailure(String interceptorName) {
         circuitBreaker.recordFailure(interceptorName);
     }
+
+    /**
+     * Record an interceptor outcome and its duration, driving both failure-count
+     * and slow-call (auto-degradation) circuit breaking in one call. Used by the
+     * inlined {@code @Advice} so a hook that is consistently slow — but never
+     * throws — is still tripped.
+     */
+    public static void recordOutcome(String interceptorName, boolean success, long durationNanos) {
+        circuitBreaker.recordOutcome(interceptorName, success, durationNanos);
+    }
 }

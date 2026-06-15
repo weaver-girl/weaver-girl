@@ -341,6 +341,60 @@ public class WeaverGirlAgent {
         return "unloaded";
     }
 
+    /**
+     * Build a JSON array of the top {@code limit} hook points by cumulative interceptor
+     * time, each with invocation count, errors, avg/p95/max (micros) and slow-call count.
+     * Read-only over the metrics snapshot — safe to call from the /stats handler.
+     */
+    private static String buildTopHooksJson(
+            java.util.Map<String, com.github.cc11001100.weavergirl.core.status.AgentStatus.InterceptorMetrics> metrics,
+            int limit) {
+        java.util.List<java.util.Map.Entry<String,
+                com.github.cc11001100.weavergirl.core.status.AgentStatus.InterceptorMetrics>> sorted =
+                new java.util.ArrayList<>(metrics.entrySet());
+        sorted.sort((a, b) -> Long.compare(b.getValue().getTotalNanos(), a.getValue().getTotalNanos()));
+        int n = Math.min(limit, sorted.size());
+        StringBuilder sb = new StringBuilder();
+        sb.append('[');
+        for (int i = 0; i < n; i++) {
+            java.util.Map.Entry<String,
+                    com.github.cc11001100.weavergirl.core.status.AgentStatus.InterceptorMetrics> e = sorted.get(i);
+            com.github.cc11001100.weavergirl.core.status.AgentStatus.InterceptorMetrics m = e.getValue();
+            if (i > 0) {
+                sb.append(',');
+            }
+            sb.append("{\"name\":\"").append(jsonEscape(e.getKey())).append('"')
+              .append(",\"invocations\":").append(m.getInvocations())
+              .append(",\"errors\":").append(m.getErrors())
+              .append(",\"avgMicros\":").append(round3(m.getAverageNanos() / 1_000.0))
+              .append(",\"p95Micros\":").append(round3(m.estimatePercentile(95.0) / 1_000.0))
+              .append(",\"maxMicros\":").append(round3(m.getMaxNanos() / 1_000.0))
+              .append(",\"slowCalls\":").append(m.getSlowCalls())
+              .append('}');
+        }
+        sb.append(']');
+        return sb.toString();
+    }
+
+    private static String round3(double v) {
+        return String.format(java.util.Locale.ROOT, "%.3f", v);
+    }
+
+    private static String jsonEscape(String s) {
+        if (s.indexOf('"') < 0 && s.indexOf('\\') < 0) {
+            return s;
+        }
+        StringBuilder sb = new StringBuilder(s.length() + 8);
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '"' || c == '\\') {
+                sb.append('\\');
+            }
+            sb.append(c);
+        }
+        return sb.toString();
+    }
+
     private static void startHealthEndpoint(int port) throws Exception {
         healthServer = HttpServer.create(new InetSocketAddress(port), 0);
 
@@ -437,7 +491,12 @@ public class WeaverGirlAgent {
                 String byteBuddyLoader = firstLoadedLoaderName(
                         "shaded.net.bytebuddy.ByteBuddy", "net.bytebuddy.ByteBuddy");
                 String agentBodyLoader = loaderName(WeaverGirlAgent.class.getName());
-                StringBuilder sb = new StringBuilder(256);
+                // Per-hook performance: top hook points by cumulative interceptor time,
+                // with avg / p95 / max / count / slow-call / error breakdown. This is the
+                // per-hook-point performance signal an APM/IAST operator needs, and the
+                // input to the latency-based auto-degradation (see InterceptorCircuitBreaker).
+                String topHooksJson = buildTopHooksJson(status.getInterceptorMetrics(), 10);
+                StringBuilder sb = new StringBuilder(512);
                 sb.append("{\"status\":\"UP\",\"uptimeSeconds\":").append(uptimeSec)
                   .append(",\"transformationCount\":").append(status.getTransformationCount())
                   .append(",\"transformationErrorCount\":").append(status.getTransformationErrorCount())
@@ -447,6 +506,7 @@ public class WeaverGirlAgent {
                   .append(",\"activePluginCount\":").append(status.getActivePluginCount())
                   .append(",\"byteBuddyClassLoader\":\"").append(byteBuddyLoader).append("\"")
                   .append(",\"agentBodyClassLoader\":\"").append(agentBodyLoader).append("\"")
+                  .append(",\"topHooks\":").append(topHooksJson)
                   .append("}");
                 byte[] bytes = sb.toString().getBytes("UTF-8");
                 exchange.getResponseHeaders().set("Content-Type", "application/json");

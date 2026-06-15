@@ -65,19 +65,22 @@ public class InterceptAdvice {
                     if (!InterceptorHolder.shouldInvoke(def.getName())) {
                         continue; // circuit breaker is open
                     }
+                    long hookStart = System.nanoTime();
                     try {
                         def.getInterceptor().before(invocation);
-                        InterceptorHolder.recordInterceptorSuccess(def.getName());
-                        AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true);
+                        long hookNanos = System.nanoTime() - hookStart;
+                        InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
+                        AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true, hookNanos);
                     } catch (Throwable e) {
                         // Catch Throwable (not just Exception) to prevent OutOfMemoryError
                         // and StackOverflowError from plugins crashing the target application.
                         // If this interceptor called skipMethod and then failed,
                         // don't let its skip decision stand.
+                        long hookNanos = System.nanoTime() - hookStart;
                         invocation.setSkipMethod(false);
                         InterceptorHolder.logInterceptorError(def.getName(), "before", e);
-                        InterceptorHolder.recordInterceptorFailure(def.getName());
-                        AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false);
+                        InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
+                        AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false, hookNanos);
                     }
                 }
             }
@@ -148,6 +151,7 @@ public class InterceptAdvice {
                     if (!InterceptorHolder.shouldInvoke(def.getName())) {
                         continue; // circuit breaker is open
                     }
+                    long hookStart = System.nanoTime();
                     try {
                         Interceptor interceptor = def.getInterceptor();
                         if (throwable != null) {
@@ -155,15 +159,17 @@ public class InterceptAdvice {
                         } else {
                             interceptor.after(context);
                         }
-                        InterceptorHolder.recordInterceptorSuccess(def.getName());
-                        AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true);
+                        long hookNanos = System.nanoTime() - hookStart;
+                        InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
+                        AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true, hookNanos);
                     } catch (Throwable e) {
                         // Catch Throwable to prevent OOM/StackOverflow from plugins
                         // crashing the target application
+                        long hookNanos = System.nanoTime() - hookStart;
                         InterceptorHolder.logInterceptorError(def.getName(),
                                 throwable != null ? "onException" : "after", e);
-                        InterceptorHolder.recordInterceptorFailure(def.getName());
-                        AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false);
+                        InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
+                        AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false, hookNanos);
                     }
                 }
             }

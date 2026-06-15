@@ -33,6 +33,18 @@ public class InterceptorCircuitBreaker {
     private final int failureThreshold;
     private final long cooldownMillis;
 
+    /**
+     * A single interceptor callback whose duration exceeds this is a "slow call".
+     * When {@code slowConsecutiveLimit} slow calls happen in a row, the breaker
+     * trips OPEN (auto-degradation), protecting the host from a hook that does not
+     * throw but is too expensive to run on every invocation. Defaults to the same
+     * threshold the per-hook metrics use ({@code -Dweavergirl.hook.slowThresholdNanos},
+     * 50ms) so "slow" means the same thing for reporting and tripping. {@code <= 0}
+     * disables slow-call tripping.
+     */
+    private final long slowThresholdNanos;
+    private final int slowConsecutiveLimit;
+
     private final ConcurrentHashMap<String, State> states = new ConcurrentHashMap<>();
 
     public InterceptorCircuitBreaker() {
@@ -40,8 +52,22 @@ public class InterceptorCircuitBreaker {
     }
 
     public InterceptorCircuitBreaker(int failureThreshold, long cooldownMillis) {
+        this(failureThreshold, cooldownMillis,
+                Long.getLong("weavergirl.hook.slowThresholdNanos", 50_000_000L), 10);
+    }
+
+    /**
+     * @param failureThreshold    consecutive failures that trip the breaker
+     * @param cooldownMillis      OPEN-state cooldown before a half-open retry
+     * @param slowThresholdNanos  per-call duration that counts as a slow call ({@code <=0} disables)
+     * @param slowConsecutiveLimit consecutive slow calls that trip the breaker
+     */
+    public InterceptorCircuitBreaker(int failureThreshold, long cooldownMillis,
+                                     long slowThresholdNanos, int slowConsecutiveLimit) {
         this.failureThreshold = failureThreshold;
         this.cooldownMillis = cooldownMillis;
+        this.slowThresholdNanos = slowThresholdNanos;
+        this.slowConsecutiveLimit = slowConsecutiveLimit;
     }
 
     /**
@@ -96,8 +122,50 @@ public class InterceptorCircuitBreaker {
         }
     }
 
+    /**
+     * Record the outcome of an invocation in a single call, driving both the
+     * failure-count and slow-call (auto-degradation) logic. This is the entry
+     * point used by the inlined {@code @Advice}: it measures the hook's duration
+     * and passes it here so a hook that is consistently too slow — but never
+     * throws — is still tripped. A non-slow call resets the consecutive-slow
+     * counter; a slow call increments it and trips OPEN at the limit. Success
+     * resets the failure counter, mirroring {@link #recordSuccess(String)}.
+     */
+    public void recordOutcome(String interceptorName, boolean success, long durationNanos) {
+        State state = states.computeIfAbsent(interceptorName, k -> new State());
+        synchronized (state) {
+            if (success) {
+                state.failures.set(0);
+            } else {
+                int failures = state.failures.incrementAndGet();
+                if (failures >= failureThreshold && !state.open) {
+                    state.open = true;
+                    state.openedAt = System.currentTimeMillis();
+                    log.warn("Circuit breaker OPEN for interceptor '{}' after {} failures (cooldown: {}ms)",
+                            interceptorName, failures, cooldownMillis);
+                }
+            }
+            if (slowThresholdNanos > 0) {
+                if (durationNanos >= slowThresholdNanos) {
+                    int slow = state.consecutiveSlow.incrementAndGet();
+                    if (slow >= slowConsecutiveLimit && !state.open) {
+                        state.open = true;
+                        state.openedAt = System.currentTimeMillis();
+                        log.warn("Circuit breaker OPEN for interceptor '{}' after {} consecutive slow calls "
+                                        + "({}ms >= {}ms threshold; cooldown: {}ms)",
+                                interceptorName, slow,
+                                durationNanos / 1_000_000, slowThresholdNanos / 1_000_000, cooldownMillis);
+                    }
+                } else {
+                    state.consecutiveSlow.set(0);
+                }
+            }
+        }
+    }
+
     private static class State {
         final AtomicInteger failures = new AtomicInteger(0);
+        final AtomicInteger consecutiveSlow = new AtomicInteger(0);
         volatile boolean open = false;
         volatile long openedAt = 0;
     }

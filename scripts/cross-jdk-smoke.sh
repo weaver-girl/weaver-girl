@@ -124,6 +124,24 @@ for JAVA in "${JDKS[@]}"; do
         | grep -qE '^weavergirl_operation_duration_ms_count\{plugin="servlet"\} [1-9]' \
         || { echo "FAIL: no servlet interception signal (interception broken?)"; ok=0; }
     fi
+
+    if [ "$ok" -eq 1 ]; then
+      # Per-hook observability: /stats must expose the topHooks latency array
+      # (avg/p95/max micros + invocation/error/slow-call counts) populated by real
+      # servlet/jdbc interception. An empty array here means the per-hook timing
+      # in the advice is no longer reaching AgentStatus — a silent observability
+      # regression that the in-process unit suite cannot catch (it doesn't run the
+      # advice against live framework traffic).
+      STATS=$(curl -sf "http://localhost:$HPORT/stats" 2>/dev/null || true)
+      { printf '%s' "$STATS" | grep -qF '"topHooks":[{'; } \
+        || { echo "FAIL: /stats topHooks empty (per-hook latency not exposed)"; ok=0; }
+      if [ "$ok" -eq 1 ]; then
+        printf '%s' "$STATS" | grep -q '"p95Micros":' \
+          || { echo "FAIL: topHooks entry missing p95Micros field"; ok=0; }
+        printf '%s' "$STATS" | grep -qE '"name":"(servlet|jdbc)-' \
+          || { echo "FAIL: no servlet/jdbc hook point in topHooks"; ok=0; }
+      fi
+    fi
   fi
 
   kill "$PID" 2>/dev/null || true
