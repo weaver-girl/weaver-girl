@@ -38,9 +38,10 @@ public class CompositeSpanCompletionListener implements SpanCompletionListener {
             try {
                 listener.onSpanComplete(span, durationMs);
             } catch (Exception e) {
-                System.getLogger(CompositeSpanCompletionListener.class.getName())
-                        .log(System.Logger.Level.WARNING,
-                                "SpanCompletionListener threw exception: " + e.getMessage());
+                // java.util.logging (not System.Logger, which is JDK 9+) keeps the API
+                // module dependency-free AND runnable on JDK 8.
+                java.util.logging.Logger.getLogger(CompositeSpanCompletionListener.class.getName())
+                        .warning("SpanCompletionListener threw exception: " + e.getMessage());
             }
         }
     }

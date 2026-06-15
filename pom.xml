@@ -48,8 +48,11 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <maven.compiler.source>1.8</maven.compiler.source>
-        <maven.compiler.target>1.8</maven.compiler.target>
+        <!-- MAIN code targets the JDK 8 API surface (release 8, scoped to the
+             default-compile execution below): any JDK 9+ API call is a COMPILE error,
+             not a runtime NoClassDefFoundError on a Java 8 host. The agent must run
+             on JDK 8. Test sources are deliberately left unrestricted (they run on
+             the CI build JDK, 17+). -->
         <java.version>1.8</java.version>
 
         <byte-buddy.version>1.14.18</byte-buddy.version>
@@ -156,10 +159,19 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
                 <configuration>
-                    <source>${java.version}</source>
-                    <target>${java.version}</target>
                     <encoding>UTF-8</encoding>
                 </configuration>
+                <executions>
+                    <!-- MAIN sources: release 8 validates against the JDK 8 API
+                         surface so the agent loads on Java 8. Test sources are left
+                         unrestricted (they execute on the CI build JDK, 17+). -->
+                    <execution>
+                        <id>default-compile</id>
+                        <configuration>
+                            <release>8</release>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
