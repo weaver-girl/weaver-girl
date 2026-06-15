@@ -15,7 +15,7 @@ shippable **APM Hook base**. (IAST readiness is a separate, larger effort — se
 | Packaged agent attach (`-javaagent`) | bootstraps on real app | **verified working** | ✅ GREEN (was ❌ P0 — see below) |
 | Global emergency kill-switch | runtime on/off + provenance | config + REST + JMX; single volatile read on hot path | ✅ GREEN |
 | Overhead baseline + regression guard | published JMH numbers + CI guard | `docs/benchmarks/baseline-v1.md` + `scripts/verify-benchmarks.sh` (1.5× budget) | ✅ GREEN |
-| Startup-time budget | measured bootstrap + P99 < 500ms | **measured ~635ms**; measurement infra + WARN guard in place | ⚠️ MEASURED (optimization pending) |
+| Startup-time budget | measured bootstrap + P99 < 500ms | **~635ms → ~425ms** (under 500ms budget); per-phase + per-plugin breakdown logged; WARN guard no longer fires | ✅ GREEN (optimized) |
 | Maven Central packaging | signed sources+javadoc + Central deploy | `release` profile (GPG + central-publishing) + `release.yml` + `RELEASE_PROCEDURE.md` | ✅ GREEN (tooling ready; publish needs secrets) |
 
 ## Hardening pass — what this delivered (APM GA path)
@@ -30,10 +30,16 @@ The following were closed in this pass (branch `feat/hook-base-release-readiness
 2. **Published overhead baseline + CI regression guard** — JMH results recorded in
    `docs/benchmarks/baseline-v1.md` (16 benchmarks); `scripts/verify-benchmarks.sh`
    fails on >1.5× regression. Overhead is now *measured and guarded*, not asserted.
-3. **Startup-time budget + measurement** — `StartupMetrics` times bootstrap with a
-   500ms budget and emits a WARN when exceeded; exposed via JMX/REST. **Measured
-   ~635ms here** — over budget, so the guard fires as designed. Measurement was the
-   goal; optimization is the follow-up (dominant phase: pluginLoad).
+3. **Startup-time budget + measurement + optimization** — `StartupMetrics` times
+   bootstrap with a 500ms budget and emits a WARN when exceeded; exposed via
+   JMX/REST. Per-phase (`pluginLoad` / `transformerInstall` / `managementInit`) and
+   per-plugin breakdowns are logged on every startup. **Measured ~635ms → optimized
+   to ~425ms** (under budget). The dominant phase turned out to be `transformerInstall`
+   (ByteBuddy's eager retransformation of already-loaded classes), *not* `pluginLoad`
+   (~30ms). Fix: `WeaverTransformer.install(instrumentation, eagerRetransform=false)`
+   skips the eager scan at premain (nothing the plugins target is loaded yet) and at
+   agentmain (already-loaded classes are retransformed explicitly). `install()` defaults
+   to eager=true so unit tests that instrument already-loaded classes are unaffected.
 4. **CI quality-gate + packaged-agent smoke** — the `quality-gate` profile runs in
    CI (JDK 17), and `agent-smoke.yml` attaches the packaged jar to the sample app and
    asserts `/health`, `/ready`, `/metrics` respond. This is the test that would have

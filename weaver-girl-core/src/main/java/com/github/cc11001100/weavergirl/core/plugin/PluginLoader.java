@@ -73,7 +73,9 @@ public class PluginLoader {
         PluginDependencyResolver resolver = new PluginDependencyResolver();
         List<WeaverPlugin> sorted = resolver.resolve(enabled);
 
+        java.util.Map<String, Long> perPluginMs = new java.util.LinkedHashMap<>();
         for (WeaverPlugin plugin : sorted) {
+            long pluginStart = System.nanoTime();
             try {
                 log.info("Loading plugin: {}", plugin.name());
 
@@ -85,6 +87,7 @@ public class PluginLoader {
                 if (!plugin.isEnabled(context)) {
                     log.info("Plugin {} is disabled via isEnabled() check — skipping interceptors", plugin.name());
                     AgentStatus.getInstance().recordPluginStatus(plugin.name(), false, "disabled via isEnabled()");
+                    perPluginMs.put(plugin.name(), (System.nanoTime() - pluginStart) / 1_000_000L);
                     continue;
                 }
 
@@ -99,7 +102,16 @@ public class PluginLoader {
                 AgentStatus.getInstance().recordPluginStatus(plugin.name(), false, errorMsg);
                 log.error("Failed to load plugin {}: {}", plugin.name(), e.getMessage(), e);
             }
+            perPluginMs.put(plugin.name(), (System.nanoTime() - pluginStart) / 1_000_000L);
         }
+
+        // Per-plugin startup breakdown (ms, descending) — surfaces which plugins
+        // dominate the pluginLoad phase so a slow one can be targeted for optimization.
+        log.info("Plugin load breakdown (ms): {}",
+                perPluginMs.entrySet().stream()
+                        .sorted(java.util.Map.Entry.<String, Long>comparingByValue().reversed())
+                        .map(e -> e.getKey() + "=" + e.getValue())
+                        .collect(java.util.stream.Collectors.joining(", ")));
 
         // Summary report
         int total = sorted.size();

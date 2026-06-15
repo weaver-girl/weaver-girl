@@ -93,8 +93,28 @@ public class WeaverTransformer {
 
     /**
      * Install this transformer onto the given Instrumentation instance.
+     * Equivalent to {@code install(instrumentation, true)}: already-loaded
+     * classes matching any interceptor are retransformed during install.
      */
     public void install(Instrumentation instrumentation) {
+        install(instrumentation, true);
+    }
+
+    /**
+     * Install this transformer onto the given Instrumentation instance.
+     *
+     * @param eagerRetransform if true, request ByteBuddy to retransform all
+     *     already-loaded classes matching any interceptor during install (the
+     *     {@link AgentBuilder.RedefinitionStrategy#RETRANSFORMATION} scan). This
+     *     is required when a target class may already be loaded before install —
+     *     e.g. a unit test instrumenting a class it has already referenced. Pass
+     *     false in the production agent: at premain nothing the plugins target is
+     *     loaded yet (the scan is pure waste against ~thousands of JDK classes),
+     *     and at agentmain already-loaded classes are retransformed explicitly
+     *     via {@link #retransformLoadedClasses()}. Skipping the eager scan is the
+     *     dominant startup-time win (the scan dominated bootstrap).
+     */
+    public void install(Instrumentation instrumentation, boolean eagerRetransform) {
         this.instrumentation = instrumentation;
 
         // NOTE: the previous custom BootstrapInjection.append(agentJar) was removed.
@@ -108,9 +128,13 @@ public class WeaverTransformer {
         // extracts ONLY the needed helper classes into a temp JAR (no ByteBuddy on the
         // bootstrap path), avoiding the split.
 
-        // Build the ignore matcher: always exclude JDK internals;
-        // optionally exclude the agent's own classes and shaded dependencies
-        // to prevent ClassCircularityError.
+        // Build the ignore matcher: exclude JDK internals that must never be
+        // instrumented (risk of destabilizing the JVM + ClassCircularityError).
+        // NOTE: java.*/javax.* are intentionally NOT excluded here — built-in
+        // plugins match via bySuperClass/byInterface, whose hasSuperType matcher
+        // DOES transform the base javax/java types themselves (e.g.
+        // javax.servlet.http.HttpServlet, java.sql.Statement), and servlet/jdbc
+        // interception depends on that. Excluding them silently breaks interception.
         net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> excludeMatcher = nameStartsWith("sun.")
                 .or(nameStartsWith("jdk.internal."))
                 .or(nameStartsWith("com.sun."));
@@ -128,7 +152,6 @@ public class WeaverTransformer {
         AgentBuilder agentBuilder = new AgentBuilder.Default()
                 .ignore(excludeMatcher)
                 .disableClassFormatChanges()
-                .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
                 .with(new AgentBuilder.InjectionStrategy.UsingInstrumentation(
                         instrumentation, new java.io.File(System.getProperty("java.io.tmpdir"))))
                 .with(new AgentBuilder.Listener.Adapter() {
@@ -160,6 +183,15 @@ public class WeaverTransformer {
                         log.warn("Error transforming class {}: {}", typeName, throwable.getMessage());
                     }
                 });
+
+        // Eager retransformation of already-loaded classes is opt-in: it is needed
+        // when a target class may already be loaded before install (unit tests), but
+        // is pure startup waste in the production agent — skipped at premain (nothing
+        // the plugins target is loaded yet) and at agentmain (handled explicitly by
+        // retransformLoadedClasses()). See install(Instrumentation, boolean) javadoc.
+        if (eagerRetransform) {
+            agentBuilder = agentBuilder.with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION);
+        }
 
         // If onlyInterceptPackages is specified, only match classes in those packages
         List<String> allowedPackages = weaverConfig != null ? weaverConfig.getOnlyInterceptPackages() : null;

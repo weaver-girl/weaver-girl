@@ -102,6 +102,7 @@ public class WeaverGirl {
             com.github.cc11001100.weavergirl.core.management.StartupMetrics
                     .recordPhase("pluginLoad", System.nanoTime() - pluginLoadStart);
 
+            long transformerStart = System.nanoTime();
             WeaverTransformer transformer = new WeaverTransformer(weaverGirl.registry);
 
             if (weaverConfig != null && weaverConfig.getExcludedClasses() != null) {
@@ -112,8 +113,15 @@ public class WeaverGirl {
                 transformer.setWeaverConfig(weaverConfig);
             }
 
-            transformer.install(instrumentation);
+            // eagerRetransform=false: at premain nothing the plugins target is loaded yet,
+            // so retransforming already-loaded classes is pure startup waste (it scans
+            // ~thousands of JDK classes through hasSuperType matchers). App classes are
+            // transformed as they load. For dynamic attach (agentmain) the caller invokes
+            // retransformLoadedClasses() explicitly, so this is correct there too.
+            transformer.install(instrumentation, false);
             weaverGirl.transformer = transformer;
+            com.github.cc11001100.weavergirl.core.management.StartupMetrics
+                    .recordPhase("transformerInstall", System.nanoTime() - transformerStart);
 
             // Apply configuration to core components
             applyCoreConfig(pluginConfig);
@@ -123,6 +131,7 @@ public class WeaverGirl {
             weaverGirl.dynamicConfigManager.addListener(weaverGirl.new DynamicCoreConfigListener());
             weaverGirl.dynamicConfigManager.snapshot("initial-bootstrap");
 
+            long mgmtStart = System.nanoTime();
             JmxRegistrar.register();
 
             // Register JMX monitoring MBean
@@ -134,6 +143,8 @@ public class WeaverGirl {
             SamplingMonitor samplingMonitor = new SamplingMonitor(SamplingController.getInstance());
             samplingMonitor.start();
             weaverGirl.samplingMonitor = samplingMonitor;
+            com.github.cc11001100.weavergirl.core.management.StartupMetrics
+                    .recordPhase("managementInit", System.nanoTime() - mgmtStart);
 
             // Initialize PluginManager for runtime plugin lifecycle management
             weaverGirl.pluginManager = new DefaultPluginManager(weaverGirl.pluginLoader, weaverGirl.registry);
@@ -146,6 +157,16 @@ public class WeaverGirl {
             long startupMs = com.github.cc11001100.weavergirl.core.management.StartupMetrics.totalMillis();
             log.info("WeaverGirl agent startup took {}ms (budget {}ms)", startupMs,
                     com.github.cc11001100.weavergirl.core.management.StartupMetrics.STARTUP_BUDGET_MS);
+            // Per-phase breakdown (ms, descending) — surfaces where bootstrap time goes so it
+            // can be targeted. Plugins also publish pluginLoad.<name> entries (see PluginLoader).
+            java.util.Map<String, Long> phases = com.github.cc11001100.weavergirl.core.management.StartupMetrics.phaseMillis();
+            if (!phases.isEmpty()) {
+                String breakdown = phases.entrySet().stream()
+                        .sorted(java.util.Map.Entry.<String, Long>comparingByValue().reversed())
+                        .map(e -> e.getKey() + "=" + e.getValue())
+                        .collect(java.util.stream.Collectors.joining(", "));
+                log.info("Startup phase breakdown (ms): {}", breakdown);
+            }
             if (com.github.cc11001100.weavergirl.core.management.StartupMetrics.overBudget()) {
                 log.warn("Agent startup took {}ms (budget {}ms) — see P99 startup optimization",
                         startupMs,
