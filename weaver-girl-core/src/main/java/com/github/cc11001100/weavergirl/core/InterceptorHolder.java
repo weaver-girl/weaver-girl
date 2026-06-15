@@ -90,4 +90,13 @@ public class InterceptorHolder {
     public static void recordOutcome(String interceptorName, boolean success, long durationNanos) {
         circuitBreaker.recordOutcome(interceptorName, success, durationNanos);
     }
+
+    /**
+     * Read-only snapshot of every interceptor's circuit-breaker state, for the
+     * agent's /stats exposition. Returns an empty list until any hook has been
+     * observed.
+     */
+    public static java.util.List<InterceptorCircuitBreaker.BreakerSnapshot> getBreakerSnapshots() {
+        return circuitBreaker.snapshot();
+    }
 }

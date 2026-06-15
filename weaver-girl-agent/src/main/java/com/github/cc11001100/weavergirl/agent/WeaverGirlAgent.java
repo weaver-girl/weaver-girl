@@ -6,6 +6,8 @@ import com.github.cc11001100.weavergirl.core.config.ConfigWatcher;
 import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
 import com.github.cc11001100.weavergirl.core.config.YamlConfigLoader;
 import com.github.cc11001100.weavergirl.core.event.JsonEventListener;
+import com.github.cc11001100.weavergirl.core.InterceptorHolder;
+import com.github.cc11001100.weavergirl.core.circuit.InterceptorCircuitBreaker;
 import com.github.cc11001100.weavergirl.core.metrics.PrometheusExporter;
 import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
@@ -380,6 +382,31 @@ public class WeaverGirlAgent {
         return String.format(java.util.Locale.ROOT, "%.3f", v);
     }
 
+    /**
+     * Build a JSON array of every interceptor's circuit-breaker state: whether it
+     * is OPEN (auto-degraded / tripped), the current consecutive failure and slow
+     * counts, and how many times it has tripped overall. Read-only over the
+     * snapshot — safe to call from the /stats handler.
+     */
+    private static String buildBreakersJson(java.util.List<InterceptorCircuitBreaker.BreakerSnapshot> snap) {
+        StringBuilder sb = new StringBuilder();
+        sb.append('[');
+        for (int i = 0; i < snap.size(); i++) {
+            InterceptorCircuitBreaker.BreakerSnapshot b = snap.get(i);
+            if (i > 0) {
+                sb.append(',');
+            }
+            sb.append("{\"name\":\"").append(jsonEscape(b.getName())).append('"')
+              .append(",\"open\":").append(b.isOpen())
+              .append(",\"consecutiveFailures\":").append(b.getConsecutiveFailures())
+              .append(",\"consecutiveSlow\":").append(b.getConsecutiveSlow())
+              .append(",\"timesTripped\":").append(b.getTimesTripped())
+              .append('}');
+        }
+        sb.append(']');
+        return sb.toString();
+    }
+
     private static String jsonEscape(String s) {
         if (s.indexOf('"') < 0 && s.indexOf('\\') < 0) {
             return s;
@@ -496,6 +523,10 @@ public class WeaverGirlAgent {
                 // per-hook-point performance signal an APM/IAST operator needs, and the
                 // input to the latency-based auto-degradation (see InterceptorCircuitBreaker).
                 String topHooksJson = buildTopHooksJson(status.getInterceptorMetrics(), 10);
+                // Live circuit-breaker state per hook: which hooks are currently tripped
+                // OPEN (auto-degraded), their consecutive failure/slow counts, and total
+                // trip count. Surfaces the auto-degradation decisions the breaker makes.
+                String breakersJson = buildBreakersJson(InterceptorHolder.getBreakerSnapshots());
                 StringBuilder sb = new StringBuilder(512);
                 sb.append("{\"status\":\"UP\",\"uptimeSeconds\":").append(uptimeSec)
                   .append(",\"transformationCount\":").append(status.getTransformationCount())
@@ -507,6 +538,7 @@ public class WeaverGirlAgent {
                   .append(",\"byteBuddyClassLoader\":\"").append(byteBuddyLoader).append("\"")
                   .append(",\"agentBodyClassLoader\":\"").append(agentBodyLoader).append("\"")
                   .append(",\"topHooks\":").append(topHooksJson)
+                  .append(",\"circuitBreakers\":").append(breakersJson)
                   .append("}");
                 byte[] bytes = sb.toString().getBytes("UTF-8");
                 exchange.getResponseHeaders().set("Content-Type", "application/json");

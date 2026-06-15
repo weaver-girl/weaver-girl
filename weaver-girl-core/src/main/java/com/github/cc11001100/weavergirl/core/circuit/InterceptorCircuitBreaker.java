@@ -3,6 +3,8 @@ package com.github.cc11001100.weavergirl.core.circuit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -114,10 +116,7 @@ public class InterceptorCircuitBreaker {
         synchronized (state) {
             int failures = state.failures.incrementAndGet();
             if (failures >= failureThreshold && !state.open) {
-                state.open = true;
-                state.openedAt = System.currentTimeMillis();
-                log.warn("Circuit breaker OPEN for interceptor '{}' after {} failures (cooldown: {}ms)",
-                        interceptorName, failures, cooldownMillis);
+                trip(state, interceptorName, failures + " failures");
             }
         }
     }
@@ -139,22 +138,15 @@ public class InterceptorCircuitBreaker {
             } else {
                 int failures = state.failures.incrementAndGet();
                 if (failures >= failureThreshold && !state.open) {
-                    state.open = true;
-                    state.openedAt = System.currentTimeMillis();
-                    log.warn("Circuit breaker OPEN for interceptor '{}' after {} failures (cooldown: {}ms)",
-                            interceptorName, failures, cooldownMillis);
+                    trip(state, interceptorName, failures + " failures");
                 }
             }
             if (slowThresholdNanos > 0) {
                 if (durationNanos >= slowThresholdNanos) {
                     int slow = state.consecutiveSlow.incrementAndGet();
                     if (slow >= slowConsecutiveLimit && !state.open) {
-                        state.open = true;
-                        state.openedAt = System.currentTimeMillis();
-                        log.warn("Circuit breaker OPEN for interceptor '{}' after {} consecutive slow calls "
-                                        + "({}ms >= {}ms threshold; cooldown: {}ms)",
-                                interceptorName, slow,
-                                durationNanos / 1_000_000, slowThresholdNanos / 1_000_000, cooldownMillis);
+                        trip(state, interceptorName,
+                                slow + " consecutive slow calls (>= " + (slowThresholdNanos / 1_000_000) + "ms)");
                     }
                 } else {
                     state.consecutiveSlow.set(0);
@@ -163,9 +155,65 @@ public class InterceptorCircuitBreaker {
         }
     }
 
+    /**
+     * Flip a state to OPEN and record the trip. Centralised so every trip path
+     * (failure-count and slow-call) is logged identically and increments the
+     * per-hook {@code timesTripped} counter that {@link #snapshot()} exposes.
+     */
+    private void trip(State state, String interceptorName, String reason) {
+        state.open = true;
+        state.openedAt = System.currentTimeMillis();
+        state.timesTripped.incrementAndGet();
+        log.warn("Circuit breaker OPEN for interceptor '{}' after {} (cooldown: {}ms)",
+                interceptorName, reason, cooldownMillis);
+    }
+
+    /**
+     * Read-only snapshot of every interceptor's breaker state for observability
+     * (exposed via the agent's /stats endpoint). Safe to call infrequently from a
+     * management thread; each entry is read under the per-interceptor lock.
+     */
+    public List<BreakerSnapshot> snapshot() {
+        List<BreakerSnapshot> list = new ArrayList<>(states.size());
+        states.forEach((name, state) -> {
+            synchronized (state) {
+                list.add(new BreakerSnapshot(name, state.open, state.failures.get(),
+                        state.consecutiveSlow.get(), state.timesTripped.get()));
+            }
+        });
+        return list;
+    }
+
+    /**
+     * Immutable view of one interceptor's circuit-breaker state at a point in time.
+     */
+    public static final class BreakerSnapshot {
+        private final String name;
+        private final boolean open;
+        private final int consecutiveFailures;
+        private final int consecutiveSlow;
+        private final long timesTripped;
+
+        BreakerSnapshot(String name, boolean open, int consecutiveFailures,
+                        int consecutiveSlow, long timesTripped) {
+            this.name = name;
+            this.open = open;
+            this.consecutiveFailures = consecutiveFailures;
+            this.consecutiveSlow = consecutiveSlow;
+            this.timesTripped = timesTripped;
+        }
+
+        public String getName() { return name; }
+        public boolean isOpen() { return open; }
+        public int getConsecutiveFailures() { return consecutiveFailures; }
+        public int getConsecutiveSlow() { return consecutiveSlow; }
+        public long getTimesTripped() { return timesTripped; }
+    }
+
     private static class State {
         final AtomicInteger failures = new AtomicInteger(0);
         final AtomicInteger consecutiveSlow = new AtomicInteger(0);
+        final AtomicLong timesTripped = new AtomicLong(0);
         volatile boolean open = false;
         volatile long openedAt = 0;
     }

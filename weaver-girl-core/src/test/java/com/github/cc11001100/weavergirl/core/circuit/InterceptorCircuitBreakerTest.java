@@ -137,4 +137,47 @@ class InterceptorCircuitBreakerTest {
         }
         assertTrue(cb.shouldInvoke("slow-hook"));
     }
+
+    // --- snapshot: live breaker-state observability ---
+
+    @Test
+    void snapshotIsEmptyUntilAnInterceptorIsObserved() {
+        InterceptorCircuitBreaker cb = new InterceptorCircuitBreaker(3, 60_000);
+        assertTrue(cb.snapshot().isEmpty());
+    }
+
+    @Test
+    void snapshotReportsOpenStateAndTripCountAfterFailureTrip() {
+        InterceptorCircuitBreaker cb = new InterceptorCircuitBreaker(2, 60_000);
+        cb.recordFailure("hook");
+        cb.recordFailure("hook"); // trips OPEN
+        java.util.List<InterceptorCircuitBreaker.BreakerSnapshot> snap = cb.snapshot();
+        assertEquals(1, snap.size());
+        InterceptorCircuitBreaker.BreakerSnapshot b = snap.get(0);
+        assertEquals("hook", b.getName());
+        assertTrue(b.isOpen());
+        assertEquals(2, b.getConsecutiveFailures());
+        assertEquals(1, b.getTimesTripped());
+    }
+
+    @Test
+    void snapshotReportsTripCountAfterSlowTrip() {
+        InterceptorCircuitBreaker cb = new InterceptorCircuitBreaker(100, 60_000, 1_000L, 2);
+        cb.recordOutcome("slow-hook", true, 10_000L);
+        cb.recordOutcome("slow-hook", true, 10_000L); // 2 consecutive slow -> trips
+        InterceptorCircuitBreaker.BreakerSnapshot b = cb.snapshot().get(0);
+        assertTrue(b.isOpen());
+        assertEquals(2, b.getConsecutiveSlow());
+        assertEquals(1, b.getTimesTripped());
+    }
+
+    @Test
+    void snapshotShowsClosedForHealthyHook() {
+        InterceptorCircuitBreaker cb = new InterceptorCircuitBreaker(5, 60_000, 1_000L, 5);
+        cb.recordOutcome("healthy-hook", true, 100L); // fast success
+        InterceptorCircuitBreaker.BreakerSnapshot b = cb.snapshot().get(0);
+        assertFalse(b.isOpen());
+        assertEquals(0, b.getTimesTripped());
+        assertEquals(0, b.getConsecutiveFailures());
+    }
 }

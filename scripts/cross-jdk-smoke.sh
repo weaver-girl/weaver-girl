@@ -141,6 +141,15 @@ for JAVA in "${JDKS[@]}"; do
         printf '%s' "$STATS" | grep -qE '"name":"(servlet|jdbc)-' \
           || { echo "FAIL: no servlet/jdbc hook point in topHooks"; ok=0; }
       fi
+      # Circuit-breaker state exposition: /stats must carry the circuitBreakers
+      # array so an operator can see which hook points are tripped OPEN and how
+      # often. After real traffic, at least one hook has been observed.
+      if [ "$ok" -eq 1 ]; then
+        printf '%s' "$STATS" | grep -qF '"circuitBreakers":' \
+          || { echo "FAIL: /stats missing circuitBreakers field"; ok=0; }
+        printf '%s' "$STATS" | grep -qF '"timesTripped":' \
+          || { echo "FAIL: circuitBreakers entry missing timesTripped field"; ok=0; }
+      fi
     fi
   fi
 
