@@ -32,6 +32,7 @@ import static net.bytebuddy.matcher.ElementMatchers.isAbstract;
 import static net.bytebuddy.matcher.ElementMatchers.isInterface;
 import static net.bytebuddy.matcher.ElementMatchers.isAnnotatedWith;
 import static net.bytebuddy.matcher.ElementMatchers.hasSuperType;
+import static net.bytebuddy.matcher.ElementMatchers.takesArgument;
 import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
 import static net.bytebuddy.matcher.ElementMatchers.not;
 
@@ -325,7 +326,10 @@ public class WeaverTransformer {
                 userMatcher = isAnnotatedWith(named(methodMatcher.getPattern()));
                 break;
             case SIGNATURE:
-                // Pattern is "methodName(param1,param2)" — match name and parameter count
+                // Pattern is "methodName(param1,param2)" — match name AND parameter types.
+                // Previously only matched parameter COUNT; now matches each parameter's
+                // type by fully-qualified name, so doGet(HttpServletRequest,HttpServletResponse)
+                // does NOT match doGet() even though both have the same method name.
                 String sigPattern = methodMatcher.getPattern();
                 int parenIdx = sigPattern.indexOf('(');
                 if (parenIdx < 0) {
@@ -337,8 +341,14 @@ public class WeaverTransformer {
                     if (paramPart.isEmpty()) {
                         userMatcher = userMatcher.and(takesArguments(0));
                     } else {
-                        int paramCount = paramPart.split(",").length;
-                        userMatcher = userMatcher.and(takesArguments(paramCount));
+                        String[] paramTypes = paramPart.split(",");
+                        userMatcher = userMatcher.and(takesArguments(paramTypes.length));
+                        for (int i = 0; i < paramTypes.length; i++) {
+                            String typeName = paramTypes[i].trim();
+                            if (!typeName.isEmpty()) {
+                                userMatcher = userMatcher.and(takesArgument(i, named(typeName)));
+                            }
+                        }
                     }
                 }
                 break;
