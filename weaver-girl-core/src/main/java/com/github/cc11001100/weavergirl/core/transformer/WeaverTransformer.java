@@ -3,6 +3,7 @@ package com.github.cc11001100.weavergirl.core.transformer;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.core.ConstructorAdvice;
 import com.github.cc11001100.weavergirl.core.InterceptAdvice;
 import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
@@ -24,6 +25,7 @@ import java.util.stream.Collectors;
 import static net.bytebuddy.matcher.ElementMatchers.nameStartsWith;
 import static net.bytebuddy.matcher.ElementMatchers.nameMatches;
 import static net.bytebuddy.matcher.ElementMatchers.named;
+import static net.bytebuddy.matcher.ElementMatchers.isConstructor;
 import static net.bytebuddy.matcher.ElementMatchers.isMethod;
 import static net.bytebuddy.matcher.ElementMatchers.isBridge;
 import static net.bytebuddy.matcher.ElementMatchers.isSynthetic;
@@ -230,6 +232,15 @@ public class WeaverTransformer {
                 typeMatcher = typeMatcher.and(packageAllowMatcher);
             }
             if (typeMatcher != null) {
+                // Choose advice class based on match type: constructors use
+                // ConstructorAdvice (binds @Advice.Origin Constructor<?>),
+                // all other match types use InterceptAdvice (binds @Advice.Origin Method).
+                // ByteBuddy cannot bind both in a single advice class.
+                boolean isConstructorMatch =
+                        definition.getPointcut().getMethodMatcher().getMatchType()
+                        == com.github.cc11001100.weavergirl.api.matcher.MethodMatcher.MatchType.CONSTRUCTOR;
+                Class<?> adviceClass = isConstructorMatch ? ConstructorAdvice.class : InterceptAdvice.class;
+
                 agentBuilder = agentBuilder
                         .type(typeMatcher)
                         .transform((builder, typeDescription, classLoader, module, protectionDomain) -> {
@@ -238,7 +249,7 @@ public class WeaverTransformer {
                                         maxTransformations, typeDescription.getName());
                                 return builder; // return unmodified builder
                             }
-                            return builder.visit(net.bytebuddy.asm.Advice.to(InterceptAdvice.class)
+                            return builder.visit(net.bytebuddy.asm.Advice.to(adviceClass)
                                     .on(buildMethodMatcher(definition.getPointcut().getMethodMatcher())));
                         });
             }
@@ -354,6 +365,28 @@ public class WeaverTransformer {
                 break;
             case ANY:
                 userMatcher = isMethod();
+                break;
+            case CONSTRUCTOR:
+                // Match constructors. Pattern is "<init>" for any constructor,
+                // or "<init>(param1,param2)" for constructors with specific parameter types.
+                userMatcher = isConstructor();
+                String ctorPattern = methodMatcher.getPattern();
+                int ctorParenIdx = ctorPattern.indexOf('(');
+                if (ctorParenIdx >= 0) {
+                    String paramPart = ctorPattern.substring(ctorParenIdx + 1, ctorPattern.length() - 1);
+                    if (paramPart.isEmpty()) {
+                        userMatcher = userMatcher.and(takesArguments(0));
+                    } else {
+                        String[] paramTypes = paramPart.split(",");
+                        userMatcher = userMatcher.and(takesArguments(paramTypes.length));
+                        for (int i = 0; i < paramTypes.length; i++) {
+                            String typeName = paramTypes[i].trim();
+                            if (!typeName.isEmpty()) {
+                                userMatcher = userMatcher.and(takesArgument(i, named(typeName)));
+                            }
+                        }
+                    }
+                }
                 break;
             default:
                 userMatcher = isMethod();

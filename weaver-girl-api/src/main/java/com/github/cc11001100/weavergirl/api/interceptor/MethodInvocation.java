@@ -277,6 +277,19 @@ public class MethodInvocation {
     }
 
     /**
+     * Update the target object reference. This is an internal framework method
+     * used by the constructor advice to patch the target after construction
+     * completes (in {@code onMethodEnter} the target is null because the object
+     * has not yet been created; in {@code onMethodExit} it is the constructed
+     * object). Interceptors should not call this.
+     *
+     * @param target the constructed object, or null for static methods
+     */
+    public void setTarget(Object target) {
+        this.target = target;
+    }
+
+    /**
      * Returns a copy of the arguments passed to the intercepted method.
      *
      * @return the argument array

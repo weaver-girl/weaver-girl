@@ -52,6 +52,8 @@ public class MethodMatcher {
         ANNOTATION,
         /** Match by method name and parameter types (signature). */
         SIGNATURE,
+        /** Match constructors only. */
+        CONSTRUCTOR,
         /** Match all methods. */
         ANY
     }
@@ -135,6 +137,36 @@ public class MethodMatcher {
     }
 
     /**
+     * Creates a matcher that matches constructors only.
+     *
+     * <p>At runtime, {@link #matches(String)} returns {@code true} only for
+     * {@code "<init>"}. The core engine additionally applies ByteBuddy's
+     * {@code isConstructor()} matcher at transformation time.</p>
+     *
+     * @return a new MethodMatcher with {@link MatchType#CONSTRUCTOR}
+     * @since 1.5.0
+     */
+    public static MethodMatcher byConstructor() {
+        return new MethodMatcher(MatchType.CONSTRUCTOR, "<init>");
+    }
+
+    /**
+     * Creates a matcher that matches constructors with specific parameter types.
+     *
+     * <p>Parameter types are specified as a comma-separated string of fully-qualified
+     * class names, matching the convention of {@link #bySignature(String, String)}.</p>
+     *
+     * @param parameterTypes comma-separated fully-qualified parameter type names
+     *                       (e.g., {@code "java.lang.String,int"}); empty for no-arg constructor
+     * @return a new MethodMatcher with {@link MatchType#CONSTRUCTOR}
+     * @since 1.5.0
+     */
+    public static MethodMatcher byConstructor(String parameterTypes) {
+        ValidationUtils.requireNonNull(parameterTypes, "parameterTypes");
+        return new MethodMatcher(MatchType.CONSTRUCTOR, "<init>(" + parameterTypes + ")");
+    }
+
+    /**
      * Returns the match type of this matcher.
      *
      * @return the match type
@@ -176,6 +208,8 @@ public class MethodMatcher {
                 return compiledRegex != null && compiledRegex.matcher(methodName).matches();
             case ANY:
                 return true;
+            case CONSTRUCTOR:
+                return "<init>".equals(methodName);
             case SIGNATURE:
                 int parenIdx = pattern.indexOf('(');
                 if (parenIdx < 0) return false;
@@ -205,10 +239,15 @@ public class MethodMatcher {
      * @return true if the method signature matches
      */
     public boolean matches(String methodName, Class<?>[] parameterTypes) {
-        if (matchType == MatchType.SIGNATURE) {
+        if (matchType == MatchType.SIGNATURE || matchType == MatchType.CONSTRUCTOR) {
             // Parse "methodName(param1,param2)" from pattern
+            // For CONSTRUCTOR, pattern is "<init>" or "<init>(param1,param2)"
             int parenIdx = pattern.indexOf('(');
-            if (parenIdx < 0) return false;
+            if (parenIdx < 0) {
+                // No parenthesized params: match the name only (any parameter signature)
+                // This handles byConstructor() which matches ALL constructors.
+                return pattern.equals(methodName);
+            }
             String patternName = pattern.substring(0, parenIdx);
             if (!patternName.equals(methodName)) return false;
             String patternParams = pattern.substring(parenIdx + 1, pattern.length() - 1);

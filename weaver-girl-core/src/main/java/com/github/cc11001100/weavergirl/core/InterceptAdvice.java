@@ -14,17 +14,14 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 /**
- * ByteBuddy Advice class that gets inlined into target methods.
- * Delegates to InterceptorRegistry for interceptor lookup and invocation.
+ * ByteBuddy Advice class that gets inlined into target <strong>methods</strong>
+ * (regular and static). For constructor interception, see {@link ConstructorAdvice}.
+ *
+ * <p>Delegates to InterceptorRegistry for interceptor lookup and invocation.</p>
  *
  * <p><strong>skipOn mechanism:</strong> ByteBuddy's {@code skipOn = MethodInvocation.class}
  * means: if onMethodEnter returns a non-null MethodInvocation, the original method body
  * is SKIPPED. If it returns null, the original method executes normally.</p>
- *
- * <p><strong>Challenge:</strong> When skipOn triggers, onMethodExit receives the MethodInvocation
- * via {@code @Advice.Enter}. But when skipOn does NOT trigger (normal execution), onMethodEnter
- * returns null and onMethodExit has no invocation context. We solve this by having onMethodExit
- * create a fresh MethodInvocation when @Advice.Enter is null.</p>
  *
  * <p><strong>Return value write-back:</strong> {@code @Advice.Return(readOnly = false)} allows
  * the exit advice to write a modified return value back to the caller. When an interceptor
@@ -55,8 +52,8 @@ public class InterceptAdvice {
                 return null;
             }
 
-            String className = targetClass.getName();
             String methodName = method.getName();
+            String className = targetClass.getName();
             MethodInvocation invocation = MethodInvocationPool.acquire(targetClass, methodName, method, target, arguments);
 
             List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
@@ -119,6 +116,9 @@ public class InterceptAdvice {
                 }
                 return;
             }
+
+            String methodName = method.getName();
+
             // If onMethodEnter returned null (no skip), acquire a fresh MethodInvocation
             // from the pool for the after/onException callbacks.
             // If onMethodEnter returned an invocation (skip triggered), reuse it.
@@ -126,7 +126,7 @@ public class InterceptAdvice {
             if (invocation != null) {
                 context = invocation;
             } else {
-                context = MethodInvocationPool.acquire(targetClass, method.getName(), method, target, arguments);
+                context = MethodInvocationPool.acquire(targetClass, methodName, method, target, arguments);
             }
 
             // Store the original return value / throwable into the invocation context.
@@ -138,7 +138,6 @@ public class InterceptAdvice {
             }
 
             String className = targetClass.getName();
-            String methodName = method.getName();
 
             InterceptorRegistry registry = InterceptorHolder.getRegistry();
             if (registry == null) {

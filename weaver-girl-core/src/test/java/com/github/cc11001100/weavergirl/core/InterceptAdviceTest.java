@@ -145,7 +145,7 @@ class InterceptAdviceTest {
         ));
 
         Method method = SampleClass.class.getMethod("greet");
-        // New signature: (invocation, class, method, target, args, throwable, returnValue)
+        // Signature: (invocation, class, method, target, args, throwable, returnValue)
         InterceptAdvice.onMethodExit(null, SampleClass.class, method, new SampleClass(), new Object[0], null, "hello");
 
         assertTrue(afterCalled[0], "after() should have been called even when invocation is null");
@@ -173,8 +173,6 @@ class InterceptAdviceTest {
         InterceptAdvice.onMethodExit(invocation, SampleClass.class, method, new SampleClass(), new Object[0], null, "hello");
 
         assertTrue(afterCalled[0], "after() should have been called");
-        // Note: invocation is cleared by pool release after onMethodExit, so we verify
-        // via the interceptor callback above instead of post-call state
     }
 
     @Test
@@ -201,8 +199,6 @@ class InterceptAdviceTest {
         InterceptAdvice.onMethodExit(invocation, SampleClass.class, method, new SampleClass(), new Object[0], testException, null);
 
         assertTrue(onExceptionCalled[0], "onException() should have been called");
-        // Note: invocation is cleared by pool release after onMethodExit, so we verify
-        // via the interceptor callback above instead of post-call state
     }
 
     // --- Helper sample class for testing ---
