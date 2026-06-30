@@ -14,3 +14,4 @@ com.github.cc11001100.weavergirl.plugins.hikari.HikariPlugin
 com.github.cc11001100.weavergirl.plugins.okhttp.OkHttpPlugin
 com.github.cc11001100.weavergirl.plugins.rabbitmq.RabbitMQPlugin
 com.github.cc11001100.weavergirl.plugins.elasticsearch.ElasticsearchPlugin
+com.github.cc11001100.weavergirl.plugins.async.AsyncContextPropagationPlugin

@@ -46,6 +46,17 @@
             <version>1.4.14</version>
             <scope>test</scope>
         </dependency>
+        <!-- For end-to-end plugin integration tests that install a real transformer -->
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>net.bytebuddy</groupId>
+            <artifactId>byte-buddy-agent</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
 </project>

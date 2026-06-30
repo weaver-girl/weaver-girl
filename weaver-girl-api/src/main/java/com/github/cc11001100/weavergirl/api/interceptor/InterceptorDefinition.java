@@ -40,10 +40,35 @@ import java.util.Objects;
  */
 public class InterceptorDefinition {
 
+    /**
+     * Selects which inlined advice class the transformer applies for this
+     * definition.
+     *
+     * <p>{@link #STANDARD} uses the default {@code InterceptAdvice} that
+     * dispatches to {@link Interceptor#before}/{@code after}/{@code onException}
+     * via a pooled {@link MethodInvocation}. This is the right choice for the
+     * overwhelming majority of hooks (timing, tracing, metrics, logging, …).</p>
+     *
+     * <p>{@link #ARGUMENT_REWRITE} uses a specialized advice that binds the
+     * first method argument with {@code @Advice.Argument(0, readOnly=false)}
+     * so an interceptor can <em>replace</em> that argument in-place and have
+     * the replacement propagate to the method body. This is required because
+     * ByteBuddy's {@code @Advice.AllArguments} array — even with
+     * {@code readOnly=false} — does not write element mutations back to the
+     * parameter slots. The async-context-propagation plugin uses this mode to
+     * wrap the {@code Runnable}/{@code Callable} submitted to an
+     * {@code Executor}.</p>
+     */
+    public enum AdviceMode {
+        STANDARD,
+        ARGUMENT_REWRITE
+    }
+
     private final String name;
     private final Pointcut pointcut;
     private final Interceptor interceptor;
     private final int priority;
+    private final AdviceMode adviceMode;
 
     /**
      * Creates a new interceptor definition with default priority (0).
@@ -53,7 +78,7 @@ public class InterceptorDefinition {
      * @param interceptor the interceptor to invoke when the pointcut matches
      */
     public InterceptorDefinition(String name, Pointcut pointcut, Interceptor interceptor) {
-        this(name, pointcut, interceptor, 0);
+        this(name, pointcut, interceptor, 0, AdviceMode.STANDARD);
     }
 
     /**
@@ -65,6 +90,22 @@ public class InterceptorDefinition {
      * @param priority    execution priority; lower values = higher priority (executed first)
      */
     public InterceptorDefinition(String name, Pointcut pointcut, Interceptor interceptor, int priority) {
+        this(name, pointcut, interceptor, priority, AdviceMode.STANDARD);
+    }
+
+    /**
+     * Creates a new interceptor definition with the specified priority and
+     * advice mode.
+     *
+     * @param name        unique name for this definition, used for unregistration
+     * @param pointcut    determines which classes and methods are intercepted
+     * @param interceptor the interceptor to invoke when the pointcut matches
+     * @param priority    execution priority; lower values = higher priority (executed first)
+     * @param adviceMode  which inlined advice class to use; see {@link AdviceMode}
+     * @since 1.5.0
+     */
+    public InterceptorDefinition(String name, Pointcut pointcut, Interceptor interceptor,
+                                 int priority, AdviceMode adviceMode) {
         if (name == null || name.isEmpty()) {
             throw new IllegalArgumentException("Interceptor name must not be null or empty");
         }
@@ -74,10 +115,14 @@ public class InterceptorDefinition {
         if (interceptor == null) {
             throw new IllegalArgumentException("Interceptor must not be null for interceptor: " + name);
         }
+        if (adviceMode == null) {
+            throw new IllegalArgumentException("AdviceMode must not be null for interceptor: " + name);
+        }
         this.name = name;
         this.pointcut = pointcut;
         this.interceptor = interceptor;
         this.priority = priority;
+        this.adviceMode = adviceMode;
     }
 
     /**
@@ -113,6 +158,15 @@ public class InterceptorDefinition {
      */
     public int getPriority() { return priority; }
 
+    /**
+     * Returns the advice mode that selects which inlined advice class the
+     * transformer applies for this definition.
+     *
+     * @return the advice mode, never null
+     * @since 1.5.0
+     */
+    public AdviceMode getAdviceMode() { return adviceMode; }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -120,16 +174,18 @@ public class InterceptorDefinition {
         InterceptorDefinition that = (InterceptorDefinition) o;
         return priority == that.priority
                 && Objects.equals(name, that.name)
-                && Objects.equals(pointcut, that.pointcut);
+                && Objects.equals(pointcut, that.pointcut)
+                && adviceMode == that.adviceMode;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(name, pointcut, priority);
+        return Objects.hash(name, pointcut, priority, adviceMode);
     }
 
     @Override
     public String toString() {
-        return "InterceptorDefinition{name='" + name + "', pointcut=" + pointcut + ", priority=" + priority + "}";
+        return "InterceptorDefinition{name='" + name + "', pointcut=" + pointcut
+                + ", priority=" + priority + ", adviceMode=" + adviceMode + "}";
     }
 }

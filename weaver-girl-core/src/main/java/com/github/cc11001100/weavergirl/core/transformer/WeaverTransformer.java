@@ -3,6 +3,7 @@ package com.github.cc11001100.weavergirl.core.transformer;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.core.AsyncArgumentAdvice;
 import com.github.cc11001100.weavergirl.core.ConstructorAdvice;
 import com.github.cc11001100.weavergirl.core.InterceptAdvice;
 import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
@@ -232,14 +233,25 @@ public class WeaverTransformer {
                 typeMatcher = typeMatcher.and(packageAllowMatcher);
             }
             if (typeMatcher != null) {
-                // Choose advice class based on match type: constructors use
-                // ConstructorAdvice (binds @Advice.Origin Constructor<?>),
-                // all other match types use InterceptAdvice (binds @Advice.Origin Method).
-                // ByteBuddy cannot bind both in a single advice class.
-                boolean isConstructorMatch =
-                        definition.getPointcut().getMethodMatcher().getMatchType()
-                        == com.github.cc11001100.weavergirl.api.matcher.MethodMatcher.MatchType.CONSTRUCTOR;
-                Class<?> adviceClass = isConstructorMatch ? ConstructorAdvice.class : InterceptAdvice.class;
+                // Choose advice class based on match type / mode:
+                //  - constructors use ConstructorAdvice (binds @Advice.Origin Constructor<?>)
+                //  - ARGUMENT_REWRITE interceptors use AsyncArgumentAdvice (binds
+                //    @Advice.Argument(0, readOnly=false) so setArgument(0,...) propagates)
+                //  - everything else uses InterceptAdvice (binds @Advice.Origin Method).
+                // ByteBuddy cannot bind both Origin Method and Constructor<?> in one class,
+                // and AllArguments (even readOnly=false) does not write element mutations
+                // back to parameter slots — hence the dedicated advice per concern.
+                com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode mode =
+                        definition.getAdviceMode();
+                Class<?> adviceClass;
+                if (definition.getPointcut().getMethodMatcher().getMatchType()
+                        == com.github.cc11001100.weavergirl.api.matcher.MethodMatcher.MatchType.CONSTRUCTOR) {
+                    adviceClass = ConstructorAdvice.class;
+                } else if (mode == com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode.ARGUMENT_REWRITE) {
+                    adviceClass = AsyncArgumentAdvice.class;
+                } else {
+                    adviceClass = InterceptAdvice.class;
+                }
 
                 agentBuilder = agentBuilder
                         .type(typeMatcher)
