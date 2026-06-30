@@ -1,5 +1,6 @@
 package com.github.cc11001100.weavergirl.core;
 
+import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.circuit.InterceptorCircuitBreaker;
 import com.github.cc11001100.weavergirl.core.management.AgentMonitor;
@@ -98,5 +99,82 @@ public class InterceptorHolder {
      */
     public static java.util.List<InterceptorCircuitBreaker.BreakerSnapshot> getBreakerSnapshots() {
         return circuitBreaker.snapshot();
+    }
+
+    // --- CallSite tracking delegate ---
+
+    /**
+     * Capture the caller information for the intercepted method invocation.
+     * Called by the inlined advice at method/constructor entry time.
+     *
+     * <p>This method lives in InterceptorHolder (not in the advice class itself)
+     * because ByteBuddy validates the entire advice class when inlining — any
+     * method referencing {@code Throwable.getStackTrace()} or {@code Thread.getStackTrace()}
+     * in the advice class causes the advice to fail silently. By delegating through
+     * InterceptorHolder, the inlined code only contains a static method call, and the
+     * actual stack-walking logic stays on the agent classloader.</p>
+     *
+     * @param invocation the MethodInvocation to populate with caller info
+     */
+    public static void captureCaller(MethodInvocation invocation) {
+        StackTraceElement[] stack = new Throwable().getStackTrace();
+        // stack[0] = getStackTrace
+        // stack[1] = captureCaller (InterceptorHolder)
+        // stack[2] = onMethodEnter (inlined into target method by ByteBuddy)
+        // stack[3+] = the actual caller frames
+        //
+        // We scan from index 3 onward for the first frame that doesn't
+        // belong to the target class AND doesn't belong to the agent
+        // infrastructure (InterceptorHolder, InterceptAdvice, etc.).
+        String targetClassName = invocation.getTargetClass() != null
+                ? invocation.getTargetClass().getName() : null;
+        int callerIndex = -1;
+        for (int i = 3; i < stack.length; i++) {
+            String frameClassName = stack[i].getClassName();
+            // Skip frames that belong to the intercepted target class
+            // (the inlined advice may appear as multiple frames)
+            if (frameClassName.equals(targetClassName)) {
+                continue;
+            }
+            // Skip agent infrastructure frames
+            if (frameClassName.startsWith("com.github.cc11001100.weavergirl.core.")
+                    || frameClassName.startsWith("com.github.cc11001100.weavergirl.api.")) {
+                continue;
+            }
+            // Skip JDK reflection / method-handle frames that sit between
+            // the real caller and the intercepted method
+            if (frameClassName.startsWith("jdk.internal.reflect.")
+                    || frameClassName.startsWith("sun.reflect.")
+                    || frameClassName.startsWith("java.lang.reflect.")) {
+                continue;
+            }
+            // Skip test / framework intermediaries (JUnit, TestNG, etc.)
+            if (frameClassName.startsWith("org.junit.")
+                    || frameClassName.startsWith("org.testng.")
+                    || frameClassName.startsWith("org.junit.platform.commons.")) {
+                continue;
+            }
+            // Skip JDK utility frames that may appear in test runners
+            if (frameClassName.startsWith("java.util.")
+                    || frameClassName.startsWith("java.lang.")) {
+                continue;
+            }
+            // First non-target, non-agent, non-JDK, non-test frame is the real caller
+            callerIndex = i;
+            break;
+        }
+        if (callerIndex >= 0) {
+            StackTraceElement callerFrame = stack[callerIndex];
+            String callerClassName = callerFrame.getClassName();
+            try {
+                invocation.setCaller(
+                        Class.forName(callerClassName, false, Thread.currentThread().getContextClassLoader()),
+                        callerFrame.getMethodName(),
+                        callerFrame.getLineNumber());
+            } catch (ClassNotFoundException e) {
+                // Caller class not visible to our classloader — store what we can
+                invocation.setCaller(null, callerFrame.getMethodName(), callerFrame.getLineNumber());
+            }
+        }
     }
 }

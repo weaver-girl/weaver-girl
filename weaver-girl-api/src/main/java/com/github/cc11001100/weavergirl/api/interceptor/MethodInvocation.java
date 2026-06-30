@@ -75,6 +75,11 @@ public class MethodInvocation {
     private boolean exceptionSuppressed;
     private Map<String, Object> attachments;
 
+    // CallSite tracking: who called the intercepted method
+    private Class<?> callerClass;
+    private String callerMethodName;
+    private int callerLineNumber;
+
     /**
      * Constructs a new MethodInvocation.
      *
@@ -129,6 +134,9 @@ public class MethodInvocation {
         this.isSkipped = false;
         this.returnOverridden = false;
         this.exceptionSuppressed = false;
+        this.callerClass = null;
+        this.callerMethodName = null;
+        this.callerLineNumber = -1;
         if (this.attachments != null) {
             this.attachments.clear();
         }
@@ -149,6 +157,9 @@ public class MethodInvocation {
         this.isSkipped = false;
         this.returnOverridden = false;
         this.exceptionSuppressed = false;
+        this.callerClass = null;
+        this.callerMethodName = null;
+        this.callerLineNumber = -1;
         if (this.attachments != null) {
             this.attachments.clear();
         }
@@ -491,5 +502,67 @@ public class MethodInvocation {
      */
     public boolean isExceptionSuppressed() {
         return exceptionSuppressed;
+    }
+
+    // --- CallSite tracking API ---
+
+    /**
+     * Sets the caller information for this invocation. This is an internal
+     * framework method called by the advice at method entry time; interceptors
+     * should not call this.
+     *
+     * @param callerClass      the class that called the intercepted method, may be null
+     * @param callerMethodName the name of the calling method, may be null
+     * @param callerLineNumber the source line number of the call site, or -1 if unknown
+     * @since 1.5.0
+     */
+    public void setCaller(Class<?> callerClass, String callerMethodName, int callerLineNumber) {
+        this.callerClass = callerClass;
+        this.callerMethodName = callerMethodName;
+        this.callerLineNumber = callerLineNumber;
+    }
+
+    /**
+     * Returns the class that invoked the intercepted method.
+     *
+     * <p>This is derived from the call stack at method entry time. May return
+     * {@code null} if the caller class could not be determined (e.g., the
+     * call originated from JNI or the JDK internals).</p>
+     *
+     * @return the caller class, or null if unknown
+     * @since 1.5.0
+     */
+    public Class<?> getCallerClass() {
+        return callerClass;
+    }
+
+    /**
+     * Returns the name of the method that invoked the intercepted method.
+     *
+     * @return the caller method name, or null if unknown
+     * @since 1.5.0
+     */
+    public String getCallerMethodName() {
+        return callerMethodName;
+    }
+
+    /**
+     * Returns the source line number at which the intercepted method was called.
+     *
+     * @return the line number, or -1 if unknown
+     * @since 1.5.0
+     */
+    public int getCallerLineNumber() {
+        return callerLineNumber;
+    }
+
+    /**
+     * Returns whether caller information is available.
+     *
+     * @return true if at least the caller class is known
+     * @since 1.5.0
+     */
+    public boolean hasCaller() {
+        return callerClass != null;
     }
 }

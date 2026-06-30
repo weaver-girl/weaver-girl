@@ -63,6 +63,11 @@ public class ConstructorAdvice {
             String className = targetClass.getName();
             MethodInvocation invocation = MethodInvocationPool.acquire(targetClass, methodName, constructor, target, arguments);
 
+            // Capture caller information from the call stack.
+            // Delegated to InterceptorHolder to keep the advice class free of
+            // stack-walking code (ByteBuddy validates the entire advice class).
+            InterceptorHolder.captureCaller(invocation);
+
             List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
             for (InterceptorDefinition def : defs) {
                 // Use the two-arg matches() to also check parameter types for
