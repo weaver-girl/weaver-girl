@@ -4,6 +4,28 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## P0-5 — Global Context Bus (2026-07-03)
+
+### P0-5: Process-wide GlobalContext
+- `GlobalContext`: process-wide, all-threads-visible key/value blackboard — the missing fourth layer of the data-propagation model
+  - Backed by `ConcurrentHashMap`; static-class API matching `ThreadContext`/`MetricRegistry`/`TopologyGraph`
+  - Basic read/write: `put` / `get` / `get(key, default)` / `remove` / `clear` / `containsKey`
+  - Atomic operations replacing ad-hoc `static AtomicLong` fields: `computeIfAbsent` / `putIfAbsent` / `replace` / `replace(CAS)`
+  - Key-prefix namespace convention (`"<pluginName>.<key>"`, e.g. `"trace.counter"`)
+  - Does NOT support null keys/values (CHM limitation, differs from `ThreadContext`)
+  - No TTL/eviction — callers remove explicitly; javadoc documents try-finally idiom
+  - Completes the four-layer propagation model:
+    | Layer | Scope |
+    |---|---|
+    | `MethodInvocation.setAttachment` | single call (before→after) |
+    | `ThreadContext` | single thread (ThreadLocal) |
+    | **`GlobalContext`** | whole process, all threads |
+    | `Tracer.inject/extract` | cross-process |
+- Dogfood: migrated `TraceCorrelationPlugin`'s `static AtomicLong traceCounter` to `GlobalContext.computeIfAbsent("trace.counter", …)` — first consumer of the global bus
+- 18 tests (`GlobalContextTest`) covering basic API, atomic semantics, and the defining cross-thread visibility property
+
+---
+
 ## P78 — Adaptive Rate Limiter (2026-06-04)
 
 ### P78: Adaptive Rate Limiter

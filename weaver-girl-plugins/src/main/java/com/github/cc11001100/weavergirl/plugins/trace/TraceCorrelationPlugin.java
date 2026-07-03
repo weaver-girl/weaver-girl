@@ -1,5 +1,6 @@
 package com.github.cc11001100.weavergirl.plugins.trace;
 
+import com.github.cc11001100.weavergirl.api.context.GlobalContext;
 import com.github.cc11001100.weavergirl.api.context.ThreadContext;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
@@ -17,6 +18,11 @@ import java.util.concurrent.atomic.AtomicLong;
  * Generates a unique traceId at entry points and propagates it via ThreadContext.
  * Integrates with SLF4J MDC for automatic traceId inclusion in log messages.
  *
+ * <p>The per-process trace counter is held in {@link GlobalContext} (key
+ * {@code "trace.counter"}) rather than a static field, so it is observable via
+ * the global context bus and shares the same lifecycle as any other process-
+ * wide state.</p>
+ *
  * <p>Configuration:</p>
  * <ul>
  *   <li>{@code headerName} — HTTP header name for trace propagation (default: X-Trace-Id)</li>
@@ -28,8 +34,6 @@ import java.util.concurrent.atomic.AtomicLong;
 public class TraceCorrelationPlugin extends AbstractPlugin {
 
     private static final Logger log = LoggerFactory.getLogger(TraceCorrelationPlugin.class);
-
-    private static final AtomicLong traceCounter = new AtomicLong(0);
 
     private String headerName = "X-Trace-Id";
     private String entryPointPattern = ".*Servlet$|.*Controller$|.*Filter$";
@@ -70,7 +74,11 @@ public class TraceCorrelationPlugin extends AbstractPlugin {
         @Override
         public void before(MethodInvocation inv) {
             // Generate traceId: timestamp-processId-counter
-            String traceId = System.currentTimeMillis() + "-" + getProcessId() + "-" + traceCounter.incrementAndGet();
+            // The counter lives in GlobalContext (process-wide blackboard) rather than
+            // a static field, so it is observable and shares the global lifecycle.
+            long counter = GlobalContext.<AtomicLong>computeIfAbsent("trace.counter", k -> new AtomicLong())
+                    .incrementAndGet();
+            String traceId = System.currentTimeMillis() + "-" + getProcessId() + "-" + counter;
             ThreadContext.put("traceId", traceId);
 
             // Set MDC for SLF4J integration
