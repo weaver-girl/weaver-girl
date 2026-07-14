@@ -4,6 +4,33 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## P0-6 — ContextPropagator SPI & Span Bridge (2026-07-14)
+
+### P0-6: End-to-end Tracer + ThreadContext propagation
+
+**Core bug fixed**: Worker threads in async executors saw `Tracer.getCurrentSpan() == null` and `ThreadContext.get("spanId") == null` because `AsyncContextPropagationPlugin` only propagated ThreadContext, never the Tracer span; and nobody bridged spanId into ThreadContext.
+
+**ContextPropagator SPI** — pluggable context-propagation lifecycle:
+- `ContextPropagator` interface: `name()`, `capture()`, `restore(Snapshot)`, `cleanup(Snapshot previous)`
+- `ContextPropagatorRegistry`: static registry with registration-order preservation (CopyOnWriteArrayList + ConcurrentHashMap)
+- `ContextPropagators`: static facade (renamed from old `ContextPropagator` class) — `capture()`, `wrap(Runnable/Callable)`, `wrapCallables()`, `scope()`
+
+**Built-in propagators**:
+- `ThreadContextPropagator` — propagates `ThreadContext` map; cleanup restores worker's prior ThreadContext symmetrically
+- `TracerPropagator` — propagates Tracer span; **bridges `traceId`/`spanId` into `ThreadContext`** during `restore()` so OkHttp/RabbitMQ/Elasticsearch/Logging plugins read them without code changes; cleanup explicitly restores or clears the worker's prior span (avoids `Tracer.restore(null)` no-op pitfall)
+
+**Snapshot/Scope extended**:
+- `ContextSnapshot` now holds entries from all registered propagators; `empty()` clears all propagatable state
+- `ContextScope` performs symmetric cleanup in reverse registration order (LIFO unwind)
+- `ContextExecutor`/`ContextExecutorService`/`ContextScheduledExecutorService` updated to delegate to `ContextPropagators`
+
+**Deprecations**:
+- `TraceRunnable`, `TraceCallable`, `TraceExecutorService` → use `ContextPropagators.wrap()` or `ContextExecutorService.wrap()`
+
+**New tests**: 12 tests in `ContextPropagatorTest` covering span propagation, spanId bridge, cleanup semantics, registry, and combined multi-propagator propagation
+
+---
+
 ## P0-5 — Global Context Bus (2026-07-03)
 
 ### P0-5: Process-wide GlobalContext
