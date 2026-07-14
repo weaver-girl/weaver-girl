@@ -1,13 +1,21 @@
 package com.github.cc11001100.weavergirl.api.tracing;
 
+import com.github.cc11001100.weavergirl.api.context.ContextExecutorService;
+
 import java.util.*;
 import java.util.concurrent.*;
 
 /**
  * ExecutorService wrapper that automatically propagates trace context
  * to all submitted tasks.
+ *
+ * @deprecated Use {@link ContextExecutorService#wrap(ExecutorService)} which
+ *             propagates both ThreadContext and Tracer span (and any registered
+ *             {@link com.github.cc11001100.weavergirl.api.context.ContextPropagator}).
+ *             This class only propagates the Tracer span.
  * @since 1.1.0
  */
+@Deprecated
 public class TraceExecutorService implements ExecutorService {
 
     private final ExecutorService delegate;

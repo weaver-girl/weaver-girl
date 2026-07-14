@@ -1,7 +1,15 @@
 package com.github.cc11001100.weavergirl.api;
 
 import com.github.cc11001100.weavergirl.api.context.ContextCallable;
+import com.github.cc11001100.weavergirl.api.context.ContextExecutor;
+import com.github.cc11001100.weavergirl.api.context.ContextExecutorService;
+import com.github.cc11001100.weavergirl.api.context.ContextPropagator;
+import com.github.cc11001100.weavergirl.api.context.ContextPropagatorRegistry;
+import com.github.cc11001100.weavergirl.api.context.ContextPropagators;
 import com.github.cc11001100.weavergirl.api.context.ContextRunnable;
+import com.github.cc11001100.weavergirl.api.context.ContextScheduledExecutorService;
+import com.github.cc11001100.weavergirl.api.context.ContextScope;
+import com.github.cc11001100.weavergirl.api.context.ContextSnapshot;
 import com.github.cc11001100.weavergirl.api.context.ThreadContext;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventListener;
@@ -19,6 +27,11 @@ import org.junit.jupiter.api.*;
 
 import java.lang.reflect.*;
 import java.util.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -221,8 +234,70 @@ class ApiStabilityTest {
     void threadContext_hasRequiredMethods() throws NoSuchMethodException {
         ThreadContext.class.getMethod("get", String.class);
         ThreadContext.class.getMethod("put", String.class, Object.class);
+        ThreadContext.class.getMethod("putAll", Map.class);
         ThreadContext.class.getMethod("remove", String.class);
+        ThreadContext.class.getMethod("containsKey", String.class);
         ThreadContext.class.getMethod("clear");
+        ThreadContext.class.getMethod("capture");
+        ThreadContext.class.getMethod("restore", Map.class);
+        ThreadContext.class.getMethod("snapshot");
+    }
+
+    @Test
+    void contextPropagation_hasRequiredMethods() throws NoSuchMethodException {
+        ContextSnapshot.class.getMethod("capture");
+        ContextSnapshot.class.getMethod("empty");
+        ContextSnapshot.class.getMethod("fromThreadContext", Map.class);
+        ContextSnapshot.class.getMethod("getThreadContext");
+        ContextSnapshot.class.getMethod("activate");
+        ContextScope.class.getMethod("activate", ContextSnapshot.class);
+        ContextScope.class.getMethod("close");
+
+        // ContextPropagator SPI interface
+        ContextPropagator.class.getMethod("name");
+        ContextPropagator.class.getMethod("capture");
+        ContextPropagator.class.getMethod("restore", ContextPropagator.Snapshot.class);
+        ContextPropagator.class.getMethod("cleanup", ContextPropagator.Snapshot.class);
+
+        // ContextPropagators static facade (renamed from old ContextPropagator)
+        ContextPropagators.class.getMethod("capture");
+        ContextPropagators.class.getMethod("scope", ContextSnapshot.class);
+        ContextPropagators.class.getMethod("wrap", Runnable.class);
+        ContextPropagators.class.getMethod("wrap", Runnable.class, ContextSnapshot.class);
+        ContextPropagators.class.getMethod("wrap", Callable.class);
+        ContextPropagators.class.getMethod("wrap", Callable.class, ContextSnapshot.class);
+        ContextPropagators.class.getMethod("wrapCallables", Collection.class);
+        ContextPropagators.class.getMethod("wrapCallables", Collection.class, ContextSnapshot.class);
+
+        // ContextPropagatorRegistry
+        ContextPropagatorRegistry.class.getMethod("register", ContextPropagator.class);
+        ContextPropagatorRegistry.class.getMethod("unregister", String.class);
+        ContextPropagatorRegistry.class.getMethod("getAll");
+        ContextPropagatorRegistry.class.getMethod("get", String.class);
+        ContextExecutor.class.getConstructor(Executor.class);
+        ContextExecutor.class.getMethod("execute", Runnable.class);
+        ContextExecutor.class.getMethod("getDelegate");
+        ContextExecutor.class.getMethod("wrap", Executor.class);
+        ContextExecutorService.class.getConstructor(ExecutorService.class);
+        ContextExecutorService.class.getMethod("getDelegate");
+        ContextExecutorService.class.getMethod("wrap", ExecutorService.class);
+        ContextExecutorService.class.getMethod("execute", Runnable.class);
+        ContextExecutorService.class.getMethod("submit", Callable.class);
+        ContextExecutorService.class.getMethod("submit", Runnable.class);
+        ContextExecutorService.class.getMethod("submit", Runnable.class, Object.class);
+        ContextExecutorService.class.getMethod("invokeAll", Collection.class);
+        ContextExecutorService.class.getMethod("invokeAll", Collection.class, Long.TYPE, TimeUnit.class);
+        ContextExecutorService.class.getMethod("invokeAny", Collection.class);
+        ContextExecutorService.class.getMethod("invokeAny", Collection.class, Long.TYPE, TimeUnit.class);
+        ContextScheduledExecutorService.class.getConstructor(ScheduledExecutorService.class);
+        ContextScheduledExecutorService.class.getMethod("getDelegate");
+        ContextScheduledExecutorService.class.getMethod("wrap", ScheduledExecutorService.class);
+        ContextScheduledExecutorService.class.getMethod("schedule", Runnable.class, Long.TYPE, TimeUnit.class);
+        ContextScheduledExecutorService.class.getMethod("schedule", Callable.class, Long.TYPE, TimeUnit.class);
+        ContextScheduledExecutorService.class.getMethod("scheduleAtFixedRate",
+                Runnable.class, Long.TYPE, Long.TYPE, TimeUnit.class);
+        ContextScheduledExecutorService.class.getMethod("scheduleWithFixedDelay",
+                Runnable.class, Long.TYPE, Long.TYPE, TimeUnit.class);
     }
 
     // ===== MethodInvocation =====

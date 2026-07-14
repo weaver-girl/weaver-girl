@@ -226,6 +226,21 @@ public final class GlobalContext {
     }
 
     /**
+     * Return an unmodifiable snapshot of the global context contents.
+     * Useful for diagnostics and management endpoints.
+     *
+     * <p>The returned map is a point-in-time snapshot; subsequent
+     * {@link #put}/{@link #remove} calls are not reflected.</p>
+     *
+     * @return an unmodifiable copy of the current global context
+     * @since 1.7.0
+     */
+    @SuppressWarnings("unchecked")
+    public static java.util.Map<String, Object> snapshot() {
+        return java.util.Collections.unmodifiableMap(new java.util.HashMap<>(STORE));
+    }
+
+    /**
      * Clear all values from the global context. For test isolation only —
      * production code should use {@link #remove}/{@link #clear} explicitly.
      */

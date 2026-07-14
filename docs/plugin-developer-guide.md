@@ -124,12 +124,41 @@ intercept("com.example.Service")
 })
 ```
 
-### Cross-Thread Context
+### Data and Context Propagation
+
+Weaver-Girl provides several context layers for plugin cooperation:
+
+- `MethodInvocation` arguments, return values, and attachments are for one intercepted call.
+- `ThreadContext` is for sharing request or trace data across interceptors running on the same thread.
+- `ContextSnapshot`, `ContextScope`, and `ContextPropagator` capture and restore thread context across async boundaries.
+- `ContextExecutor`, `ContextExecutorService`, and `ContextScheduledExecutorService` wrap executors so every submitted or scheduled task receives the caller's current context.
+- `GlobalContext` is for process-wide values that should be visible to every thread and plugin.
+
+For simple executor usage, prefer wrapping the executor once:
+
+```java
+ExecutorService contextExecutor = ContextExecutorService.wrap(rawExecutor);
+
+before(inv -> {
+    ThreadContext.put("traceId", traceId);
+    contextExecutor.submit(() -> {
+        String id = ThreadContext.get("traceId");
+        // ...
+    });
+});
+```
+
+The async context propagation plugin can automatically weave executor
+implementations loaded by the application or plugin classloader. JDK bootstrap
+executors created through `Executors.*` should be wrapped explicitly with
+`ContextExecutorService.wrap(...)` or `ContextScheduledExecutorService.wrap(...)`.
+
+For a single task, use `ContextPropagator` or the direct wrappers:
 
 ```java
 .before(inv -> {
     ThreadContext.put("traceId", traceId);
-    executor.submit(new ContextRunnable(() -> {
+    executor.submit(ContextPropagator.wrap(() -> {
         String id = ThreadContext.get("traceId");
         // ...
     }));

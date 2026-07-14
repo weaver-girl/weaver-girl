@@ -62,6 +62,16 @@ public class ThreadContext {
     }
 
     /**
+     * Store all values in the current thread's context.
+     *
+     * @param values values to add; must not be null
+     * @since 1.6.0
+     */
+    public static void putAll(Map<String, Object> values) {
+        CONTEXT.get().putAll(values);
+    }
+
+    /**
      * Retrieve a value from the current thread's context.
      *
      * <p>The return type is inferred from the call site via unchecked cast.
@@ -103,6 +113,17 @@ public class ThreadContext {
     }
 
     /**
+     * Returns whether the current thread's context contains the given key.
+     *
+     * @param key the context key
+     * @return true if the key exists, including keys mapped to null
+     * @since 1.6.0
+     */
+    public static boolean containsKey(String key) {
+        return CONTEXT.get().containsKey(key);
+    }
+
+    /**
      * Clear all values from the current thread's context and remove the ThreadLocal entry
      * to prevent memory leaks in thread pool environments.
      */
@@ -133,7 +154,22 @@ public class ThreadContext {
      * @param captured a context snapshot previously obtained from {@link #capture()}
      */
     public static void restore(Map<String, Object> captured) {
-        CONTEXT.get().clear();
-        CONTEXT.get().putAll(captured);
+        if (captured == null || captured.isEmpty()) {
+            clear();
+            return;
+        }
+        Map<String, Object> context = CONTEXT.get();
+        context.clear();
+        context.putAll(captured);
+    }
+
+    /**
+     * Capture the current thread's context as a {@link ContextSnapshot}.
+     *
+     * @return immutable context snapshot
+     * @since 1.6.0
+     */
+    public static ContextSnapshot snapshot() {
+        return ContextSnapshot.capture();
     }
 }

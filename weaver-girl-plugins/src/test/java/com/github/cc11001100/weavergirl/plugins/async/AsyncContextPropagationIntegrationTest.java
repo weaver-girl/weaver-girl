@@ -21,7 +21,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -191,6 +194,111 @@ class AsyncContextPropagationIntegrationTest {
         }
     }
 
+    @Test
+    void scheduleRunnable_propagatesContextAutomatically() throws Exception {
+        installPlugin();
+
+        ThreadContext.put("traceId", "trace-schedule-runnable");
+
+        InAppScheduledExecutor executor = new InAppScheduledExecutor();
+        AtomicReference<String> workerTraceId = new AtomicReference<>();
+        CountDownLatch latch = new CountDownLatch(1);
+
+        try {
+            executor.schedule(() -> {
+                workerTraceId.set(ThreadContext.get("traceId"));
+                latch.countDown();
+            }, 1, TimeUnit.MILLISECONDS);
+            ThreadContext.clear();
+
+            assertTrue(latch.await(5, TimeUnit.SECONDS), "Scheduled worker task should complete");
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertEquals("trace-schedule-runnable", workerTraceId.get(),
+                "ThreadContext should be auto-propagated via schedule(Runnable,long,TimeUnit)");
+    }
+
+    @Test
+    void scheduleCallable_propagatesContextAutomatically() throws Exception {
+        installPlugin();
+
+        ThreadContext.put("traceId", "trace-schedule-callable");
+
+        InAppScheduledExecutor executor = new InAppScheduledExecutor();
+        try {
+            ScheduledFuture<String> future = executor.schedule(
+                    () -> ThreadContext.get("traceId"), 1, TimeUnit.MILLISECONDS);
+            ThreadContext.clear();
+
+            assertEquals("trace-schedule-callable", future.get(5, TimeUnit.SECONDS),
+                    "ThreadContext should be auto-propagated via schedule(Callable,long,TimeUnit)");
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void scheduleAtFixedRate_propagatesContextAutomatically() throws Exception {
+        installPlugin();
+
+        ThreadContext.put("traceId", "trace-fixed-rate");
+
+        InAppScheduledExecutor executor = new InAppScheduledExecutor();
+        AtomicReference<String> workerTraceId = new AtomicReference<>();
+        CountDownLatch latch = new CountDownLatch(2);
+
+        ScheduledFuture<?> future = null;
+        try {
+            future = executor.scheduleAtFixedRate(() -> {
+                workerTraceId.set(ThreadContext.get("traceId"));
+                latch.countDown();
+            }, 1, 1, TimeUnit.MILLISECONDS);
+            ThreadContext.clear();
+
+            assertTrue(latch.await(5, TimeUnit.SECONDS), "Periodic scheduled task should run twice");
+        } finally {
+            if (future != null) {
+                future.cancel(true);
+            }
+            executor.shutdownNow();
+        }
+
+        assertEquals("trace-fixed-rate", workerTraceId.get(),
+                "ThreadContext should be auto-propagated via scheduleAtFixedRate(Runnable,long,long,TimeUnit)");
+    }
+
+    @Test
+    void scheduleWithFixedDelay_propagatesContextAutomatically() throws Exception {
+        installPlugin();
+
+        ThreadContext.put("traceId", "trace-fixed-delay");
+
+        InAppScheduledExecutor executor = new InAppScheduledExecutor();
+        AtomicReference<String> workerTraceId = new AtomicReference<>();
+        CountDownLatch latch = new CountDownLatch(2);
+
+        ScheduledFuture<?> future = null;
+        try {
+            future = executor.scheduleWithFixedDelay(() -> {
+                workerTraceId.set(ThreadContext.get("traceId"));
+                latch.countDown();
+            }, 1, 1, TimeUnit.MILLISECONDS);
+            ThreadContext.clear();
+
+            assertTrue(latch.await(5, TimeUnit.SECONDS), "Fixed-delay scheduled task should run twice");
+        } finally {
+            if (future != null) {
+                future.cancel(true);
+            }
+            executor.shutdownNow();
+        }
+
+        assertEquals("trace-fixed-delay", workerTraceId.get(),
+                "ThreadContext should be auto-propagated via scheduleWithFixedDelay(Runnable,long,long,TimeUnit)");
+    }
+
     private void installPlugin() {
         AsyncContextPropagationPlugin plugin = new AsyncContextPropagationPlugin();
         plugin.init(new StubContext(new HashMap<>()));
@@ -251,6 +359,169 @@ class AsyncContextPropagationIntegrationTest {
 
         @Override
         public boolean awaitTermination(long timeout, TimeUnit unit) { return true; }
+    }
+
+    /**
+     * Minimal {@link ScheduledExecutorService} on the app classloader. It does
+     * not model real timing; tests only need a concrete scheduled executor whose
+     * schedule methods can be transformed and whose first task argument is run
+     * later on the worker thread.
+     */
+    static final class InAppScheduledExecutor extends AbstractExecutorService
+            implements ScheduledExecutorService {
+        private final BlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
+        private volatile boolean stopped = false;
+
+        InAppScheduledExecutor() {
+            Thread worker = new Thread(() -> {
+                while (!stopped) {
+                    try {
+                        queue.take().run();
+                    } catch (InterruptedException e) {
+                        break;
+                    }
+                }
+            }, "InAppScheduledExecutor-worker");
+            worker.setDaemon(true);
+            worker.start();
+        }
+
+        @Override
+        public void execute(Runnable command) {
+            queue.add(command);
+        }
+
+        @Override
+        public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
+            SimpleScheduledFuture<Void> future =
+                    new SimpleScheduledFuture<>(Executors.callable(command, null));
+            queue.add(future);
+            return future;
+        }
+
+        @Override
+        public <V> ScheduledFuture<V> schedule(Callable<V> callable, long delay, TimeUnit unit) {
+            SimpleScheduledFuture<V> future = new SimpleScheduledFuture<>(callable);
+            queue.add(future);
+            return future;
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleAtFixedRate(
+                Runnable command, long initialDelay, long period, TimeUnit unit) {
+            PeriodicScheduledFuture future = new PeriodicScheduledFuture(command, period, unit);
+            queue.add(future);
+            return future;
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleWithFixedDelay(
+                Runnable command, long initialDelay, long delay, TimeUnit unit) {
+            PeriodicScheduledFuture future = new PeriodicScheduledFuture(command, delay, unit);
+            queue.add(future);
+            return future;
+        }
+
+        @Override
+        public void shutdown() { stopped = true; }
+
+        @Override
+        public List<Runnable> shutdownNow() {
+            stopped = true;
+            return Collections.emptyList();
+        }
+
+        @Override
+        public boolean isShutdown() { return stopped; }
+
+        @Override
+        public boolean isTerminated() { return stopped; }
+
+        @Override
+        public boolean awaitTermination(long timeout, TimeUnit unit) { return true; }
+    }
+
+    static final class SimpleScheduledFuture<V> extends FutureTask<V> implements ScheduledFuture<V> {
+        SimpleScheduledFuture(Callable<V> callable) {
+            super(callable);
+        }
+
+        @Override
+        public long getDelay(TimeUnit unit) {
+            return 0;
+        }
+
+        @Override
+        public int compareTo(java.util.concurrent.Delayed other) {
+            return 0;
+        }
+    }
+
+    static final class PeriodicScheduledFuture implements ScheduledFuture<Object>, Runnable {
+        private final Runnable command;
+        private final long delayMillis;
+        private volatile boolean cancelled;
+        private volatile boolean done;
+        private volatile Thread runner;
+
+        PeriodicScheduledFuture(Runnable command, long delay, TimeUnit unit) {
+            this.command = command;
+            this.delayMillis = Math.max(1L, unit.toMillis(delay));
+        }
+
+        @Override
+        public void run() {
+            runner = Thread.currentThread();
+            try {
+                while (!cancelled) {
+                    command.run();
+                    Thread.sleep(delayMillis);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                done = true;
+            }
+        }
+
+        @Override
+        public boolean cancel(boolean mayInterruptIfRunning) {
+            cancelled = true;
+            if (mayInterruptIfRunning && runner != null) {
+                runner.interrupt();
+            }
+            return true;
+        }
+
+        @Override
+        public boolean isCancelled() {
+            return cancelled;
+        }
+
+        @Override
+        public boolean isDone() {
+            return done;
+        }
+
+        @Override
+        public Object get() {
+            return null;
+        }
+
+        @Override
+        public Object get(long timeout, TimeUnit unit) {
+            return null;
+        }
+
+        @Override
+        public long getDelay(TimeUnit unit) {
+            return 0;
+        }
+
+        @Override
+        public int compareTo(java.util.concurrent.Delayed other) {
+            return 0;
+        }
     }
 
     private static class StubContext implements PluginContext {

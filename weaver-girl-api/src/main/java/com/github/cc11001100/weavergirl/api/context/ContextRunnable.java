@@ -1,6 +1,6 @@
 package com.github.cc11001100.weavergirl.api.context;
 
-import java.util.Map;
+import java.util.Objects;
 
 /**
  * {@link Runnable} wrapper that captures the {@link ThreadContext} at creation time
@@ -35,7 +35,7 @@ import java.util.Map;
 public class ContextRunnable implements Runnable {
 
     private final Runnable delegate;
-    private final Map<String, Object> capturedContext;
+    private final ContextSnapshot capturedContext;
 
     /**
      * Creates a new ContextRunnable that wraps the given delegate.
@@ -48,8 +48,19 @@ public class ContextRunnable implements Runnable {
      * @param delegate the Runnable to wrap; must not be null
      */
     public ContextRunnable(Runnable delegate) {
-        this.delegate = delegate;
-        this.capturedContext = ThreadContext.capture();
+        this(delegate, ContextSnapshot.capture());
+    }
+
+    /**
+     * Creates a new ContextRunnable with an explicit snapshot.
+     *
+     * @param delegate the Runnable to wrap; must not be null
+     * @param snapshot the context snapshot to activate while running
+     * @since 1.6.0
+     */
+    public ContextRunnable(Runnable delegate, ContextSnapshot snapshot) {
+        this.delegate = Objects.requireNonNull(delegate, "delegate");
+        this.capturedContext = snapshot != null ? snapshot : ContextSnapshot.empty();
     }
 
     /**
@@ -61,12 +72,8 @@ public class ContextRunnable implements Runnable {
      */
     @Override
     public void run() {
-        Map<String, Object> previous = ThreadContext.capture();
-        try {
-            ThreadContext.restore(capturedContext);
+        try (ContextScope ignored = capturedContext.activate()) {
             delegate.run();
-        } finally {
-            ThreadContext.restore(previous);
         }
     }
 }

@@ -1,6 +1,6 @@
 package com.github.cc11001100.weavergirl.api.context;
 
-import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.Callable;
 
 /**
@@ -36,7 +36,7 @@ import java.util.concurrent.Callable;
 public class ContextCallable<V> implements Callable<V> {
 
     private final Callable<V> delegate;
-    private final Map<String, Object> capturedContext;
+    private final ContextSnapshot capturedContext;
 
     /**
      * Creates a new ContextCallable that wraps the given delegate.
@@ -49,8 +49,19 @@ public class ContextCallable<V> implements Callable<V> {
      * @param delegate the Callable to wrap; must not be null
      */
     public ContextCallable(Callable<V> delegate) {
-        this.delegate = delegate;
-        this.capturedContext = ThreadContext.capture();
+        this(delegate, ContextSnapshot.capture());
+    }
+
+    /**
+     * Creates a new ContextCallable with an explicit snapshot.
+     *
+     * @param delegate the Callable to wrap; must not be null
+     * @param snapshot the context snapshot to activate while calling
+     * @since 1.6.0
+     */
+    public ContextCallable(Callable<V> delegate, ContextSnapshot snapshot) {
+        this.delegate = Objects.requireNonNull(delegate, "delegate");
+        this.capturedContext = snapshot != null ? snapshot : ContextSnapshot.empty();
     }
 
     /**
@@ -65,12 +76,8 @@ public class ContextCallable<V> implements Callable<V> {
      */
     @Override
     public V call() throws Exception {
-        Map<String, Object> previous = ThreadContext.capture();
-        try {
-            ThreadContext.restore(capturedContext);
+        try (ContextScope ignored = capturedContext.activate()) {
             return delegate.call();
-        } finally {
-            ThreadContext.restore(previous);
         }
     }
 }

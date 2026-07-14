@@ -70,7 +70,7 @@ public class AsyncArgumentAdvice {
                         != com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode.ARGUMENT_REWRITE) {
                     continue;
                 }
-                if (!def.getPointcut().getMethodMatcher().matches(methodName)) {
+                if (!def.getPointcut().getMethodMatcher().matches(methodName, method.getParameterTypes())) {
                     continue;
                 }
                 if (!InterceptorHolder.shouldInvoke(def.getName())) {

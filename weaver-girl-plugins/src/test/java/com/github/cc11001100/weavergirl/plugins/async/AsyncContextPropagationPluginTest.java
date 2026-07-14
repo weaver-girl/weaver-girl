@@ -15,6 +15,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,11 +56,11 @@ class AsyncContextPropagationPluginTest {
     }
 
     @Test
-    void registerInterceptors_enabled_registersFourDefinitions() {
+    void registerInterceptors_enabled_registersAllDefinitions() {
         plugin.init(new StubContext(new HashMap<>()));
         plugin.registerInterceptors(registry);
-        // execute (Executor), execute (ExecutorService), submit(Runnable), submit(Callable)
-        assertEquals(4, registry.definitions.size());
+        // execute x2, submit x3, invokeAll x2, invokeAny x2, schedule x4
+        assertEquals(13, registry.definitions.size());
     }
 
     @Test
@@ -77,13 +79,16 @@ class AsyncContextPropagationPluginTest {
 
         boolean hasExecutor = false;
         boolean hasExecutorService = false;
+        boolean hasScheduledExecutorService = false;
         for (InterceptorDefinition def : registry.definitions) {
             String pattern = def.getPointcut().getClassMatcher().getPattern();
             if (pattern.equals("java.util.concurrent.Executor")) hasExecutor = true;
             if (pattern.equals("java.util.concurrent.ExecutorService")) hasExecutorService = true;
+            if (pattern.equals("java.util.concurrent.ScheduledExecutorService")) hasScheduledExecutorService = true;
         }
         assertTrue(hasExecutor, "Should target java.util.concurrent.Executor");
         assertTrue(hasExecutorService, "Should target java.util.concurrent.ExecutorService");
+        assertTrue(hasScheduledExecutorService, "Should target java.util.concurrent.ScheduledExecutorService");
     }
 
     @Test
@@ -122,6 +127,68 @@ class AsyncContextPropagationPluginTest {
         Object wrapped = inv.getArgument(0);
         assertInstanceOf(ContextCallable.class, wrapped,
                 "Callable argument should be wrapped in ContextCallable");
+    }
+
+    @Test
+    void before_wrapsSubmitRunnableWithResultFirstArgument() {
+        Interceptor interceptor = getWrapInterceptor();
+        Runnable original = () -> {};
+        Object result = "result";
+        MethodInvocation inv = new MethodInvocation(
+                Object.class, "submit", null, new Object[]{original, result});
+
+        interceptor.before(inv);
+
+        assertInstanceOf(ContextRunnable.class, inv.getArgument(0),
+                "First submit(Runnable, result) argument should be wrapped");
+        assertSame(result, inv.getArgument(1),
+                "Result argument should be left untouched");
+    }
+
+    @Test
+    void before_wrapsCallableCollections() {
+        Interceptor interceptor = getWrapInterceptor();
+        Callable<String> first = () -> "one";
+        Callable<String> second = () -> "two";
+        List<Callable<String>> originals = Arrays.asList(first, second);
+        MethodInvocation inv = new MethodInvocation(
+                Object.class, "invokeAll", null, new Object[]{originals});
+
+        interceptor.before(inv);
+
+        Object wrapped = inv.getArgument(0);
+        assertInstanceOf(List.class, wrapped);
+        @SuppressWarnings("unchecked")
+        List<Callable<String>> wrappedList = (List<Callable<String>>) wrapped;
+        assertEquals(2, wrappedList.size());
+        assertInstanceOf(ContextCallable.class, wrappedList.get(0));
+        assertInstanceOf(ContextCallable.class, wrappedList.get(1));
+        assertNotSame(originals, wrapped,
+                "Collection wrappers should use a fresh list for immutable input collections");
+    }
+
+    @Test
+    void before_wrapsEmptyCallableCollections() {
+        Interceptor interceptor = getWrapInterceptor();
+        MethodInvocation inv = new MethodInvocation(
+                Object.class, "invokeAll", null, new Object[]{Collections.<Callable<String>>emptyList()});
+
+        interceptor.before(inv);
+
+        assertInstanceOf(List.class, inv.getArgument(0));
+        assertTrue(((List<?>) inv.getArgument(0)).isEmpty());
+    }
+
+    @Test
+    void before_leavesMixedCollectionsUntouched() {
+        Interceptor interceptor = getWrapInterceptor();
+        List<Object> mixed = Arrays.<Object>asList((Callable<String>) () -> "value", "not-callable");
+        MethodInvocation inv = new MethodInvocation(
+                Object.class, "invokeAll", null, new Object[]{mixed});
+
+        interceptor.before(inv);
+
+        assertSame(mixed, inv.getArgument(0));
     }
 
     @Test

@@ -256,6 +256,14 @@ public class WeaverTransformer {
                 agentBuilder = agentBuilder
                         .type(typeMatcher)
                         .transform((builder, typeDescription, classLoader, module, protectionDomain) -> {
+                            if (mode == com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode.ARGUMENT_REWRITE
+                                    && classLoader == null) {
+                                if (isDebugMode()) {
+                                    log.debug("Skipping ARGUMENT_REWRITE advice for bootstrap class: {}",
+                                            typeDescription.getName());
+                                }
+                                return builder;
+                            }
                             if (transformationCount.incrementAndGet() > maxTransformations) {
                                 log.warn("Max transformations ({}) reached, not transforming: {}",
                                         maxTransformations, typeDescription.getName());

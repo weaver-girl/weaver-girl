@@ -48,10 +48,10 @@ Key dependency rules:
 
 | Module | Purpose | Key Classes |
 |--------|---------|-------------|
-| `weaver-girl-api` | Plugin SDK: interfaces and value objects that plugin developers code against | `WeaverPlugin`, `AbstractPlugin`, `Interceptor`, `MethodInvocation`, `ClassMatcher`, `MethodMatcher`, `Pointcut`, `InterceptorDefinition`, `InterceptorRegistry`, `PluginContext`, `ThreadContext`, `InterceptorEvent`, `InterceptorEventPublisher`, `InterceptorEventListener` |
+| `weaver-girl-api` | Plugin SDK: interfaces and value objects that plugin developers code against | `WeaverPlugin`, `AbstractPlugin`, `Interceptor`, `MethodInvocation`, `ClassMatcher`, `MethodMatcher`, `Pointcut`, `InterceptorDefinition`, `InterceptorRegistry`, `PluginContext`, `ThreadContext`, `ContextSnapshot`, `ContextScope`, `ContextPropagator`, `ContextExecutorService`, `InterceptorEvent`, `InterceptorEventPublisher`, `InterceptorEventListener` |
 | `weaver-girl-core` | Engine implementation: bytecode transformation, registry, config, fault isolation | `WeaverGirl`, `InterceptAdvice`, `WeaverTransformer`, `DefaultInterceptorRegistry`, `PluginLoader`, `YamlConfigLoader`, `ConfigWatcher`, `InterceptorCircuitBreaker`, `SamplingController`, `PrometheusExporter`, `AgentMXBean`/`AgentMonitor` |
 | `weaver-girl-annotation` | Declarative annotation-driven hook mode | `@WeaveClass`, `@Before`, `@After`, `@Around` |
-| `weaver-girl-plugins` | 16 built-in instrumentation plugins | `ServletPlugin`, `JdbcPlugin`, `SpringPlugin`, `RedisPlugin`, `KafkaPlugin`, `GrpcPlugin`, `MongoPlugin`, `HttpClientPlugin`, `HikariPlugin`, `MethodTimingPlugin`, `TraceCorrelationPlugin`, `ExceptionMonitorPlugin`, `LoggingPlugin`, `OkHttpPlugin`, `RabbitMQPlugin`, `ElasticsearchPlugin` |
+| `weaver-girl-plugins` | Built-in instrumentation plugins | `ServletPlugin`, `JdbcPlugin`, `SpringPlugin`, `RedisPlugin`, `KafkaPlugin`, `GrpcPlugin`, `MongoPlugin`, `HttpClientPlugin`, `HikariPlugin`, `MethodTimingPlugin`, `TraceCorrelationPlugin`, `ExceptionMonitorPlugin`, `LoggingPlugin`, `OkHttpPlugin`, `RabbitMQPlugin`, `ElasticsearchPlugin`, `AsyncContextPropagationPlugin` |
 | `weaver-girl-agent` | Java Agent entry point | `WeaverGirlAgent` |
 | `weaver-girl-sample` | Demonstration application | `SampleApplication`, `TargetService`, sample plugins and interceptors |
 
@@ -599,7 +599,7 @@ User-configured exclusions from `WeaverConfig.excludedClasses` are also applied.
 | `AgentMonitor` | `AtomicLong`/`AtomicInteger` counters, `volatile` strings |
 | `InterceptorEventPublisher` | `CopyOnWriteArrayList` for listeners |
 | `MethodInvocationPool` | `ThreadLocal` per-thread pooling |
-| `ThreadContext` | `ThreadLocal` with `remove()` to prevent memory leaks |
+| `ThreadContext` / context propagation wrappers | `ThreadLocal` with `remove()` plus snapshot/scope restore around async tasks |
 | `PrometheusExporter` | `ConcurrentHashMap` with `AtomicLong` counters |
 | `ConfigWatcher` | `AtomicBoolean` for running state |
 | `DefaultDynamicConfigManager` | `ConcurrentHashMap` for config, `CopyOnWriteArrayList` for listeners/snapshots |
