@@ -49,6 +49,7 @@ public final class ContextPropagatorRegistry {
     static {
         register(new ThreadContextPropagator());
         register(new TracerPropagator());
+        register(new TenantContextPropagator());
     }
 
     private ContextPropagatorRegistry() {
@@ -117,5 +118,6 @@ public final class ContextPropagatorRegistry {
         ORDERED.clear();
         register(new ThreadContextPropagator());
         register(new TracerPropagator());
+        register(new TenantContextPropagator());
     }
 }
