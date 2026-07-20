@@ -50,6 +50,7 @@ public final class ContextPropagatorRegistry {
         register(new ThreadContextPropagator());
         register(new TracerPropagator());
         register(new TenantContextPropagator());
+        register(new MdcPropagator());
     }
 
     private ContextPropagatorRegistry() {
@@ -119,5 +120,6 @@ public final class ContextPropagatorRegistry {
         register(new ThreadContextPropagator());
         register(new TracerPropagator());
         register(new TenantContextPropagator());
+        register(new MdcPropagator());
     }
 }
