@@ -51,4 +51,11 @@ public class ThreadContextPropagator implements ContextPropagator {
         // the previous ContextScope.close() behavior: ThreadContext.restore(previous)
         restore(previous);
     }
+
+    @Override
+    public int priority() {
+        // Must restore before any propagator that reads ThreadContext bridge
+        // keys (TracerPropagator, TenantContextPropagator, MdcPropagator).
+        return -200;
+    }
 }

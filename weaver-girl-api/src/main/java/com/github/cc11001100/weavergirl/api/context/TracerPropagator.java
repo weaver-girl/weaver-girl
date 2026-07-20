@@ -92,4 +92,12 @@ public class TracerPropagator implements ContextPropagator {
         // the worker's prior ThreadContext snapshot (that did not contain these
         // keys). So no explicit ThreadContext.remove() is needed here.
     }
+
+    @Override
+    public int priority() {
+        // After ThreadContext (-200) so the bridge keys it writes into
+        // ThreadContext are visible to lower-priority propagators that read
+        // them (TenantContextPropagator, MdcPropagator).
+        return -100;
+    }
 }

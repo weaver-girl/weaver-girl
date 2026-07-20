@@ -78,4 +78,26 @@ public interface ContextPropagator {
      * @param previous the worker thread's prior state snapshot
      */
     void cleanup(Snapshot previous);
+
+    /**
+     * Propagation priority. Lower values execute first during capture/restore
+     * and last during cleanup (LIFO unwind). The default priority is 0.
+     *
+     * <p>Built-in propagators use negative priorities so they execute before
+     * third-party propagators:</p>
+     * <ul>
+     *   <li>{@code ThreadContextPropagator}: -200 (must restore before others
+     *       read from ThreadContext)</li>
+     *   <li>{@code TracerPropagator}: -100 (bridges spanId into ThreadContext
+     *       after ThreadContext is restored)</li>
+     *   <li>{@code TenantContextPropagator}: -50 (bridges tenantId into ThreadContext)</li>
+     *   <li>{@code MdcPropagator}: -40 (reads bridge keys from ThreadContext into MDC)</li>
+     * </ul>
+     *
+     * @return priority value, lower = higher priority
+     * @since 1.8.0
+     */
+    default int priority() {
+        return 0;
+    }
 }
