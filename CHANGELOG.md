@@ -4,6 +4,50 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## P0-9 — CompletableFuture Context Propagation (2026-09-06)
+
+### P0-9: Context-propagating CompletableFuture factories + capability placeholder plugin
+
+**Why API, not weaving**: `java.util.concurrent.CompletableFuture` lives on the bootstrap
+classloader, where `ARGUMENT_REWRITE` advice is skipped (`WeaverTransformer.install`) and inlined
+advice cannot resolve the agent's own classes; the no-executor overloads use
+`ForkJoinPool.commonPool()` internally (also bootstrap). Transparent weaving of the
+`supplyAsync`/`runAsync` factory methods is therefore not possible — propagation is provided
+by explicit API factories instead:
+
+- `ContextCompletableFuture` (weaver-girl-api, `@since 1.9.0`): static factories
+  `supplyAsync(Supplier)` / `supplyAsync(Supplier, Executor)` /
+  `runAsync(Runnable)` / `runAsync(Runnable, Executor)` that wrap the target executor
+  with `ContextExecutor` at submission time. Null executor falls back to the common
+  ForkJoinPool; already-wrapped executors are reused (idempotent)
+- `CompletableFuturePropagationPlugin` (weaver-girl-plugins): capability placeholder —
+  registers no interceptor definitions and logs a pointer to the API, so the feature is
+  discoverable via ServiceLoader without pretending to weave. Factory-method hooks belong
+  here if the transformer ever gains bootstrap `ARGUMENT_REWRITE` support
+
+**New tests**: 11 tests in `ContextCompletableFutureTest` (explicit/null/commonPool executors,
+chained stages, Tracer/Tenant end-to-end, no-leak) + 5 tests in
+`CompletableFuturePropagationTest` (placeholder registration semantics + API propagation)
+
+---
+
+## P0-7 — ContextPropagator Priority & MDC/Tenant Bridges (2026-07-19)
+
+### P0-7 Task 1: ContextPropagator priority support for ordered propagation
+- `ContextPropagator.priority()`: lower value restores first, so ThreadContext (-200) and
+  Tracer (-100) bridges land before dependents read them; cleanup unwinds in reverse
+
+### P0-7 Task 2: TenantContextPropagator — cross-thread tenant propagation with ThreadContext bridge
+- Propagates `TenantContext` across threads and bridges `tenantId` into ThreadContext
+  during `restore()`, so downstream plugins read it without code changes
+
+### P0-7 Task 3: MdcPropagator — SLF4J MDC cross-thread propagation via reflection
+- Zero-compile-dependency MDC propagation (reflection over `org.slf4j.MDC`); mirrors
+  bridged `traceId`/`spanId`/`tenantId` from ThreadContext into MDC on the worker thread,
+  so log statements automatically include trace and tenant information
+
+---
+
 ## P0-6 — ContextPropagator SPI & Span Bridge (2026-07-14)
 
 ### P0-6: End-to-end Tracer + ThreadContext propagation
