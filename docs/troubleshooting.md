@@ -59,6 +59,19 @@ java -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml -jar your-app.j
    - Default limit is 10,000 transformed classes
    - For large applications, increase: `maxTransformations: 50000`
 
+8. **Target is a JDK bootstrap class with ARGUMENT_REWRITE advice**
+   - `ARGUMENT_REWRITE` interceptors are skipped for bootstrap-loaded classes
+     (`classLoader == null`) — e.g. `java.util.concurrent.CompletableFuture`,
+     `ForkJoinPool`, JDK `Executors.*` implementations. The definition registers
+     normally but never fires at runtime.
+   - For executor-based async work, wrap explicitly:
+     `ContextExecutorService.wrap(rawExecutor)` (see plugin-developer-guide,
+     "Data and Context Propagation").
+   - For CompletableFuture stages, use the `ContextCompletableFuture` API
+     (`supplyAsync`/`runAsync` with context propagation) instead of raw
+     `CompletableFuture` overloads — transparent weaving of the
+     `supplyAsync`/`runAsync` factory methods is not supported.
+
 ## Verifying the Agent is Working
 
 ### Check startup logs

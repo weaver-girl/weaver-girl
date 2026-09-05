@@ -153,6 +153,19 @@ implementations loaded by the application or plugin classloader. JDK bootstrap
 executors created through `Executors.*` should be wrapped explicitly with
 `ContextExecutorService.wrap(...)` or `ContextScheduledExecutorService.wrap(...)`.
 
+For CompletableFuture stages, use the `ContextCompletableFuture` API — the
+agent cannot weave `CompletableFuture.supplyAsync`/`runAsync` because
+`CompletableFuture` itself lives on the bootstrap classloader (where
+`ARGUMENT_REWRITE` advice is skipped) and the no-executor overloads use
+`ForkJoinPool.commonPool()` internally:
+
+```java
+// Instead of:
+CompletableFuture.supplyAsync(() -> loadUser(id), executor);
+// Use:
+ContextCompletableFuture.supplyAsync(() -> loadUser(id), executor);
+```
+
 For a single task, use `ContextPropagator` or the direct wrappers:
 
 ```java
