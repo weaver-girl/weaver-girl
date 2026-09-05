@@ -50,9 +50,9 @@ public class InterceptorDefinition {
      * overwhelming majority of hooks (timing, tracing, metrics, logging, …).</p>
      *
      * <p>{@link #ARGUMENT_REWRITE} uses a specialized advice that binds the
-     * first method argument with {@code @Advice.Argument(0, readOnly=false)}
-     * so an interceptor can <em>replace</em> that argument in-place and have
-     * the replacement propagate to the method body. This is required because
+     * first several method arguments with {@code @Advice.Argument(i, readOnly=false,
+     * optional=true)} so an interceptor can <em>replace</em> any argument in-place
+     * and have the replacement propagate to the method body. This is required because
      * ByteBuddy's {@code @Advice.AllArguments} array — even with
      * {@code readOnly=false} — does not write element mutations back to the
      * parameter slots. The async-context-propagation plugin uses this mode to

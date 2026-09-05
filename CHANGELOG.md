@@ -4,6 +4,29 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## P0-12 — ARGUMENT_REWRITE Supports Any Argument Index (2026-09-06)
+
+### P0-12: AsyncArgumentAdvice binds the first 8 parameter slots writably
+
+**Previous limit**: `AsyncArgumentAdvice` bound only `@Advice.Argument(0)`, so
+`setArgument(i, ...)` for i &gt; 0 silently never reached the method body — any
+hook needing to rewrite a non-first argument (e.g. an Executor passed as the
+second parameter of a factory method) was impossible.
+
+**Change**: the advice now binds the first 8 parameter slots with
+`@Advice.Argument(i, readOnly=false, optional=true)` plus `@Advice.AllArguments`
+for dispatch. Indices beyond the method's actual arity bind as absent optionals
+(writes silently ignored — verified by spike, then removed); the invocation
+carries the full argument list and each rewritten slot is assigned back before
+the method body executes. `InterceptorDefinition.AdviceMode` javadoc updated.
+
+**New tests**: `ArgumentRewriteIntegrationTest` (end-to-end writeback for
+indexes 0/1/2 through real ByteBuddy weaving) + 2 new cases in
+`AsyncArgumentAdviceTest` (full argument visibility, non-first rewrite dispatch);
+existing async executor integration tests (8 tests) pass unchanged.
+
+---
+
 ## P0-9 — CompletableFuture Context Propagation (2026-09-06)
 
 ### P0-9: Context-propagating CompletableFuture factories + capability placeholder plugin

@@ -56,12 +56,67 @@ class AsyncArgumentAdviceTest {
 
         Method method = SampleExecutor.class.getMethod("submit", Runnable.class, Object.class);
 
-        AsyncArgumentAdvice.onMethodEnter(SampleExecutor.class, method, (Runnable) () -> {});
+        Runnable task = () -> {};
+        AsyncArgumentAdvice.onMethodEnter(SampleExecutor.class, method,
+                new Object[]{task, "result"},
+                task, "result", null, null, null, null, null, null);
 
         assertEquals(1, runnableResultInvocations.get(),
                 "The matching submit(Runnable,Object) interceptor should run");
         assertEquals(0, callableInvocations.get(),
                 "Same-name submit(Callable) interceptor must not run for a different signature");
+    }
+
+    @Test
+    void onMethodEnterExposesFullArgumentListToInterceptors() throws Exception {
+        AtomicInteger seenCount = new AtomicInteger();
+
+        registry.register(argumentRewrite("submit-observe",
+                MethodMatcher.bySignature("submit", "java.lang.Runnable,java.lang.Object"),
+                new Interceptor() {
+                    @Override
+                    public void before(MethodInvocation invocation) {
+                        seenCount.set(invocation.getArguments().length);
+                    }
+                }));
+
+        Method method = SampleExecutor.class.getMethod("submit", Runnable.class, Object.class);
+
+        Runnable task = () -> {};
+        AsyncArgumentAdvice.onMethodEnter(SampleExecutor.class, method,
+                new Object[]{task, "result"},
+                task, "result", null, null, null, null, null, null);
+
+        assertEquals(2, seenCount.get(),
+                "Interceptor should see the full argument list, not just the first argument");
+    }
+
+    @Test
+    void onMethodEnterAllowsRewritingNonFirstArgument() throws Exception {
+        AtomicInteger rewriteCount = new AtomicInteger();
+
+        registry.register(argumentRewrite("submit-rewrite-second",
+                MethodMatcher.bySignature("submit", "java.lang.Runnable,java.lang.Object"),
+                new Interceptor() {
+                    @Override
+                    public void before(MethodInvocation invocation) {
+                        invocation.setArgument(1, "wrapped-result");
+                        rewriteCount.incrementAndGet();
+                    }
+                }));
+
+        Method method = SampleExecutor.class.getMethod("submit", Runnable.class, Object.class);
+
+        Runnable task = () -> {};
+        // Direct call cannot observe parameter-slot writeback (locals are lost
+        // on return); this verifies setArgument(1) flows through before()
+        // without error. End-to-end writeback is covered by the integration test.
+        AsyncArgumentAdvice.onMethodEnter(SampleExecutor.class, method,
+                new Object[]{task, "result"},
+                task, "result", null, null, null, null, null, null);
+
+        assertEquals(1, rewriteCount.get(),
+                "Interceptor rewriting the second argument should run");
     }
 
     private InterceptorDefinition argumentRewrite(String name, MethodMatcher matcher, Interceptor interceptor) {
