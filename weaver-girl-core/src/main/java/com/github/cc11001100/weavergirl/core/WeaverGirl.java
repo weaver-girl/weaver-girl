@@ -19,6 +19,9 @@ import com.github.cc11001100.weavergirl.core.exporter.SpanFormatter;
 import com.github.cc11001100.weavergirl.core.management.AgentMonitor;
 import com.github.cc11001100.weavergirl.core.plugin.DefaultPluginManager;
 import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
+import com.github.cc11001100.weavergirl.core.release.AgentUpdater;
+import com.github.cc11001100.weavergirl.core.release.UpdateChecker;
+import com.github.cc11001100.weavergirl.core.release.VersionInfo;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
@@ -62,6 +65,12 @@ public class WeaverGirl {
      */
     private SpanExporter spanExporter;
     private TracerSpanExporterBridge spanExportBridge;
+
+    /**
+     * Periodic remote version checker, created only when
+     * {@code updateCheckEndpoint} is configured. Null when disabled.
+     */
+    private UpdateChecker updateChecker;
 
     private WeaverGirl() {
         this.registry = new DefaultInterceptorRegistry();
@@ -142,6 +151,9 @@ public class WeaverGirl {
             // P79: wire span batch export (opt-in via otlpEndpoint / spanExport).
             weaverGirl.initSpanExport(pluginConfig);
 
+            // P80: wire periodic update check (opt-in via updateCheckEndpoint).
+            weaverGirl.initUpdateCheck(pluginConfig);
+
             // Initialize DynamicConfigManager with initial config and runtime listener
             weaverGirl.dynamicConfigManager.loadFromSource(pluginConfig, "bootstrap");
             weaverGirl.dynamicConfigManager.addListener(weaverGirl.new DynamicCoreConfigListener());
@@ -206,6 +218,7 @@ public class WeaverGirl {
     public void shutdown() {
         log.info("WeaverGirl agent shutting down...");
         stopSpanExport();
+        stopUpdateCheck();
         if (configWatcher != null) {
             configWatcher.stop();
         }
@@ -453,6 +466,123 @@ public class WeaverGirl {
                 log.warn("Failed to stop span exporter: {}", e.getMessage());
             }
             spanExporter = null;
+        }
+    }
+
+    /**
+     * Wire periodic remote version checks (P80).
+     *
+     * <p>Opt-in via {@code updateCheckEndpoint=https://.../version.json}: polls the
+     * endpoint and logs when a newer version is available. Without the key nothing
+     * is created (zero overhead, no background thread).</p>
+     *
+     * <p>Optional tuning keys: {@code updateCheckIntervalMs} (default 24h),
+     * {@code updateStagingDir} (default {@code java.io.tmpdir/weaver-girl-updates}).
+     * When {@code updateAutoStage=true} and the remote descriptor carries a
+     * download URL + checksum, the new artifact is downloaded and verified into
+     * the staging dir, ready for an operator-driven swap + restart (a loaded
+     * agent JAR cannot replace itself).</p>
+     */
+    void initUpdateCheck(java.util.Map<String, String> config) {
+        if (config == null) {
+            return;
+        }
+        String endpoint = config.get("updateCheckEndpoint");
+        if (endpoint == null || endpoint.trim().isEmpty()) {
+            return;
+        }
+        try {
+            UpdateChecker.Builder builder = UpdateChecker.builder()
+                    .endpoint(endpoint.trim());
+            String interval = config.get("updateCheckIntervalMs");
+            if (interval != null) {
+                try {
+                    builder.checkIntervalMs(Long.parseLong(interval.trim()));
+                } catch (NumberFormatException e) {
+                    log.warn("Invalid updateCheckIntervalMs '{}', using default", interval);
+                }
+            }
+            UpdateChecker checker = builder.build();
+            final boolean autoStage = "true".equalsIgnoreCase(config.get("updateAutoStage"));
+            final String stagingDir = config.get("updateStagingDir");
+            final String headers = config.get("updateHeaders");
+            checker.addListener(remote -> onNewVersionAvailable(
+                    remote, autoStage, stagingDir, headers));
+            checker.start();
+            updateChecker = checker;
+            log.info("Update check enabled (endpoint={})", endpoint.trim());
+        } catch (Exception e) {
+            log.warn("Failed to initialize update check: {}", e.getMessage());
+        }
+    }
+
+    private static void onNewVersionAvailable(VersionInfo remote, boolean autoStage,
+                                              String stagingDir, String headers) {
+        String notes = remote.getReleaseNotes();
+        log.warn("[Update] New agent version available: {}{} — see release notes{}",
+                remote.getVersion(),
+                remote.isMandatory() ? " (MANDATORY)" : "",
+                notes != null ? ": " + notes : " (none provided)");
+        if (!autoStage) {
+            if (remote.isDownloadable()) {
+                log.warn("[Update] Download manually: {} (set updateAutoStage=true to stage automatically)",
+                        remote.getDownloadUrl());
+            }
+            return;
+        }
+        if (!remote.isDownloadable()) {
+            log.warn("[Update] updateAutoStage=true but v{} has no downloadUrl — manual upgrade required",
+                    remote.getVersion());
+            return;
+        }
+        try {
+            java.io.File dir = stagingDir != null && !stagingDir.trim().isEmpty()
+                    ? new java.io.File(stagingDir.trim())
+                    : new java.io.File(System.getProperty("java.io.tmpdir"),
+                            "weaver-girl-updates");
+            AgentUpdater updater = new AgentUpdater(dir);
+            java.util.Map<String, String> extraHeaders = null;
+            if (headers != null && !headers.trim().isEmpty()) {
+                extraHeaders = new java.util.LinkedHashMap<>();
+                for (String pair : headers.split(";")) {
+                    int eq = pair.indexOf('=');
+                    if (eq > 0) {
+                        extraHeaders.put(pair.substring(0, eq).trim(),
+                                pair.substring(eq + 1).trim());
+                    }
+                }
+            }
+            AgentUpdater.UpdateResult result = updater.stageUpdate(remote, extraHeaders);
+            if (!result.isSuccess()) {
+                log.warn("[Update] Auto-stage failed: {}", result.getMessage());
+            }
+        } catch (Exception e) {
+            log.warn("[Update] Auto-stage failed: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Returns the update checker created by {@link #initUpdateCheck}, or null
+     * when update checks are not enabled. Primarily for tests and diagnostics.
+     *
+     * @return the active update checker, or null
+     */
+    public UpdateChecker getUpdateChecker() {
+        return updateChecker;
+    }
+
+    /**
+     * Stop the update checker. Called from {@link #shutdown()};
+     * package-visible for tests.
+     */
+    void stopUpdateCheck() {
+        if (updateChecker != null) {
+            try {
+                updateChecker.stop();
+            } catch (Exception e) {
+                log.warn("Failed to stop update checker: {}", e.getMessage());
+            }
+            updateChecker = null;
         }
     }
 

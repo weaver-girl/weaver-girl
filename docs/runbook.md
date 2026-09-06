@@ -41,6 +41,11 @@ debug=true \
 | `spanExportBatchSize` | 100 | Span 批量导出大小 |
 | `spanExportIntervalMs` | 5000 | Span 导出周期（毫秒） |
 | `spanExportBufferSize` | 10000 | Span 缓冲区上限（满则丢弃并计数） |
+| `updateCheckEndpoint` | 无 | Agent 版本检查端点（如 https://releases.example.com/weaver-girl/version.json），配置后定期检查新版本并告警 |
+| `updateCheckIntervalMs` | 86400000 | 版本检查周期（毫秒，默认 24h） |
+| `updateAutoStage` | false | 发现新版本时自动下载并校验到 staging 目录（需 descriptor 带 downloadUrl+sha256） |
+| `updateStagingDir` | 系统临时目录 | 更新 staging 目录（`weaver-girl-updates`） |
+| `updateHeaders` | 无 | 版本检查/下载附加请求头（`Key=Value;Key2=Value2`） |
 | `healthPort` | 无 | 健康检查端口（如 9401） |
 | `jsonEvents` | false | 结构化 JSON 事件输出到 stdout |
 | `disabledPlugins` | 无 | 禁用的插件列表（逗号分隔） |

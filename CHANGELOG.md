@@ -4,6 +4,38 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## P80 — Agent Self-Update Mechanism (2026-09-06)
+
+### P80: Version check + staged update, wired into bootstrap
+
+**New capability**: the agent can now poll a remote JSON version endpoint and
+alert when a newer release exists, and optionally stage the new artifact
+(download + SHA-256 verify) for an operator-driven swap + restart:
+- `VersionInfo` (release package, `@since 1.10.0`): remote descriptor
+  (`version` / `downloadUrl` / `sha256` / `mandatory` / `releaseNotes`) with a
+  dependency-free JSON parser and semver comparison (release outranks
+  pre-release)
+- `UpdateChecker` (`@since 1.10.0`): daemon-scheduler polling, listener
+  notification on newer versions, check/failed counters; failures never throw
+- `AgentUpdater` (`@since 1.10.0`): IDLE → DOWNLOADING → VERIFYING → READY
+  staging state machine; checksum mismatch deletes the artifact and fails;
+  check-only descriptors (no downloadUrl) report manual-upgrade guidance
+- `WeaverGirl.initUpdateCheck/stopUpdateCheck`: opt-in via
+  `updateCheckEndpoint` (zero overhead when unset); `updateCheckIntervalMs`
+  (default 24h), `updateAutoStage`, `updateStagingDir`, `updateHeaders`;
+  `ConfigValidator` recognizes the 5 new keys
+
+**Design note**: a loaded agent JAR cannot replace itself (JVM memory-maps the
+file), so fully automatic in-place upgrade is impossible without an external
+supervisor — staging + restart instructions is the safe subset.
+
+**New tests**: `VersionInfoTest` (12) + `UpdateCheckerTest` (14: live
+HttpServer endpoint, periodic schedule, failure counting, staging
+download/verify/mismatch/check-only) + `WeaverGirlUpdateCheckTest` (7:
+bootstrap wiring end-to-end) + 2 `ConfigValidatorTest` cases.
+
+---
+
 ## P79 — SpanExporter Bootstrap Wiring (2026-09-06)
 
 ### P79: Span batch export auto-wires from agent config

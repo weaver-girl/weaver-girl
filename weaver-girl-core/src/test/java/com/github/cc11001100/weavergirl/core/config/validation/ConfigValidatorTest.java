@@ -134,6 +134,31 @@ class ConfigValidatorTest {
     }
 
     @Test
+    void updateCheckKeys_recognized() {
+        Map<String, String> config = new LinkedHashMap<>();
+        config.put("updateCheckEndpoint", "https://example.com/version.json");
+        config.put("updateCheckIntervalMs", "3600000");
+        config.put("updateAutoStage", "true");
+        config.put("updateStagingDir", "/tmp/updates");
+        config.put("updateHeaders", "Authorization=Bearer token");
+
+        ConfigValidationResult result = ConfigValidator.validate(config);
+        assertTrue(result.isValid());
+        assertTrue(result.getErrors().isEmpty());
+    }
+
+    @Test
+    void invalidUpdateCheckValues_fail() {
+        Map<String, String> config = new LinkedHashMap<>();
+        config.put("updateAutoStage", "yes");
+        config.put("updateCheckIntervalMs", "-5");
+
+        ConfigValidationResult result = ConfigValidator.validate(config);
+        assertFalse(result.isValid());
+        assertEquals(2, result.getErrors().size());
+    }
+
+    @Test
     void getKnownKeys_notEmpty() {
         assertFalse(ConfigValidator.getKnownKeys().isEmpty());
         assertTrue(ConfigValidator.getKnownKeys().contains("samplingRate"));

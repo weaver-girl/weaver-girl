@@ -36,6 +36,11 @@ public class ConfigValidator {
         KNOWN_KEYS.put("spanExportBatchSize", ConfigType.POSITIVE_INT);
         KNOWN_KEYS.put("spanExportIntervalMs", ConfigType.POSITIVE_LONG);
         KNOWN_KEYS.put("spanExportBufferSize", ConfigType.POSITIVE_INT);
+        KNOWN_KEYS.put("updateCheckEndpoint", ConfigType.STRING);
+        KNOWN_KEYS.put("updateCheckIntervalMs", ConfigType.POSITIVE_LONG);
+        KNOWN_KEYS.put("updateAutoStage", ConfigType.BOOLEAN);
+        KNOWN_KEYS.put("updateStagingDir", ConfigType.STRING);
+        KNOWN_KEYS.put("updateHeaders", ConfigType.STRING);
     }
 
     private ConfigValidator() {

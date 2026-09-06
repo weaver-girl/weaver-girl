@@ -362,10 +362,11 @@ Agent 自身健康状态的深度诊断能力。
 - ✅ Tracer → SpanExporter 联通 (TracerSpanExporterBridge)
 - ✅ bootstrap 自动装配: `otlpEndpoint`/`spanExport` 开关 + 批量/周期/缓冲调优键 + shutdown 生命周期 (WeaverGirl.initSpanExport/stopSpanExport, ConfigValidator 新键, WeaverGirlSpanExportTest 8 tests)
 
-### P80: Agent 自更新机制 [LOW] 🔲
+### P80: Agent 自更新机制 [LOW] ✅
 
-- 🔲 版本检测和更新提示
-- 🔲 滚动升级支持
+- ✅ 版本检测和更新提示 (VersionInfo + UpdateChecker: 周期轮询 JSON 端点, semver 比较, 监听器通知, 失败永不抛异常)
+- ✅ 滚动升级支持 (AgentUpdater: 下载 → SHA-256 校验 → staging + 重启指引; JVM 内存映射限制已在文档中说明)
+- ✅ bootstrap 自动装配: `updateCheckEndpoint` 开关 + `updateCheckIntervalMs`/`updateAutoStage`/`updateStagingDir`/`updateHeaders` 调优键 + shutdown 生命周期 (WeaverGirl.initUpdateCheck/stopUpdateCheck, ConfigValidator 新键, 33 tests)
 
 ## 第八阶段：成熟度提升 (P71-P75) 🔄
 
