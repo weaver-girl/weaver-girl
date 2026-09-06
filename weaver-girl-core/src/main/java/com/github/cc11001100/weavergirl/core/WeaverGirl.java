@@ -11,7 +11,11 @@ import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
 import com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression;
 import com.github.cc11001100.weavergirl.api.pointcut.PointcutParser;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.api.tracing.Tracer;
 import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
+import com.github.cc11001100.weavergirl.core.exporter.OtlpHttpExporter;
+import com.github.cc11001100.weavergirl.core.exporter.SpanExporter;
+import com.github.cc11001100.weavergirl.core.exporter.SpanFormatter;
 import com.github.cc11001100.weavergirl.core.management.AgentMonitor;
 import com.github.cc11001100.weavergirl.core.plugin.DefaultPluginManager;
 import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
@@ -20,6 +24,7 @@ import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingMonitor;
 import com.github.cc11001100.weavergirl.core.status.JmxRegistrar;
+import com.github.cc11001100.weavergirl.core.trace.TracerSpanExporterBridge;
 import com.github.cc11001100.weavergirl.core.transformer.WeaverTransformer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,6 +54,14 @@ public class WeaverGirl {
 
     private final DefaultDynamicConfigManager dynamicConfigManager;
     private DefaultPluginManager pluginManager;
+
+    /**
+     * Span batch exporter, created only when {@code otlpEndpoint} (or
+     * {@code spanExport=true} for log-only export) is configured.
+     * Null when span export is disabled.
+     */
+    private SpanExporter spanExporter;
+    private TracerSpanExporterBridge spanExportBridge;
 
     private WeaverGirl() {
         this.registry = new DefaultInterceptorRegistry();
@@ -126,6 +139,9 @@ public class WeaverGirl {
             // Apply configuration to core components
             applyCoreConfig(pluginConfig);
 
+            // P79: wire span batch export (opt-in via otlpEndpoint / spanExport).
+            weaverGirl.initSpanExport(pluginConfig);
+
             // Initialize DynamicConfigManager with initial config and runtime listener
             weaverGirl.dynamicConfigManager.loadFromSource(pluginConfig, "bootstrap");
             weaverGirl.dynamicConfigManager.addListener(weaverGirl.new DynamicCoreConfigListener());
@@ -189,6 +205,7 @@ public class WeaverGirl {
      */
     public void shutdown() {
         log.info("WeaverGirl agent shutting down...");
+        stopSpanExport();
         if (configWatcher != null) {
             configWatcher.stop();
         }
@@ -322,6 +339,121 @@ public class WeaverGirl {
      */
     public com.github.cc11001100.weavergirl.api.plugin.PluginManager getPluginManager() {
         return pluginManager;
+    }
+
+    /**
+     * Wire span batch export (P79).
+     *
+     * <p>Opt-in via agent config: {@code otlpEndpoint=http://collector:4318/v1/traces}
+     * enables an {@link OtlpHttpExporter}; {@code spanExport=true} without an endpoint
+     * enables log-only export via {@link SpanFormatter.LoggingSpanFormatter}. Without
+     * either key nothing is created (zero overhead, no background thread).</p>
+     *
+     * <p>The bridge registers with {@link Tracer#addCompletionListener} (additive, so
+     * it coexists with other consumers such as the topology bridge) and the exporter
+     * is stopped on {@link #shutdown()}.</p>
+     *
+     * <p>Optional tuning keys: {@code spanExportBatchSize} (default 100),
+     * {@code spanExportIntervalMs} (default 5000), {@code spanExportBufferSize}
+     * (default 10000).</p>
+     */
+    void initSpanExport(java.util.Map<String, String> config) {
+        if (config == null) {
+            return;
+        }
+        String endpoint = config.get("otlpEndpoint");
+        boolean logOnly = "true".equalsIgnoreCase(config.get("spanExport"));
+        if ((endpoint == null || endpoint.trim().isEmpty()) && !logOnly) {
+            return;
+        }
+        try {
+            SpanExporter exporter = new SpanExporter(
+                    parsePositiveInt(config.get("spanExportBatchSize"), 100),
+                    parsePositiveLong(config.get("spanExportIntervalMs"), 5_000L),
+                    parsePositiveInt(config.get("spanExportBufferSize"), 10_000));
+            if (endpoint != null && !endpoint.trim().isEmpty()) {
+                OtlpHttpExporter.Builder builder = OtlpHttpExporter.builder()
+                        .endpoint(endpoint.trim());
+                String headers = config.get("otlpHeaders");
+                if (headers != null && !headers.trim().isEmpty()) {
+                    for (String pair : headers.split(";")) {
+                        int eq = pair.indexOf('=');
+                        if (eq > 0) {
+                            builder.header(pair.substring(0, eq).trim(),
+                                    pair.substring(eq + 1).trim());
+                        }
+                    }
+                }
+                exporter.addFormatter(builder.build());
+                log.info("Span export: OTLP HTTP -> {}", endpoint.trim());
+            } else {
+                exporter.addFormatter(new SpanFormatter.LoggingSpanFormatter());
+                log.info("Span export: log-only (no otlpEndpoint configured)");
+            }
+            exporter.start();
+            spanExportBridge = new TracerSpanExporterBridge(exporter);
+            Tracer.addCompletionListener(spanExportBridge);
+            spanExporter = exporter;
+        } catch (Exception e) {
+            log.warn("Failed to initialize span export: {}", e.getMessage());
+        }
+    }
+
+    private static int parsePositiveInt(String value, int defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            return parsed > 0 ? parsed : defaultValue;
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    private static long parsePositiveLong(String value, long defaultValue) {
+        if (value == null) {
+            return defaultValue;
+        }
+        try {
+            long parsed = Long.parseLong(value.trim());
+            return parsed > 0 ? parsed : defaultValue;
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    /**
+     * Returns the span batch exporter created by {@link #initSpanExport}, or null
+     * when span export is not enabled. Primarily for tests and diagnostics.
+     *
+     * @return the active span exporter, or null
+     */
+    public SpanExporter getSpanExporter() {
+        return spanExporter;
+    }
+
+    /**
+     * Detach the span export bridge and stop the exporter. Called from
+     * {@link #shutdown()}; package-visible for tests.
+     */
+    void stopSpanExport() {
+        if (spanExportBridge != null) {
+            try {
+                Tracer.removeCompletionListener(spanExportBridge);
+            } catch (Exception e) {
+                log.warn("Failed to detach span export bridge: {}", e.getMessage());
+            }
+            spanExportBridge = null;
+        }
+        if (spanExporter != null) {
+            try {
+                spanExporter.stop();
+            } catch (Exception e) {
+                log.warn("Failed to stop span exporter: {}", e.getMessage());
+            }
+            spanExporter = null;
+        }
     }
 
     /**

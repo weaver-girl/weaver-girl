@@ -30,6 +30,12 @@ public class ConfigValidator {
         KNOWN_KEYS.put("jsonEvents", ConfigType.BOOLEAN);
         KNOWN_KEYS.put("disabledPlugins", ConfigType.STRING);
         KNOWN_KEYS.put("config", ConfigType.STRING);
+        KNOWN_KEYS.put("otlpEndpoint", ConfigType.STRING);
+        KNOWN_KEYS.put("otlpHeaders", ConfigType.STRING);
+        KNOWN_KEYS.put("spanExport", ConfigType.BOOLEAN);
+        KNOWN_KEYS.put("spanExportBatchSize", ConfigType.POSITIVE_INT);
+        KNOWN_KEYS.put("spanExportIntervalMs", ConfigType.POSITIVE_LONG);
+        KNOWN_KEYS.put("spanExportBufferSize", ConfigType.POSITIVE_INT);
     }
 
     private ConfigValidator() {

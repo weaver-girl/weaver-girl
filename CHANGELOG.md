@@ -4,6 +4,32 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## P79 — SpanExporter Bootstrap Wiring (2026-09-06)
+
+### P79: Span batch export auto-wires from agent config
+
+**Previous gap**: `SpanExporter` / `OtlpHttpExporter` / `TracerSpanExporterBridge`
+existed with passing unit tests, but no production code ever created them —
+configuring an OTLP endpoint had zero effect because the agent startup path never
+assembled the export pipeline.
+
+**Change** (opt-in, zero overhead when disabled):
+- `WeaverGirl.initSpanExport(config)`: `otlpEndpoint=http://collector:4318/v1/traces`
+  builds an `OtlpHttpExporter` (with optional `otlpHeaders` `K=V;K2=V2`); bare
+  `spanExport=true` enables log-only export. Tuning keys: `spanExportBatchSize`
+  (100), `spanExportIntervalMs` (5000), `spanExportBufferSize` (10000)
+- Bridge registers via `Tracer.addCompletionListener` (additive — coexists with the
+  topology bridge instead of replacing it); `shutdown()` detaches + stops
+- `ConfigValidator` recognizes the 6 new keys; `getSpanExporter()` accessor for
+  tests/diagnostics
+
+**New tests**: `WeaverGirlSpanExportTest` (8 tests: disabled-by-default,
+log-only running, end-to-end span delivery via flush, OTLP construction with
+headers, tuning defaults/fallbacks, stop detaches) + 2 `ConfigValidatorTest`
+cases for the new keys.
+
+---
+
 ## P0-12 — ARGUMENT_REWRITE Supports Any Argument Index (2026-09-06)
 
 ### P0-12: AsyncArgumentAdvice binds the first 8 parameter slots writably

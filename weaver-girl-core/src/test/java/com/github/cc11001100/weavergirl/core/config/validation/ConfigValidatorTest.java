@@ -108,6 +108,32 @@ class ConfigValidatorTest {
     }
 
     @Test
+    void spanExportKeys_recognized() {
+        Map<String, String> config = new LinkedHashMap<>();
+        config.put("otlpEndpoint", "http://localhost:4318/v1/traces");
+        config.put("otlpHeaders", "Authorization=Bearer token");
+        config.put("spanExport", "true");
+        config.put("spanExportBatchSize", "100");
+        config.put("spanExportIntervalMs", "5000");
+        config.put("spanExportBufferSize", "10000");
+
+        ConfigValidationResult result = ConfigValidator.validate(config);
+        assertTrue(result.isValid());
+        assertTrue(result.getErrors().isEmpty());
+    }
+
+    @Test
+    void invalidSpanExportValues_fail() {
+        Map<String, String> config = new LinkedHashMap<>();
+        config.put("spanExport", "yes");
+        config.put("spanExportBatchSize", "-5");
+
+        ConfigValidationResult result = ConfigValidator.validate(config);
+        assertFalse(result.isValid());
+        assertEquals(2, result.getErrors().size());
+    }
+
+    @Test
     void getKnownKeys_notEmpty() {
         assertFalse(ConfigValidator.getKnownKeys().isEmpty());
         assertTrue(ConfigValidator.getKnownKeys().contains("samplingRate"));

@@ -35,6 +35,12 @@ debug=true \
 | `config` | 无 | YAML 配置文件路径 |
 | `watch` | false | 配置热重载（文件变更自动更新） |
 | `metricsPort` | 无 | Prometheus 指标端口（如 9400） |
+| `otlpEndpoint` | 无 | OTLP Span 导出端点（如 http://collector:4318/v1/traces），配置后自动批量导出 Trace Span |
+| `otlpHeaders` | 无 | OTLP 导出附加请求头（`Key=Value;Key2=Value2`，如鉴权头） |
+| `spanExport` | false | 无 endpoint 时仅日志输出 Span（`spanExport=true`） |
+| `spanExportBatchSize` | 100 | Span 批量导出大小 |
+| `spanExportIntervalMs` | 5000 | Span 导出周期（毫秒） |
+| `spanExportBufferSize` | 10000 | Span 缓冲区上限（满则丢弃并计数） |
 | `healthPort` | 无 | 健康检查端口（如 9401） |
 | `jsonEvents` | false | 结构化 JSON 事件输出到 stdout |
 | `disabledPlugins` | 无 | 禁用的插件列表（逗号分隔） |

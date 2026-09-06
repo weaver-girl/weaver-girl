@@ -355,10 +355,12 @@ Agent 自身健康状态的深度诊断能力。
   - 线程安全 (AtomicLong/AtomicInteger CAS 操作)
 - ✅ 31 个测试
 
-### P79: SpanExporter — 链路数据导出 [LOW] 🔲
+### P79: SpanExporter — 链路数据导出 [LOW] ✅
 
-- 🔲 Trace/Span 数据批量导出接口
-- 🔲 OTLP 格式导出
+- ✅ Trace/Span 数据批量导出接口 (SpanData, SpanExporter, SpanFormatter)
+- ✅ OTLP 格式导出 (OtlpHttpExporter: HTTP POST + 自定义头 + 超时 + 统计)
+- ✅ Tracer → SpanExporter 联通 (TracerSpanExporterBridge)
+- ✅ bootstrap 自动装配: `otlpEndpoint`/`spanExport` 开关 + 批量/周期/缓冲调优键 + shutdown 生命周期 (WeaverGirl.initSpanExport/stopSpanExport, ConfigValidator 新键, WeaverGirlSpanExportTest 8 tests)
 
 ### P80: Agent 自更新机制 [LOW] 🔲
 
