@@ -9,46 +9,53 @@ import java.util.*;
  */
 public class ServiceNode {
 
-    private final String name;
-    private final String type;
-    private final Map<String, String> metadata;
+  private final String name;
+  private final String type;
+  private final Map<String, String> metadata;
 
-    public ServiceNode(String name, String type, Map<String, String> metadata) {
-        this.name = name;
-        this.type = type;
-        this.metadata = metadata != null
-                ? Collections.unmodifiableMap(new LinkedHashMap<>(metadata))
-                : Collections.emptyMap();
-    }
+  public ServiceNode(String name, String type, Map<String, String> metadata) {
+    this.name = name;
+    this.type = type;
+    this.metadata =
+        metadata != null
+            ? Collections.unmodifiableMap(new LinkedHashMap<>(metadata))
+            : Collections.emptyMap();
+  }
 
-    public ServiceNode(String name, String type) {
-        this(name, type, null);
-    }
+  public ServiceNode(String name, String type) {
+    this(name, type, null);
+  }
 
-    /** Service name (e.g. "order-service", "user-service"). */
-    public String getName() { return name; }
+  /** Service name (e.g. "order-service", "user-service"). */
+  public String getName() {
+    return name;
+  }
 
-    /** Service type (e.g. "http", "database", "cache", "messaging"). */
-    public String getType() { return type; }
+  /** Service type (e.g. "http", "database", "cache", "messaging"). */
+  public String getType() {
+    return type;
+  }
 
-    /** Additional metadata about the service. */
-    public Map<String, String> getMetadata() { return metadata; }
+  /** Additional metadata about the service. */
+  public Map<String, String> getMetadata() {
+    return metadata;
+  }
 
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        ServiceNode that = (ServiceNode) o;
-        return Objects.equals(name, that.name);
-    }
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (o == null || getClass() != o.getClass()) return false;
+    ServiceNode that = (ServiceNode) o;
+    return Objects.equals(name, that.name);
+  }
 
-    @Override
-    public int hashCode() {
-        return Objects.hash(name);
-    }
+  @Override
+  public int hashCode() {
+    return Objects.hash(name);
+  }
 
-    @Override
-    public String toString() {
-        return "ServiceNode{name='" + name + "', type='" + type + "'}";
-    }
+  @Override
+  public String toString() {
+    return "ServiceNode{name='" + name + "', type='" + type + "'}";
+  }
 }

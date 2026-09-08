@@ -7,20 +7,24 @@ package com.github.cc11001100.weavergirl.api.tracing;
  */
 public final class TracingSnapshot {
 
-    private final SpanContext spanContext;
+  private final SpanContext spanContext;
 
-    /**
-     * Create a tracing snapshot.
-     *
-     * @param spanContext the span context to capture (may be null)
-     */
-    public TracingSnapshot(SpanContext spanContext) {
-        this.spanContext = spanContext;
-    }
+  /**
+   * Create a tracing snapshot.
+   *
+   * @param spanContext the span context to capture (may be null)
+   */
+  public TracingSnapshot(SpanContext spanContext) {
+    this.spanContext = spanContext;
+  }
 
-    /** The captured span context, or null if no span was active. */
-    public SpanContext getSpanContext() { return spanContext; }
+  /** The captured span context, or null if no span was active. */
+  public SpanContext getSpanContext() {
+    return spanContext;
+  }
 
-    /** Whether this snapshot has an active span. */
-    public boolean hasSpan() { return spanContext != null; }
+  /** Whether this snapshot has an active span. */
+  public boolean hasSpan() {
+    return spanContext != null;
+  }
 }

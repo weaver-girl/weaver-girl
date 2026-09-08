@@ -7,203 +7,210 @@ import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.interceptor.MethodInvocationPool;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
+import java.lang.reflect.Method;
+import java.util.List;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.implementation.bytecode.assign.Assigner;
 
-import java.lang.reflect.Method;
-import java.util.List;
-
 /**
- * ByteBuddy Advice class that gets inlined into target <strong>methods</strong>
- * (regular and static). For constructor interception, see {@link ConstructorAdvice}.
+ * ByteBuddy Advice class that gets inlined into target <strong>methods</strong> (regular and
+ * static). For constructor interception, see {@link ConstructorAdvice}.
  *
- * <p>Delegates to InterceptorRegistry for interceptor lookup and invocation.</p>
+ * <p>Delegates to InterceptorRegistry for interceptor lookup and invocation.
  *
- * <p><strong>skipOn mechanism:</strong> ByteBuddy's {@code skipOn = MethodInvocation.class}
- * means: if onMethodEnter returns a non-null MethodInvocation, the original method body
- * is SKIPPED. If it returns null, the original method executes normally.</p>
+ * <p><strong>skipOn mechanism:</strong> ByteBuddy's {@code skipOn = MethodInvocation.class} means:
+ * if onMethodEnter returns a non-null MethodInvocation, the original method body is SKIPPED. If it
+ * returns null, the original method executes normally.
  *
- * <p><strong>Return value write-back:</strong> {@code @Advice.Return(readOnly = false)} allows
- * the exit advice to write a modified return value back to the caller. When an interceptor
- * calls {@code invocation.setReturnValue(newValue)}, we assign it to the returnValue parameter,
- * and ByteBuddy stores it into the return-value local variable slot.</p>
+ * <p><strong>Return value write-back:</strong> {@code @Advice.Return(readOnly = false)} allows the
+ * exit advice to write a modified return value back to the caller. When an interceptor calls {@code
+ * invocation.setReturnValue(newValue)}, we assign it to the returnValue parameter, and ByteBuddy
+ * stores it into the return-value local variable slot.
  */
 public class InterceptAdvice {
 
-    @Advice.OnMethodEnter(skipOn = MethodInvocation.class)
-    public static MethodInvocation onMethodEnter(
-            @Advice.Origin Class<?> targetClass,
-            @Advice.Origin Method method,
-            @Advice.This(optional = true) Object target,
-            @Advice.AllArguments Object[] arguments) {
-        try {
-            // Global kill-switch: one volatile read; when disabled, incur zero dispatch cost.
-            if (!InterceptorHolder.isInterceptionEnabled()) {
-                return null;
-            }
-            InterceptorHolder.incrementInterceptorInvocationCount();
-            InterceptorRegistry registry = InterceptorHolder.getRegistry();
-            if (registry == null) {
-                return null;
-            }
+  @Advice.OnMethodEnter(skipOn = MethodInvocation.class)
+  public static MethodInvocation onMethodEnter(
+      @Advice.Origin Class<?> targetClass,
+      @Advice.Origin Method method,
+      @Advice.This(optional = true) Object target,
+      @Advice.AllArguments Object[] arguments) {
+    try {
+      // Global kill-switch: one volatile read; when disabled, incur zero dispatch cost.
+      if (!InterceptorHolder.isInterceptionEnabled()) {
+        return null;
+      }
+      InterceptorHolder.incrementInterceptorInvocationCount();
+      InterceptorRegistry registry = InterceptorHolder.getRegistry();
+      if (registry == null) {
+        return null;
+      }
 
-            // Sampling check: skip interception if not sampled this invocation
-            if (!SamplingController.getInstance().shouldSample()) {
-                return null;
-            }
+      // Sampling check: skip interception if not sampled this invocation
+      if (!SamplingController.getInstance().shouldSample()) {
+        return null;
+      }
 
-            String methodName = method.getName();
-            String className = targetClass.getName();
-            MethodInvocation invocation = MethodInvocationPool.acquire(targetClass, methodName, method, target, arguments);
+      String methodName = method.getName();
+      String className = targetClass.getName();
+      MethodInvocation invocation =
+          MethodInvocationPool.acquire(targetClass, methodName, method, target, arguments);
 
-            // Capture caller information from the call stack.
-            // Delegated to InterceptorHolder to keep the advice class free of
-            // stack-walking code (ByteBuddy validates the entire advice class
-            // during inlining and rejects methods that reference getStackTrace).
-            InterceptorHolder.captureCaller(invocation);
+      // Capture caller information from the call stack.
+      // Delegated to InterceptorHolder to keep the advice class free of
+      // stack-walking code (ByteBuddy validates the entire advice class
+      // during inlining and rejects methods that reference getStackTrace).
+      InterceptorHolder.captureCaller(invocation);
 
-            List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
-            for (InterceptorDefinition def : defs) {
-                if (def.getPointcut().getMethodMatcher().matches(methodName)) {
-                    if (!InterceptorHolder.shouldInvoke(def.getName())) {
-                        continue; // circuit breaker is open
-                    }
-                    long hookStart = System.nanoTime();
-                    try {
-                        def.getInterceptor().before(invocation);
-                        long hookNanos = System.nanoTime() - hookStart;
-                        InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
-                        AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true, hookNanos);
-                    } catch (Throwable e) {
-                        // Catch Throwable (not just Exception) to prevent OutOfMemoryError
-                        // and StackOverflowError from plugins crashing the target application.
-                        // If this interceptor called skipMethod and then failed,
-                        // don't let its skip decision stand.
-                        long hookNanos = System.nanoTime() - hookStart;
-                        invocation.setSkipMethod(false);
-                        InterceptorHolder.logInterceptorError(def.getName(), "before", e);
-                        InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
-                        AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false, hookNanos);
-                    }
-                }
-            }
+      List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
+      for (InterceptorDefinition def : defs) {
+        if (def.getPointcut().getMethodMatcher().matches(methodName)) {
+          if (!InterceptorHolder.shouldInvoke(def.getName())) {
+            continue; // circuit breaker is open
+          }
+          long hookStart = System.nanoTime();
+          try {
+            def.getInterceptor().before(invocation);
+            long hookNanos = System.nanoTime() - hookStart;
+            InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
+            AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true, hookNanos);
+          } catch (Throwable e) {
+            // Catch Throwable (not just Exception) to prevent OutOfMemoryError
+            // and StackOverflowError from plugins crashing the target application.
+            // If this interceptor called skipMethod and then failed,
+            // don't let its skip decision stand.
+            long hookNanos = System.nanoTime() - hookStart;
+            invocation.setSkipMethod(false);
+            InterceptorHolder.logInterceptorError(def.getName(), "before", e);
+            InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
+            AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false, hookNanos);
+          }
+        }
+      }
 
-            // If any interceptor called skipMethod(), return the invocation to trigger skipOn.
-            // The original method body will NOT execute, and onMethodExit will receive this
-            // invocation via @Advice.Enter and will release it back to the pool.
-            if (invocation.isSkipped()) {
-                return invocation;
-            }
-            // Not skipped — release back to pool and return null. onMethodExit will acquire
-            // a fresh MethodInvocation from the pool using the available parameters.
+      // If any interceptor called skipMethod(), return the invocation to trigger skipOn.
+      // The original method body will NOT execute, and onMethodExit will receive this
+      // invocation via @Advice.Enter and will release it back to the pool.
+      if (invocation.isSkipped()) {
+        return invocation;
+      }
+      // Not skipped — release back to pool and return null. onMethodExit will acquire
+      // a fresh MethodInvocation from the pool using the available parameters.
+      MethodInvocationPool.release(invocation);
+      return null;
+    } catch (Throwable e) {
+      // Never let any error (including OOM, StackOverflow) escape the advice
+      return null;
+    }
+  }
+
+  @Advice.OnMethodExit(onThrowable = Throwable.class)
+  public static void onMethodExit(
+      @Advice.Enter MethodInvocation invocation,
+      @Advice.Origin Class<?> targetClass,
+      @Advice.Origin Method method,
+      @Advice.This(optional = true) Object target,
+      @Advice.AllArguments Object[] arguments,
+      @Advice.Thrown(readOnly = false, typing = Assigner.Typing.DYNAMIC) Throwable throwable,
+      @Advice.Return(readOnly = false, typing = Assigner.Typing.DYNAMIC) Object returnValue) {
+    try {
+      // Global kill-switch: when disabled, skip all after/onException callbacks.
+      // Release any pooled invocation that enter may have returned (skip case).
+      if (!InterceptorHolder.isInterceptionEnabled()) {
+        if (invocation != null) {
+          try {
             MethodInvocationPool.release(invocation);
-            return null;
-        } catch (Throwable e) {
-            // Never let any error (including OOM, StackOverflow) escape the advice
-            return null;
+          } catch (Throwable ignored) {
+          }
         }
-    }
+        return;
+      }
 
-    @Advice.OnMethodExit(onThrowable = Throwable.class)
-    public static void onMethodExit(
-            @Advice.Enter MethodInvocation invocation,
-            @Advice.Origin Class<?> targetClass,
-            @Advice.Origin Method method,
-            @Advice.This(optional = true) Object target,
-            @Advice.AllArguments Object[] arguments,
-            @Advice.Thrown(readOnly = false, typing = Assigner.Typing.DYNAMIC) Throwable throwable,
-            @Advice.Return(readOnly = false, typing = Assigner.Typing.DYNAMIC) Object returnValue) {
-        try {
-            // Global kill-switch: when disabled, skip all after/onException callbacks.
-            // Release any pooled invocation that enter may have returned (skip case).
-            if (!InterceptorHolder.isInterceptionEnabled()) {
-                if (invocation != null) {
-                    try { MethodInvocationPool.release(invocation); } catch (Throwable ignored) {}
-                }
-                return;
-            }
+      String methodName = method.getName();
 
-            String methodName = method.getName();
+      // If onMethodEnter returned null (no skip), acquire a fresh MethodInvocation
+      // from the pool for the after/onException callbacks.
+      // If onMethodEnter returned an invocation (skip triggered), reuse it.
+      MethodInvocation context;
+      if (invocation != null) {
+        context = invocation;
+      } else {
+        context = MethodInvocationPool.acquire(targetClass, methodName, method, target, arguments);
+      }
 
-            // If onMethodEnter returned null (no skip), acquire a fresh MethodInvocation
-            // from the pool for the after/onException callbacks.
-            // If onMethodEnter returned an invocation (skip triggered), reuse it.
-            MethodInvocation context;
-            if (invocation != null) {
-                context = invocation;
-            } else {
-                context = MethodInvocationPool.acquire(targetClass, methodName, method, target, arguments);
-            }
+      // Store the original return value / throwable into the invocation context.
+      if (throwable != null) {
+        InterceptorHolder.incrementInterceptorErrorCount();
+        context.setThrowable(throwable);
+      } else {
+        context.initReturnValue(returnValue);
+      }
 
-            // Store the original return value / throwable into the invocation context.
+      String className = targetClass.getName();
+
+      InterceptorRegistry registry = InterceptorHolder.getRegistry();
+      if (registry == null) {
+        return;
+      }
+
+      List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
+      for (InterceptorDefinition def : defs) {
+        if (def.getPointcut().getMethodMatcher().matches(methodName)) {
+          if (!InterceptorHolder.shouldInvoke(def.getName())) {
+            continue; // circuit breaker is open
+          }
+          long hookStart = System.nanoTime();
+          try {
+            Interceptor interceptor = def.getInterceptor();
             if (throwable != null) {
-                InterceptorHolder.incrementInterceptorErrorCount();
-                context.setThrowable(throwable);
+              interceptor.onException(context);
             } else {
-                context.initReturnValue(returnValue);
+              interceptor.after(context);
             }
-
-            String className = targetClass.getName();
-
-            InterceptorRegistry registry = InterceptorHolder.getRegistry();
-            if (registry == null) {
-                return;
-            }
-
-            List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
-            for (InterceptorDefinition def : defs) {
-                if (def.getPointcut().getMethodMatcher().matches(methodName)) {
-                    if (!InterceptorHolder.shouldInvoke(def.getName())) {
-                        continue; // circuit breaker is open
-                    }
-                    long hookStart = System.nanoTime();
-                    try {
-                        Interceptor interceptor = def.getInterceptor();
-                        if (throwable != null) {
-                            interceptor.onException(context);
-                        } else {
-                            interceptor.after(context);
-                        }
-                        long hookNanos = System.nanoTime() - hookStart;
-                        InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
-                        AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true, hookNanos);
-                    } catch (Throwable e) {
-                        // Catch Throwable to prevent OOM/StackOverflow from plugins
-                        // crashing the target application
-                        long hookNanos = System.nanoTime() - hookStart;
-                        InterceptorHolder.logInterceptorError(def.getName(),
-                                throwable != null ? "onException" : "after", e);
-                        InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
-                        AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false, hookNanos);
-                    }
-                }
-            }
-
-            // Handle exception suppression: if an interceptor called suppressException()
-            // and there was a throwable, clear it so it doesn't propagate.
-            if (context.isExceptionSuppressed() && throwable != null) {
-                throwable = null;  // Clear the throwable so it doesn't propagate
-                if (context.isReturnOverridden()) {
-                    returnValue = context.getReturnValue();
-                }
-            }
-
-            // Write back: if an interceptor explicitly set a return value, replace
-            // the original/default return value with the override.
-            if (context.isReturnOverridden()) {
-                returnValue = context.getReturnValue();
-            }
-
-            // Return the MethodInvocation to the pool for reuse.
-            MethodInvocationPool.release(context);
-        } catch (Throwable e) {
-            // Never let any error (including OOM, StackOverflow) crash the target application
-            // If we have a pooled invocation, release it to prevent pool leak
-            if (invocation != null) {
-                try { MethodInvocationPool.release(invocation); } catch (Throwable poolError) {
-                    System.err.println("[weaver-girl] Failed to release MethodInvocation to pool: " + poolError.getMessage());
-                }
-            }
+            long hookNanos = System.nanoTime() - hookStart;
+            InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
+            AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true, hookNanos);
+          } catch (Throwable e) {
+            // Catch Throwable to prevent OOM/StackOverflow from plugins
+            // crashing the target application
+            long hookNanos = System.nanoTime() - hookStart;
+            InterceptorHolder.logInterceptorError(
+                def.getName(), throwable != null ? "onException" : "after", e);
+            InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
+            AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false, hookNanos);
+          }
         }
+      }
+
+      // Handle exception suppression: if an interceptor called suppressException()
+      // and there was a throwable, clear it so it doesn't propagate.
+      if (context.isExceptionSuppressed() && throwable != null) {
+        throwable = null; // Clear the throwable so it doesn't propagate
+        if (context.isReturnOverridden()) {
+          returnValue = context.getReturnValue();
+        }
+      }
+
+      // Write back: if an interceptor explicitly set a return value, replace
+      // the original/default return value with the override.
+      if (context.isReturnOverridden()) {
+        returnValue = context.getReturnValue();
+      }
+
+      // Return the MethodInvocation to the pool for reuse.
+      MethodInvocationPool.release(context);
+    } catch (Throwable e) {
+      // Never let any error (including OOM, StackOverflow) crash the target application
+      // If we have a pooled invocation, release it to prevent pool leak
+      if (invocation != null) {
+        try {
+          MethodInvocationPool.release(invocation);
+        } catch (Throwable poolError) {
+          System.err.println(
+              "[weaver-girl] Failed to release MethodInvocation to pool: "
+                  + poolError.getMessage());
+        }
+      }
     }
+  }
 }

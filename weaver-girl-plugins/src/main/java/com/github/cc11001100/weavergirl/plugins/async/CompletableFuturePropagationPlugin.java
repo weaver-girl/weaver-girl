@@ -11,19 +11,20 @@ import org.slf4j.LoggerFactory;
 /**
  * CompletableFuture context-propagation plugin (capability placeholder).
  *
- * <p>{@code CompletableFuture.supplyAsync}/{@code runAsync} cannot be woven
- * transparently by the agent:</p>
+ * <p>{@code CompletableFuture.supplyAsync}/{@code runAsync} cannot be woven transparently by the
+ * agent:
+ *
  * <ul>
- *   <li>{@code java.util.concurrent.CompletableFuture} lives on the bootstrap
- *       classloader, where {@code ARGUMENT_REWRITE} advice is skipped
- *       (see {@code WeaverTransformer.install}) and inlined advice cannot
- *       resolve the agent's own classes;</li>
- *   <li>the no-executor overloads use {@code ForkJoinPool.commonPool()}
- *       internally, also a bootstrap class.</li>
+ *   <li>{@code java.util.concurrent.CompletableFuture} lives on the bootstrap classloader, where
+ *       {@code ARGUMENT_REWRITE} advice is skipped (see {@code WeaverTransformer.install}) and
+ *       inlined advice cannot resolve the agent's own classes;
+ *   <li>the no-executor overloads use {@code ForkJoinPool.commonPool()} internally, also a
+ *       bootstrap class.
  * </ul>
  *
- * <p>For context propagation through CompletableFuture stages, use the
- * {@link ContextCompletableFuture} API instead:</p>
+ * <p>For context propagation through CompletableFuture stages, use the {@link
+ * ContextCompletableFuture} API instead:
+ *
  * <pre>
  * // Instead of:
  * CompletableFuture.supplyAsync(() -&gt; doWork(), executor);
@@ -31,15 +32,15 @@ import org.slf4j.LoggerFactory;
  * ContextCompletableFuture.supplyAsync(() -&gt; doWork(), executor);
  * </pre>
  *
- * <p>This plugin currently registers no interceptor definitions and exists as
- * a discoverable capability marker: if the transformer ever gains bootstrap
- * {@code ARGUMENT_REWRITE} support (see {@code ContextExecutor} for the
- * wrapping strategy), the {@code supplyAsync}/{@code runAsync} factory-method
- * hooks belong here.</p>
+ * <p>This plugin currently registers no interceptor definitions and exists as a discoverable
+ * capability marker: if the transformer ever gains bootstrap {@code ARGUMENT_REWRITE} support (see
+ * {@code ContextExecutor} for the wrapping strategy), the {@code supplyAsync}/{@code runAsync}
+ * factory-method hooks belong here.
  *
- * <p>Configuration:</p>
+ * <p>Configuration:
+ *
  * <ul>
- *   <li>{@code enabled} — Enable/disable (default: true)</li>
+ *   <li>{@code enabled} — Enable/disable (default: true)
  * </ul>
  *
  * @see ContextCompletableFuture
@@ -48,34 +49,36 @@ import org.slf4j.LoggerFactory;
  */
 public class CompletableFuturePropagationPlugin extends AbstractPlugin {
 
-    private static final Logger log = LoggerFactory.getLogger(CompletableFuturePropagationPlugin.class);
+  private static final Logger log =
+      LoggerFactory.getLogger(CompletableFuturePropagationPlugin.class);
 
-    static final String COMPLETABLE_FUTURE = "java.util.concurrent.CompletableFuture";
+  static final String COMPLETABLE_FUTURE = "java.util.concurrent.CompletableFuture";
 
-    private boolean enabled = true;
+  private boolean enabled = true;
 
-    @Override
-    public String name() {
-        return "completable-future-context-propagation";
+  @Override
+  public String name() {
+    return "completable-future-context-propagation";
+  }
+
+  @Override
+  public void init(PluginContext context) {
+    enabled = context.getConfigBoolean("enabled", true);
+  }
+
+  @Override
+  public void registerInterceptors(InterceptorRegistry registry) {
+    if (!enabled) {
+      return;
     }
-
-    @Override
-    public void init(PluginContext context) {
-        enabled = context.getConfigBoolean("enabled", true);
+    // Intentionally registers no definitions: weaving CompletableFuture
+    // factory methods is not supported while ARGUMENT_REWRITE advice is
+    // skipped for bootstrap classes. Users get propagation via
+    // ContextCompletableFuture instead.
+    if (log.isInfoEnabled()) {
+      log.info(
+          "[completable-future-propagation] CompletableFuture weaving is not supported "
+              + "on the bootstrap classloader — use ContextCompletableFuture API for propagation");
     }
-
-    @Override
-    public void registerInterceptors(InterceptorRegistry registry) {
-        if (!enabled) {
-            return;
-        }
-        // Intentionally registers no definitions: weaving CompletableFuture
-        // factory methods is not supported while ARGUMENT_REWRITE advice is
-        // skipped for bootstrap classes. Users get propagation via
-        // ContextCompletableFuture instead.
-        if (log.isInfoEnabled()) {
-            log.info("[completable-future-propagation] CompletableFuture weaving is not supported "
-                    + "on the bootstrap classloader — use ContextCompletableFuture API for propagation");
-        }
-    }
+  }
 }

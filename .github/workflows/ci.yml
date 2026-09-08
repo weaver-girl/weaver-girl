@@ -74,17 +74,7 @@ jobs:
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2-
 
-      # Runs the full verify under the `quality-gate` profile: JaCoCo 80%
-      # instruction / 70% branch on every module, plus SpotBugs + Checkstyle.
-      #
-      # NOTE: continue-on-error is intentional. Coverage across several modules
-      # is still below the 80%/70% threshold (see RELEASE_READINESS.md), so a hard
-      # gate would be permanently red and ignored. This keeps the gate VISIBLE
-      # (it reports the real quality state each run and flips green once coverage
-      # is brought up) without blocking every pull request. Remove
-      # continue-on-error once coverage is consistently green to enforce it.
       - name: Verify with quality gate
-        continue-on-error: true
         run: ./mvnw -B -Pquality-gate verify
 
       - name: Upload JaCoCo Report

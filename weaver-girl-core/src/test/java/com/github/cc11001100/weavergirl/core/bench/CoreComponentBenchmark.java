@@ -3,13 +3,12 @@ package com.github.cc11001100.weavergirl.core.bench;
 import com.github.cc11001100.weavergirl.core.InterceptorHolder;
 import com.github.cc11001100.weavergirl.core.interceptor.MethodInvocationPool;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
+import java.util.concurrent.TimeUnit;
 import org.openjdk.jmh.annotations.*;
 
-import java.util.concurrent.TimeUnit;
-
 /**
- * JMH benchmarks for core runtime components:
- * SamplingController, CircuitBreaker, and MethodInvocationPool.
+ * JMH benchmarks for core runtime components: SamplingController, CircuitBreaker, and
+ * MethodInvocationPool.
  */
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
@@ -19,53 +18,53 @@ import java.util.concurrent.TimeUnit;
 @State(Scope.Benchmark)
 public class CoreComponentBenchmark {
 
-    private SamplingController samplingController;
+  private SamplingController samplingController;
 
-    @Setup
-    public void setup() {
-        samplingController = SamplingController.getInstance();
-        samplingController.setSamplingRate(1);
-    }
+  @Setup
+  public void setup() {
+    samplingController = SamplingController.getInstance();
+    samplingController.setSamplingRate(1);
+  }
 
-    // --- SamplingController ---
+  // --- SamplingController ---
 
-    @Benchmark
-    public boolean sampling_shouldSample_rate1() {
-        return samplingController.shouldSample();
-    }
+  @Benchmark
+  public boolean sampling_shouldSample_rate1() {
+    return samplingController.shouldSample();
+  }
 
-    @Benchmark
-    public boolean sampling_shouldSample_rate10() {
-        int old = samplingController.getSamplingRate();
-        samplingController.setSamplingRate(10);
-        boolean result = samplingController.shouldSample();
-        samplingController.setSamplingRate(old);
-        return result;
-    }
+  @Benchmark
+  public boolean sampling_shouldSample_rate10() {
+    int old = samplingController.getSamplingRate();
+    samplingController.setSamplingRate(10);
+    boolean result = samplingController.shouldSample();
+    samplingController.setSamplingRate(old);
+    return result;
+  }
 
-    // --- Circuit Breaker (InterceptorHolder) ---
+  // --- Circuit Breaker (InterceptorHolder) ---
 
-    @Benchmark
-    public boolean circuitBreaker_shouldInvoke_fresh() {
-        return InterceptorHolder.shouldInvoke("bench-fresh-" + Thread.currentThread().getId());
-    }
+  @Benchmark
+  public boolean circuitBreaker_shouldInvoke_fresh() {
+    return InterceptorHolder.shouldInvoke("bench-fresh-" + Thread.currentThread().getId());
+  }
 
-    @Benchmark
-    public void circuitBreaker_recordSuccess() {
-        InterceptorHolder.recordInterceptorSuccess("bench-success-" + Thread.currentThread().getId());
-    }
+  @Benchmark
+  public void circuitBreaker_recordSuccess() {
+    InterceptorHolder.recordInterceptorSuccess("bench-success-" + Thread.currentThread().getId());
+  }
 
-    // --- MethodInvocationPool ---
+  // --- MethodInvocationPool ---
 
-    @Benchmark
-    public Object pool_acquireRelease() {
-        Object target = "target";
-        java.lang.reflect.Method method = String.class.getMethods()[0];
+  @Benchmark
+  public Object pool_acquireRelease() {
+    Object target = "target";
+    java.lang.reflect.Method method = String.class.getMethods()[0];
+    MethodInvocationPool.acquire(String.class, "toString", method, target, new Object[0]);
+    // Simulate use
+    com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation inv =
         MethodInvocationPool.acquire(String.class, "toString", method, target, new Object[0]);
-        // Simulate use
-        com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation inv =
-                MethodInvocationPool.acquire(String.class, "toString", method, target, new Object[0]);
-        MethodInvocationPool.release(inv);
-        return inv;
-    }
+    MethodInvocationPool.release(inv);
+    return inv;
+  }
 }

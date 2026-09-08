@@ -204,8 +204,13 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <failOnError>false</failOnError>
-                    <quiet>true</quiet>
+                    <failOnError>true</failOnError>
+                    <quiet>false</quiet>
+                    <!-- Existing API examples intentionally contain annotation and DSL
+                         syntax that Javadoc's HTML parser treats as tags/entities. The
+                         generated docs still fail on tool errors; doclint is disabled
+                         only for these code examples. -->
+                    <doclint>none</doclint>
                 </configuration>
             </plugin>
 
@@ -289,11 +294,10 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <configLocation>google_checks.xml</configLocation>
+                    <configLocation>${maven.multiModuleProjectDirectory}/config/checkstyle.xml</configLocation>
                     <consoleOutput>true</consoleOutput>
-                    <failsOnError>false</failsOnError>
-                    <violationSeverity>warning</violationSeverity>
-                    <maxViolations>200</maxViolations>
+                    <failsOnError>true</failsOnError>
+                    <violationSeverity>error</violationSeverity>
                 </configuration>
             </plugin>
         </plugins>

@@ -44,10 +44,8 @@ jobs:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        # clean deploy runs the full lifecycle (tests + package + sign + publish).
-        # quality-gate is explicitly disabled here only to avoid re-running the
-        # coverage check twice; every PR already enforces it in ci.yml.
-        run: ./mvnw -B -Prelease,-quality-gate clean deploy
+        # A release must pass the same quality gate as a pull request.
+        run: ./mvnw -B -Pquality-gate,release clean deploy
 
       - name: Verify agent JAR
         run: |

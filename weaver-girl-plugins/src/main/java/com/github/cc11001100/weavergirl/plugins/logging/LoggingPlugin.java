@@ -10,96 +10,90 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
 /**
- * Logging support plugin.
- * Provides MDC context injection for SLF4J-compatible logging frameworks.
+ * Logging support plugin. Provides MDC context injection for SLF4J-compatible logging frameworks.
  * Other plugins can declare a dependency on this plugin.
  *
- * <p>This plugin does not intercept any methods. Instead, it provides
- * a static utility API that other plugins call to inject trace context
- * into their MDC.</p>
+ * <p>This plugin does not intercept any methods. Instead, it provides a static utility API that
+ * other plugins call to inject trace context into their MDC.
  *
- * <p>Configuration:</p>
+ * <p>Configuration:
+ *
  * <ul>
- *   <li>{@code mdcKeys} — Comma-separated MDC keys to set (default: traceId,spanId,method)</li>
- *   <li>{@code enabled} — Enable/disable (default: true)</li>
+ *   <li>{@code mdcKeys} — Comma-separated MDC keys to set (default: traceId,spanId,method)
+ *   <li>{@code enabled} — Enable/disable (default: true)
  * </ul>
  */
 public class LoggingPlugin extends AbstractPlugin {
 
-    private static final Logger log = LoggerFactory.getLogger(LoggingPlugin.class);
+  private static final Logger log = LoggerFactory.getLogger(LoggingPlugin.class);
 
-    private String[] mdcKeys = {"traceId", "spanId", "method"};
-    private boolean enabled = true;
+  private String[] mdcKeys = {"traceId", "spanId", "method"};
+  private boolean enabled = true;
 
-    @Override
-    public String name() {
-        return "logging";
+  @Override
+  public String name() {
+    return "logging";
+  }
+
+  @Override
+  public void init(PluginContext context) {
+    String mdcKeysStr = context.getConfig("mdcKeys", "traceId,spanId,method");
+    mdcKeys = mdcKeysStr.split(",");
+    for (int i = 0; i < mdcKeys.length; i++) {
+      mdcKeys[i] = mdcKeys[i].trim();
     }
+    enabled = context.getConfigBoolean("enabled", true);
+  }
 
-    @Override
-    public void init(PluginContext context) {
-        String mdcKeysStr = context.getConfig("mdcKeys", "traceId,spanId,method");
-        mdcKeys = mdcKeysStr.split(",");
-        for (int i = 0; i < mdcKeys.length; i++) {
-            mdcKeys[i] = mdcKeys[i].trim();
-        }
-        enabled = context.getConfigBoolean("enabled", true);
+  @Override
+  public void registerInterceptors(
+      com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry registry) {
+    // No interceptors — this is a support plugin
+    // Other plugins use the static utility methods
+  }
+
+  @Override
+  public String[] depends() {
+    return new String[] {"trace-correlation"};
+  }
+
+  // ---- Static utility methods for other plugins ----
+
+  /** Inject trace context into MDC. Call this at the start of an interceptor's before() method. */
+  public static void injectContext(String className, String methodName) {
+    String traceId = (String) ThreadContext.get("traceId");
+    if (traceId != null) {
+      MDC.put("traceId", traceId);
     }
-
-    @Override
-    public void registerInterceptors(com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry registry) {
-        // No interceptors — this is a support plugin
-        // Other plugins use the static utility methods
+    String spanId = (String) ThreadContext.get("spanId");
+    if (spanId != null) {
+      MDC.put("spanId", spanId);
     }
+    MDC.put("method", className + "." + methodName);
+    InterceptorEventPublisher.getInstance()
+        .publish(
+            InterceptorEvent.builder()
+                .type("log-capture")
+                .plugin("logging")
+                .className(className)
+                .methodName(methodName)
+                .attribute("traceId", traceId != null ? traceId : "")
+                .build());
+  }
 
-    @Override
-    public String[] depends() {
-        return new String[]{"trace-correlation"};
-    }
+  /** Clear MDC context. Call this at the end of an interceptor's after/onException method. */
+  public static void clearContext() {
+    MDC.remove("traceId");
+    MDC.remove("spanId");
+    MDC.remove("method");
+  }
 
-    // ---- Static utility methods for other plugins ----
+  // Expose for testing
+  String[] getMdcKeys() {
+    return mdcKeys;
+  }
 
-    /**
-     * Inject trace context into MDC.
-     * Call this at the start of an interceptor's before() method.
-     */
-    public static void injectContext(String className, String methodName) {
-        String traceId = (String) ThreadContext.get("traceId");
-        if (traceId != null) {
-            MDC.put("traceId", traceId);
-        }
-        String spanId = (String) ThreadContext.get("spanId");
-        if (spanId != null) {
-            MDC.put("spanId", spanId);
-        }
-        MDC.put("method", className + "." + methodName);
-        InterceptorEventPublisher.getInstance().publish(
-                InterceptorEvent.builder()
-                        .type("log-capture")
-                        .plugin("logging")
-                        .className(className)
-                        .methodName(methodName)
-                        .attribute("traceId", traceId != null ? traceId : "")
-                        .build()
-        );
-    }
-
-    /**
-     * Clear MDC context.
-     * Call this at the end of an interceptor's after/onException method.
-     */
-    public static void clearContext() {
-        MDC.remove("traceId");
-        MDC.remove("spanId");
-        MDC.remove("method");
-    }
-
-    // Expose for testing
-    String[] getMdcKeys() {
-        return mdcKeys;
-    }
-
-    boolean isEnabled() {
-        return enabled;
-    }
+  boolean isEnabled() {
+    return enabled;
+  }
 }

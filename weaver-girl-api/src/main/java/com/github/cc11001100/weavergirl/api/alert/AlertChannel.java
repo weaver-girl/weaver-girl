@@ -8,10 +8,10 @@ package com.github.cc11001100.weavergirl.api.alert;
 @FunctionalInterface
 public interface AlertChannel {
 
-    /**
-     * Handle an alert event.
-     *
-     * @param alert the triggered alert
-     */
-    void onAlert(AlertEvent alert);
+  /**
+   * Handle an alert event.
+   *
+   * @param alert the triggered alert
+   */
+  void onAlert(AlertEvent alert);
 }

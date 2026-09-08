@@ -7,16 +7,15 @@ package com.github.cc11001100.weavergirl.api.plugin;
  */
 public final class PluginManagerHolder {
 
-    private static volatile PluginManager instance;
+  private static volatile PluginManager instance;
 
-    private PluginManagerHolder() {
-    }
+  private PluginManagerHolder() {}
 
-    public static PluginManager getInstance() {
-        return instance;
-    }
+  public static PluginManager getInstance() {
+    return instance;
+  }
 
-    public static void setInstance(PluginManager manager) {
-        instance = manager;
-    }
+  public static void setInstance(PluginManager manager) {
+    instance = manager;
+  }
 }

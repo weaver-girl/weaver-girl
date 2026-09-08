@@ -3,10 +3,11 @@ package com.github.cc11001100.weavergirl.api.config;
 /**
  * Listener for configuration change events.
  *
- * <p>Register implementations via {@link DynamicConfigManager#addListener}
- * to be notified when configuration values change at runtime.</p>
+ * <p>Register implementations via {@link DynamicConfigManager#addListener} to be notified when
+ * configuration values change at runtime.
  *
  * <h3>Example:</h3>
+ *
  * <pre>
  * DynamicConfigManager configManager = DynamicConfigManager.getInstance();
  * configManager.addListener("sampling.rate", event -&gt; {
@@ -14,8 +15,8 @@ package com.github.cc11001100.weavergirl.api.config;
  * });
  * </pre>
  *
- * <p>Implementations should be thread-safe, as notifications may be
- * delivered from a config watcher thread.</p>
+ * <p>Implementations should be thread-safe, as notifications may be delivered from a config watcher
+ * thread.
  *
  * @since 1.1.0
  * @see ConfigChangeEvent
@@ -24,10 +25,10 @@ package com.github.cc11001100.weavergirl.api.config;
 @FunctionalInterface
 public interface ConfigChangeListener {
 
-    /**
-     * Called when a configuration value changes.
-     *
-     * @param event details about the configuration change
-     */
-    void onConfigChange(ConfigChangeEvent event);
+  /**
+   * Called when a configuration value changes.
+   *
+   * @param event details about the configuration change
+   */
+  void onConfigChange(ConfigChangeEvent event);
 }

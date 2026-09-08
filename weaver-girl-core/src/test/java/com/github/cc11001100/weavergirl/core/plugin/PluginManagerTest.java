@@ -1,184 +1,228 @@
 package com.github.cc11001100.weavergirl.core.plugin;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
-import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
+import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
+import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 import com.github.cc11001100.weavergirl.api.plugin.PluginInfo;
 import com.github.cc11001100.weavergirl.api.plugin.PluginManager;
 import com.github.cc11001100.weavergirl.api.plugin.PluginState;
 import com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin;
 import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
-import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
-import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
-import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
+import java.util.*;
 import org.junit.jupiter.api.*;
 
-import java.util.*;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-/**
- * Tests for the Plugin Manager (P47).
- */
+/** Tests for the Plugin Manager (P47). */
 class PluginManagerTest {
 
-    private DefaultInterceptorRegistry registry;
-    private PluginLoader pluginLoader;
-    private DefaultPluginManager pluginManager;
+  private DefaultInterceptorRegistry registry;
+  private PluginLoader pluginLoader;
+  private DefaultPluginManager pluginManager;
 
-    @BeforeEach
-    void setUp() {
-        registry = new DefaultInterceptorRegistry();
-        pluginLoader = new PluginLoader();
+  @BeforeEach
+  void setUp() {
+    registry = new DefaultInterceptorRegistry();
+    pluginLoader = new PluginLoader();
+  }
+
+  private void initPluginManager(Map<String, String> config) {
+    // Manually create a test plugin and register it
+    pluginLoader.loadPlugins(getClass().getClassLoader(), registry, config);
+    pluginManager = new DefaultPluginManager(pluginLoader, registry);
+  }
+
+  // ===== PluginState transitions =====
+
+  @Test
+  void pluginState_transitions() {
+    assertTrue(PluginState.LOADED.canTransitionTo(PluginState.ACTIVE));
+    assertTrue(PluginState.LOADED.canTransitionTo(PluginState.UNLOADED));
+    assertFalse(PluginState.LOADED.canTransitionTo(PluginState.DISABLED));
+
+    assertTrue(PluginState.ACTIVE.canTransitionTo(PluginState.DISABLED));
+    assertTrue(PluginState.ACTIVE.canTransitionTo(PluginState.UNLOADED));
+    assertFalse(PluginState.ACTIVE.canTransitionTo(PluginState.LOADED));
+
+    assertTrue(PluginState.DISABLED.canTransitionTo(PluginState.ACTIVE));
+    assertTrue(PluginState.DISABLED.canTransitionTo(PluginState.UNLOADED));
+    assertFalse(PluginState.DISABLED.canTransitionTo(PluginState.LOADED));
+
+    // UNLOADED is terminal
+    assertFalse(PluginState.UNLOADED.canTransitionTo(PluginState.ACTIVE));
+    assertFalse(PluginState.UNLOADED.canTransitionTo(PluginState.DISABLED));
+    assertFalse(PluginState.UNLOADED.canTransitionTo(PluginState.LOADED));
+    assertFalse(PluginState.UNLOADED.canTransitionTo(PluginState.UNLOADED));
+  }
+
+  // ===== Disable/Enable plugin =====
+
+  @Test
+  void disablePlugin_unknownPlugin_returnsFalse() {
+    initPluginManager(new HashMap<>());
+    assertFalse(pluginManager.disablePlugin("non-existent"));
+  }
+
+  @Test
+  void enablePlugin_unknownPlugin_returnsFalse() {
+    initPluginManager(new HashMap<>());
+    assertFalse(pluginManager.enablePlugin("non-existent"));
+  }
+
+  @Test
+  void pluginInfo_returnsInfoForLoadedPlugins() {
+    initPluginManager(new HashMap<>());
+
+    List<PluginInfo> allInfo = pluginManager.getAllPluginInfo();
+    // Plugins may or may not be loaded depending on test classpath
+    for (PluginInfo info : allInfo) {
+      assertNotNull(info.getName());
+      assertEquals(PluginState.ACTIVE, info.getState());
+      assertTrue(info.getLoadedAt() > 0);
+    }
+  }
+
+  @Test
+  void isPluginActive_checksState() {
+    initPluginManager(new HashMap<>());
+
+    // Check built-in plugins are active
+    List<PluginInfo> allInfo = pluginManager.getAllPluginInfo();
+    if (!allInfo.isEmpty()) {
+      String firstPlugin = allInfo.get(0).getName();
+      assertTrue(pluginManager.isPluginActive(firstPlugin));
     }
 
-    private void initPluginManager(Map<String, String> config) {
-        // Manually create a test plugin and register it
-        pluginLoader.loadPlugins(getClass().getClassLoader(), registry, config);
-        pluginManager = new DefaultPluginManager(pluginLoader, registry);
-    }
+    assertFalse(pluginManager.isPluginActive("non-existent"));
+  }
 
-    // ===== PluginState transitions =====
+  @Test
+  void getActivePluginCount_matchesActivePlugins() {
+    initPluginManager(new HashMap<>());
+    int activeCount = pluginManager.getActivePluginCount();
+    assertEquals(pluginManager.getAllPluginInfo().size(), activeCount);
+  }
 
-    @Test
-    void pluginState_transitions() {
-        assertTrue(PluginState.LOADED.canTransitionTo(PluginState.ACTIVE));
-        assertTrue(PluginState.LOADED.canTransitionTo(PluginState.UNLOADED));
-        assertFalse(PluginState.LOADED.canTransitionTo(PluginState.DISABLED));
+  @Test
+  void getPluginInfo_returnsEmptyForUnknown() {
+    initPluginManager(new HashMap<>());
+    assertFalse(pluginManager.getPluginInfo("non-existent").isPresent());
+  }
 
-        assertTrue(PluginState.ACTIVE.canTransitionTo(PluginState.DISABLED));
-        assertTrue(PluginState.ACTIVE.canTransitionTo(PluginState.UNLOADED));
-        assertFalse(PluginState.ACTIVE.canTransitionTo(PluginState.LOADED));
+  // ===== PluginManager.getInstance() =====
 
-        assertTrue(PluginState.DISABLED.canTransitionTo(PluginState.ACTIVE));
-        assertTrue(PluginState.DISABLED.canTransitionTo(PluginState.UNLOADED));
-        assertFalse(PluginState.DISABLED.canTransitionTo(PluginState.LOADED));
+  @Test
+  void getInstance_returnsCreatedManager() {
+    initPluginManager(new HashMap<>());
+    PluginManager instance = PluginManager.getInstance();
+    assertNotNull(instance);
+    assertSame(pluginManager, instance);
+  }
 
-        // UNLOADED is terminal
-        assertFalse(PluginState.UNLOADED.canTransitionTo(PluginState.ACTIVE));
-        assertFalse(PluginState.UNLOADED.canTransitionTo(PluginState.DISABLED));
-        assertFalse(PluginState.UNLOADED.canTransitionTo(PluginState.LOADED));
-        assertFalse(PluginState.UNLOADED.canTransitionTo(PluginState.UNLOADED));
-    }
+  // ===== Manual plugin disable/enable lifecycle =====
 
-    // ===== Disable/Enable plugin =====
+  @Test
+  void disableAndEnable_lifecycle() {
+    // Create a simple registry and plugin manager manually
+    DefaultInterceptorRegistry reg = new DefaultInterceptorRegistry();
+    PluginLoader loader = new PluginLoader();
 
-    @Test
-    void disablePlugin_unknownPlugin_returnsFalse() {
-        initPluginManager(new HashMap<>());
-        assertFalse(pluginManager.disablePlugin("non-existent"));
-    }
+    // Register a test interceptor
+    Interceptor testInterceptor = new Interceptor() {};
+    InterceptorDefinition def =
+        new InterceptorDefinition(
+            "test-plugin-myMethod",
+            new Pointcut(ClassMatcher.byName("com.example.Test"), MethodMatcher.byName("myMethod")),
+            testInterceptor,
+            0);
+    reg.register(def);
 
-    @Test
-    void enablePlugin_unknownPlugin_returnsFalse() {
-        initPluginManager(new HashMap<>());
-        assertFalse(pluginManager.enablePlugin("non-existent"));
-    }
+    // Manually add a plugin to the loader
+    // Since we can't easily inject into PluginLoader, test with what's loaded
+    DefaultPluginManager pm = new DefaultPluginManager(loader, reg);
 
-    @Test
-    void pluginInfo_returnsInfoForLoadedPlugins() {
-        initPluginManager(new HashMap<>());
+    // With no plugins loaded, all operations should return false
+    assertFalse(pm.disablePlugin("anything"));
+    assertEquals(0, pm.getActivePluginCount());
+    assertTrue(pm.getAllPluginInfo().isEmpty());
+  }
 
-        List<PluginInfo> allInfo = pluginManager.getAllPluginInfo();
-        // Plugins may or may not be loaded depending on test classpath
-        for (PluginInfo info : allInfo) {
-            assertNotNull(info.getName());
-            assertEquals(PluginState.ACTIVE, info.getState());
-            assertTrue(info.getLoadedAt() > 0);
-        }
-    }
+  // ===== WeaverPlugin interface =====
 
-    @Test
-    void isPluginActive_checksState() {
-        initPluginManager(new HashMap<>());
+  @Test
+  void weaverPlugin_defaultMethods() {
+    WeaverPlugin plugin =
+        new WeaverPlugin() {
+          @Override
+          public String name() {
+            return "test";
+          }
 
-        // Check built-in plugins are active
-        List<PluginInfo> allInfo = pluginManager.getAllPluginInfo();
-        if (!allInfo.isEmpty()) {
-            String firstPlugin = allInfo.get(0).getName();
-            assertTrue(pluginManager.isPluginActive(firstPlugin));
-        }
-
-        assertFalse(pluginManager.isPluginActive("non-existent"));
-    }
-
-    @Test
-    void getActivePluginCount_matchesActivePlugins() {
-        initPluginManager(new HashMap<>());
-        int activeCount = pluginManager.getActivePluginCount();
-        assertEquals(pluginManager.getAllPluginInfo().size(), activeCount);
-    }
-
-    @Test
-    void getPluginInfo_returnsEmptyForUnknown() {
-        initPluginManager(new HashMap<>());
-        assertFalse(pluginManager.getPluginInfo("non-existent").isPresent());
-    }
-
-    // ===== PluginManager.getInstance() =====
-
-    @Test
-    void getInstance_returnsCreatedManager() {
-        initPluginManager(new HashMap<>());
-        PluginManager instance = PluginManager.getInstance();
-        assertNotNull(instance);
-        assertSame(pluginManager, instance);
-    }
-
-    // ===== Manual plugin disable/enable lifecycle =====
-
-    @Test
-    void disableAndEnable_lifecycle() {
-        // Create a simple registry and plugin manager manually
-        DefaultInterceptorRegistry reg = new DefaultInterceptorRegistry();
-        PluginLoader loader = new PluginLoader();
-
-        // Register a test interceptor
-        Interceptor testInterceptor = new Interceptor() {};
-        InterceptorDefinition def = new InterceptorDefinition(
-                "test-plugin-myMethod",
-                new Pointcut(ClassMatcher.byName("com.example.Test"), MethodMatcher.byName("myMethod")),
-                testInterceptor, 0
-        );
-        reg.register(def);
-
-        // Manually add a plugin to the loader
-        // Since we can't easily inject into PluginLoader, test with what's loaded
-        DefaultPluginManager pm = new DefaultPluginManager(loader, reg);
-
-        // With no plugins loaded, all operations should return false
-        assertFalse(pm.disablePlugin("anything"));
-        assertEquals(0, pm.getActivePluginCount());
-        assertTrue(pm.getAllPluginInfo().isEmpty());
-    }
-
-    // ===== WeaverPlugin interface =====
-
-    @Test
-    void weaverPlugin_defaultMethods() {
-        WeaverPlugin plugin = new WeaverPlugin() {
-            @Override public String name() { return "test"; }
-            @Override public void registerInterceptors(InterceptorRegistry r) {}
+          @Override
+          public void registerInterceptors(InterceptorRegistry r) {}
         };
 
-        // Default implementations
-        assertArrayEquals(new String[0], plugin.depends());
-        assertTrue(plugin.isEnabled(null));
-        assertDoesNotThrow(() -> plugin.init(null));
-        assertDoesNotThrow(() -> plugin.destroy());
-    }
+    // Default implementations
+    assertArrayEquals(new String[0], plugin.depends());
+    assertTrue(plugin.isEnabled(null));
+    assertDoesNotThrow(() -> plugin.init(null));
+    assertDoesNotThrow(() -> plugin.destroy());
+  }
 
-    // ===== PluginInfo =====
+  // ===== PluginInfo =====
 
-    @Test
-    void pluginInfo_toString() {
-        PluginInfo info = new PluginInfo("test", PluginState.ACTIVE, "1.0",
-                3, System.currentTimeMillis(), System.currentTimeMillis());
-        String str = info.toString();
-        assertTrue(str.contains("test"));
-        assertTrue(str.contains("ACTIVE"));
-        assertTrue(str.contains("3"));
+  @Test
+  void pluginInfo_toString() {
+    PluginInfo info =
+        new PluginInfo(
+            "test",
+            PluginState.ACTIVE,
+            "1.0",
+            3,
+            System.currentTimeMillis(),
+            System.currentTimeMillis());
+    String str = info.toString();
+    assertTrue(str.contains("test"));
+    assertTrue(str.contains("ACTIVE"));
+    assertTrue(str.contains("3"));
+  }
+
+  @Test
+  void managedPlugin_supportsDisableEnableUnloadAndFailures() {
+    DefaultInterceptorRegistry reg = new DefaultInterceptorRegistry();
+    InterceptorDefinition definition =
+        new InterceptorDefinition(
+            "managed-hook", new Pointcut(ClassMatcher.byName("x"), MethodMatcher.any()), new Interceptor() {});
+    reg.register(definition);
+    class TestPlugin implements WeaverPlugin {
+      boolean destroyed;
+      boolean failRegister;
+      public String name() { return "managed"; }
+      public void registerInterceptors(InterceptorRegistry r) {
+        if (failRegister) throw new IllegalStateException("register");
+      }
+      public void destroy() { destroyed = true; }
     }
+    TestPlugin plugin = new TestPlugin();
+    PluginLoader loader = new PluginLoader() {
+      public List<WeaverPlugin> getLoadedPlugins() { return Collections.singletonList(plugin); }
+    };
+    DefaultPluginManager pm = new DefaultPluginManager(loader, reg);
+    assertTrue(pm.isPluginActive("managed"));
+    assertFalse(pm.disablePlugin("missing"));
+    assertTrue(pm.disablePlugin("managed"));
+    assertFalse(pm.isPluginActive("managed"));
+    assertFalse(pm.disablePlugin("managed"));
+    plugin.failRegister = true;
+    assertFalse(pm.enablePlugin("managed"));
+    plugin.failRegister = false;
+    assertTrue(pm.enablePlugin("managed"));
+    assertTrue(pm.unloadPlugin("managed"));
+    assertTrue(plugin.destroyed);
+    assertFalse(pm.enablePlugin("managed"));
+    assertFalse(pm.unloadPlugin("missing"));
+  }
 }

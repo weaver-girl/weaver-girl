@@ -12,15 +12,19 @@ import org.slf4j.LoggerFactory;
  */
 public class LoggingAlertChannel implements AlertChannel {
 
-    private static final Logger log = LoggerFactory.getLogger(LoggingAlertChannel.class);
+  private static final Logger log = LoggerFactory.getLogger(LoggingAlertChannel.class);
 
-    @Override
-    public void onAlert(AlertEvent alert) {
-        if (alert == null) {
-            return;
-        }
-        log.warn("[ALERT] rule={} severity={} value={} threshold={} time={}",
-                alert.getRuleName(), alert.getSeverity(),
-                alert.getActualValue(), alert.getThreshold(), alert.getTimestamp());
+  @Override
+  public void onAlert(AlertEvent alert) {
+    if (alert == null) {
+      return;
     }
+    log.warn(
+        "[ALERT] rule={} severity={} value={} threshold={} time={}",
+        alert.getRuleName(),
+        alert.getSeverity(),
+        alert.getActualValue(),
+        alert.getThreshold(),
+        alert.getTimestamp());
+  }
 }

@@ -1,125 +1,120 @@
 package com.github.cc11001100.weavergirl.agent;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.github.cc11001100.weavergirl.api.interceptor.*;
 import com.github.cc11001100.weavergirl.api.matcher.*;
 import com.github.cc11001100.weavergirl.api.pointcut.*;
 import com.github.cc11001100.weavergirl.core.WeaverGirl;
-import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
-import net.bytebuddy.agent.ByteBuddyAgent;
-import org.junit.jupiter.api.*;
-
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import net.bytebuddy.agent.ByteBuddyAgent;
+import org.junit.jupiter.api.*;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-/**
- * Tests the complete premain lifecycle: bootstrap -> register -> intercept -> shutdown.
- */
+/** Tests the complete premain lifecycle: bootstrap -> register -> intercept -> shutdown. */
 class PremainLifecycleTest {
 
-    private static Instrumentation instrumentation;
+  private static Instrumentation instrumentation;
 
-    @BeforeAll
-    static void setUpClass() {
-        try {
-            instrumentation = ByteBuddyAgent.install();
-        } catch (Exception e) {
-            instrumentation = null;
-        }
+  @BeforeAll
+  static void setUpClass() {
+    try {
+      instrumentation = ByteBuddyAgent.install();
+    } catch (Exception e) {
+      instrumentation = null;
+    }
+  }
+
+  @Test
+  void fullBootstrapAndInterceptLifecycle() {
+    Assumptions.assumeTrue(
+        instrumentation != null, "ByteBuddyAgent self-attach not available in this environment");
+
+    WeaverGirl weaverGirl;
+    try {
+      weaverGirl = WeaverGirl.bootstrap(instrumentation);
+    } catch (NoClassDefFoundError | IllegalStateException e) {
+      // In test environments without a proper agent JAR, ByteBuddy's
+      // class loading context may not find core classes (InterceptorHolder).
+      // This is expected — the real agent JAR (shade-packed) works fine.
+      Assumptions.assumeTrue(
+          false, "Agent bootstrap not available in test classpath: " + e.getMessage());
+      return;
     }
 
-    @Test
-    void fullBootstrapAndInterceptLifecycle() {
-        Assumptions.assumeTrue(instrumentation != null,
-                "ByteBuddyAgent self-attach not available in this environment");
+    // The transformer should be installed
+    assertNotNull(weaverGirl);
+    assertNotNull(weaverGirl.getRegistry());
 
-        WeaverGirl weaverGirl;
-        try {
-            weaverGirl = WeaverGirl.bootstrap(instrumentation);
-        } catch (NoClassDefFoundError | IllegalStateException e) {
-            // In test environments without a proper agent JAR, ByteBuddy's
-            // class loading context may not find core classes (InterceptorHolder).
-            // This is expected — the real agent JAR (shade-packed) works fine.
-            Assumptions.assumeTrue(false,
-                    "Agent bootstrap not available in test classpath: " + e.getMessage());
-            return;
-        }
+    // Register an interceptor programmatically after bootstrap
+    AtomicBoolean beforeCalled = new AtomicBoolean(false);
+    weaverGirl
+        .intercept("com.example.Service")
+        .method("process")
+        .before(inv -> beforeCalled.set(true))
+        .install();
 
-        // The transformer should be installed
-        assertNotNull(weaverGirl);
-        assertNotNull(weaverGirl.getRegistry());
+    // Verify the interceptor was registered
+    assertFalse(weaverGirl.getRegistry().getAllDefinitions().isEmpty());
 
-        // Register an interceptor programmatically after bootstrap
-        AtomicBoolean beforeCalled = new AtomicBoolean(false);
-        weaverGirl.intercept("com.example.Service")
-                .method("process")
-                .before(inv -> beforeCalled.set(true))
-                .install();
+    // Shutdown should not throw
+    assertDoesNotThrow(() -> weaverGirl.shutdown());
+  }
 
-        // Verify the interceptor was registered
-        assertFalse(weaverGirl.getRegistry().getAllDefinitions().isEmpty());
+  @Test
+  void bootstrapWithConfigMap() {
+    Assumptions.assumeTrue(
+        instrumentation != null, "ByteBuddyAgent self-attach not available in this environment");
 
-        // Shutdown should not throw
-        assertDoesNotThrow(() -> weaverGirl.shutdown());
+    Map<String, String> config = new java.util.HashMap<>();
+    config.put("plugins", "/nonexistent/path");
+
+    WeaverGirl weaverGirl;
+    try {
+      weaverGirl = WeaverGirl.bootstrap(instrumentation, config);
+    } catch (NoClassDefFoundError e) {
+      Assumptions.assumeTrue(
+          false, "ByteBuddy transformation classes not available: " + e.getMessage());
+      return;
     }
+    assertNotNull(weaverGirl);
 
-    @Test
-    void bootstrapWithConfigMap() {
-        Assumptions.assumeTrue(instrumentation != null,
-                "ByteBuddyAgent self-attach not available in this environment");
+    assertDoesNotThrow(() -> weaverGirl.shutdown());
+  }
 
-        Map<String, String> config = new java.util.HashMap<>();
-        config.put("plugins", "/nonexistent/path");
+  @Test
+  void parseAgentArgsWithConfig() throws Exception {
+    Map<String, String> args = invokeParseAgentArgs("config=/path/to/weaver.yml");
+    assertEquals("/path/to/weaver.yml", args.get("config"));
+  }
 
-        WeaverGirl weaverGirl;
-        try {
-            weaverGirl = WeaverGirl.bootstrap(instrumentation, config);
-        } catch (NoClassDefFoundError e) {
-            Assumptions.assumeTrue(false,
-                    "ByteBuddy transformation classes not available: " + e.getMessage());
-            return;
-        }
-        assertNotNull(weaverGirl);
+  @Test
+  void parseAgentArgsWithMultipleOptions() throws Exception {
+    // Use order that doesn't start with "config=" to trigger key=value parsing
+    Map<String, String> args = invokeParseAgentArgs("watch=true,config=/path/to/weaver.yml");
+    assertEquals("/path/to/weaver.yml", args.get("config"));
+    assertEquals("true", args.get("watch"));
+  }
 
-        assertDoesNotThrow(() -> weaverGirl.shutdown());
-    }
+  @Test
+  void parseAgentArgsWithNull() throws Exception {
+    Map<String, String> args = invokeParseAgentArgs(null);
+    assertTrue(args.isEmpty());
+  }
 
-    @Test
-    void parseAgentArgsWithConfig() throws Exception {
-        Map<String, String> args = invokeParseAgentArgs("config=/path/to/weaver.yml");
-        assertEquals("/path/to/weaver.yml", args.get("config"));
-    }
+  @Test
+  void parseAgentArgsWithEmpty() throws Exception {
+    Map<String, String> args = invokeParseAgentArgs("");
+    assertTrue(args.isEmpty());
+  }
 
-    @Test
-    void parseAgentArgsWithMultipleOptions() throws Exception {
-        // Use order that doesn't start with "config=" to trigger key=value parsing
-        Map<String, String> args = invokeParseAgentArgs("watch=true,config=/path/to/weaver.yml");
-        assertEquals("/path/to/weaver.yml", args.get("config"));
-        assertEquals("true", args.get("watch"));
-    }
-
-    @Test
-    void parseAgentArgsWithNull() throws Exception {
-        Map<String, String> args = invokeParseAgentArgs(null);
-        assertTrue(args.isEmpty());
-    }
-
-    @Test
-    void parseAgentArgsWithEmpty() throws Exception {
-        Map<String, String> args = invokeParseAgentArgs("");
-        assertTrue(args.isEmpty());
-    }
-
-    /**
-     * Access the private parseAgentArgs method via reflection for testing.
-     */
-    @SuppressWarnings("unchecked")
-    private Map<String, String> invokeParseAgentArgs(String agentArgs) throws Exception {
-        Method method = WeaverGirlAgent.class.getDeclaredMethod("parseAgentArgs", String.class);
-        method.setAccessible(true);
-        return (Map<String, String>) method.invoke(null, agentArgs);
-    }
+  /** Access the private parseAgentArgs method via reflection for testing. */
+  @SuppressWarnings("unchecked")
+  private Map<String, String> invokeParseAgentArgs(String agentArgs) throws Exception {
+    Method method = WeaverGirlAgent.class.getDeclaredMethod("parseAgentArgs", String.class);
+    method.setAccessible(true);
+    return (Map<String, String>) method.invoke(null, agentArgs);
+  }
 }

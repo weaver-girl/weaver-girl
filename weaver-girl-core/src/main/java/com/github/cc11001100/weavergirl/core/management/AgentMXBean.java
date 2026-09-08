@@ -3,14 +3,16 @@ package com.github.cc11001100.weavergirl.core.management;
 /**
  * JMX MBean interface for monitoring the weaver-girl agent at runtime.
  *
- * <p>Register via: {@code AgentMBean.register()}</p>
+ * <p>Register via: {@code AgentMBean.register()}
  *
- * <p>Access via JConsole / VisualVM / JMC:</p>
+ * <p>Access via JConsole / VisualVM / JMC:
+ *
  * <pre>
  * MBean name: com.github.cc11001100.weavergirl:type=Agent
  * </pre>
  *
- * <p>Or programmatically:</p>
+ * <p>Or programmatically:
+ *
  * <pre>
  * ObjectName name = new ObjectName("com.github.cc11001100.weavergirl:type=Agent");
  * long interceptCount = (Long) mBeanServer.getAttribute(name, "TotalInterceptCount");
@@ -18,36 +20,36 @@ package com.github.cc11001100.weavergirl.core.management;
  */
 public interface AgentMXBean {
 
-    /** Total number of intercepted method calls since agent started. */
-    long getTotalInterceptCount();
+  /** Total number of intercepted method calls since agent started. */
+  long getTotalInterceptCount();
 
-    /** Total time spent in interceptors (before + after) in milliseconds. */
-    long getTotalInterceptTimeMs();
+  /** Total time spent in interceptors (before + after) in milliseconds. */
+  long getTotalInterceptTimeMs();
 
-    /** Average intercept overhead per call in microseconds. */
-    double getAverageInterceptTimeUs();
+  /** Average intercept overhead per call in microseconds. */
+  double getAverageInterceptTimeUs();
 
-    /** Number of classes that were bytecode-transformed. */
-    int getTransformedClassCount();
+  /** Number of classes that were bytecode-transformed. */
+  int getTransformedClassCount();
 
-    /** Number of active interceptor definitions. */
-    int getInterceptorDefinitionCount();
+  /** Number of active interceptor definitions. */
+  int getInterceptorDefinitionCount();
 
-    /** Number of loaded plugins. */
-    int getPluginCount();
+  /** Number of loaded plugins. */
+  int getPluginCount();
 
-    /** Agent version string. */
-    String getAgentVersion();
+  /** Agent version string. */
+  String getAgentVersion();
 
-    /** Names of all loaded plugins, comma-separated. */
-    String getPluginNames();
+  /** Names of all loaded plugins, comma-separated. */
+  String getPluginNames();
 
-    /** Number of classes excluded from transformation. */
-    int getExcludedClassCount();
+  /** Number of classes excluded from transformation. */
+  int getExcludedClassCount();
 
-    /** Agent bootstrap time in ms (-1 if not measured). */
-    long getStartupMillis();
+  /** Agent bootstrap time in ms (-1 if not measured). */
+  long getStartupMillis();
 
-    /** Reset all counters to zero. */
-    void resetCounters();
+  /** Reset all counters to zero. */
+  void resetCounters();
 }

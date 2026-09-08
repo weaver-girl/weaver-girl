@@ -5,13 +5,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Process-wide kill-switch for all interception. When disabled, {@code InterceptAdvice}
- * returns immediately on every enter/exit with a single volatile read, so the host
- * application incurs no interceptor dispatch cost.
+ * Process-wide kill-switch for all interception. When disabled, {@code InterceptAdvice} returns
+ * immediately on every enter/exit with a single volatile read, so the host application incurs no
+ * interceptor dispatch cost.
  *
- * <p>Read on the hottest path of the agent, so the flag is a plain {@code volatile}
- * (no locks, no allocation). Mutations are auditable: every transition increments a
- * counter and is logged with the source (config init, REST toggle, JMX).</p>
+ * <p>Read on the hottest path of the agent, so the flag is a plain {@code volatile} (no locks, no
+ * allocation). Mutations are auditable: every transition increments a counter and is logged with
+ * the source (config init, REST toggle, JMX).
  *
  * @since 1.0.0
  */
@@ -24,7 +24,9 @@ public final class GlobalInterceptionSwitch {
 
   private GlobalInterceptionSwitch() {}
 
-  /** @return true if interception is active (default). Cheap volatile read. */
+  /**
+   * @return true if interception is active (default). Cheap volatile read.
+   */
   public static boolean isEnabled() {
     return enabled;
   }
@@ -43,7 +45,9 @@ public final class GlobalInterceptionSwitch {
     }
   }
 
-  /** @return how many times the switch has toggled since JVM start. */
+  /**
+   * @return how many times the switch has toggled since JVM start.
+   */
   public static long toggleCount() {
     return toggleCount.get();
   }

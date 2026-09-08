@@ -1,0 +1,5 @@
+# Review ownership for release-critical code.
+* @cc11001100
+/pom.xml @cc11001100
+/.github/ @cc11001100
+/scripts/ @cc11001100

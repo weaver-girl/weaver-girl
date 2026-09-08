@@ -7,10 +7,10 @@ import org.openjdk.jmh.runner.options.OptionsBuilder;
 /**
  * Convenience runner for all JMH benchmarks.
  *
- * <p>Iterations are tunable via system properties so CI can trade precision for speed:
- * {@code -Djmh.wi=2 -Djmh.i=3 -Djmh.f=1} (defaults: warmup 3, measurement 5, forks 1).</p>
+ * <p>Iterations are tunable via system properties so CI can trade precision for speed: {@code
+ * -Djmh.wi=2 -Djmh.i=3 -Djmh.f=1} (defaults: warmup 3, measurement 5, forks 1).
  *
- * <p>Run with: {@code ./mvnw -Pbench -DskipTests integration-test -pl weaver-girl-core}</p>
+ * <p>Run with: {@code ./mvnw -Pbench -DskipTests integration-test -pl weaver-girl-core}
  */
 public class InterceptorBenchmarkRunner {
 

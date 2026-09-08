@@ -5,34 +5,38 @@ import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 /**
  * SPI interface for weaver-girl plugins.
  *
- * <p>Implementations are discovered via Java {@link java.util.ServiceLoader}
- * (declared in {@code META-INF/services/com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin}).
- * Plugin developers implement this interface and package it in their JAR.</p>
+ * <p>Implementations are discovered via Java {@link java.util.ServiceLoader} (declared in {@code
+ * META-INF/services/com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin}). Plugin developers
+ * implement this interface and package it in their JAR.
  *
  * <h3>Lifecycle</h3>
- * <p>The framework manages the following lifecycle for each plugin:</p>
+ *
+ * <p>The framework manages the following lifecycle for each plugin:
+ *
  * <ol>
- *   <li><strong>Discovery</strong> &mdash; the plugin class is loaded via ServiceLoader</li>
+ *   <li><strong>Discovery</strong> &mdash; the plugin class is loaded via ServiceLoader
  *   <li><strong>Initialization</strong> &mdash; {@link #init(PluginContext)} is called once at
- *       startup, before interceptors are registered. Use this to read configuration,
- *       establish connections, or allocate resources.</li>
+ *       startup, before interceptors are registered. Use this to read configuration, establish
+ *       connections, or allocate resources.
  *   <li><strong>Registration</strong> &mdash; {@link #registerInterceptors(InterceptorRegistry)} is
  *       called once after initialization. This is where the plugin registers its interceptor
- *       definitions with the framework.</li>
+ *       definitions with the framework.
  *   <li><strong>Runtime</strong> &mdash; the plugin's interceptors are invoked as matched methods
- *       are called in the target application. The plugin itself has no active role during
- *       this phase.</li>
- *   <li><strong>Destroy</strong> &mdash; {@link #destroy()} is called once at agent shutdown.
- *       Use this to release resources, flush buffers, or close connections.</li>
+ *       are called in the target application. The plugin itself has no active role during this
+ *       phase.
+ *   <li><strong>Destroy</strong> &mdash; {@link #destroy()} is called once at agent shutdown. Use
+ *       this to release resources, flush buffers, or close connections.
  * </ol>
  *
  * <h3>Default methods</h3>
- * <p>{@link #init(PluginContext)} and {@link #destroy()} have default no-op implementations.
- * Only {@link #name()} and {@link #registerInterceptors(InterceptorRegistry)} must be
- * implemented. For convenience, consider extending {@link AbstractPlugin} which provides
- * a fluent builder API for interceptor registration.</p>
+ *
+ * <p>{@link #init(PluginContext)} and {@link #destroy()} have default no-op implementations. Only
+ * {@link #name()} and {@link #registerInterceptors(InterceptorRegistry)} must be implemented. For
+ * convenience, consider extending {@link AbstractPlugin} which provides a fluent builder API for
+ * interceptor registration.
  *
  * <h3>Usage example</h3>
+ *
  * <pre>
  * public class TimingPlugin implements WeaverPlugin {
  *     &#64;Override
@@ -66,89 +70,88 @@ import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
  */
 public interface WeaverPlugin {
 
-    /**
-     * Returns the unique name of this plugin.
-     *
-     * <p>The name is used for logging, configuration scoping, and identification.
-     * It should be a stable, human-readable identifier (e.g., {@code "timing-plugin"}).</p>
-     *
-     * @return the plugin name, never null
-     */
-    String name();
+  /**
+   * Returns the unique name of this plugin.
+   *
+   * <p>The name is used for logging, configuration scoping, and identification. It should be a
+   * stable, human-readable identifier (e.g., {@code "timing-plugin"}).
+   *
+   * @return the plugin name, never null
+   */
+  String name();
 
-    /**
-     * Initialize the plugin with access to the plugin context.
-     *
-     * <p>Called once during agent startup, before {@link #registerInterceptors(InterceptorRegistry)}.
-     * Use this method to perform initialization such as loading configuration, establishing
-     * connections, or allocating resources.</p>
-     *
-     * <p>Default implementation does nothing.</p>
-     *
-     * @param context the plugin context providing access to agent services and configuration
-     */
-    default void init(PluginContext context) {
-        // no-op by default
-    }
+  /**
+   * Initialize the plugin with access to the plugin context.
+   *
+   * <p>Called once during agent startup, before {@link #registerInterceptors(InterceptorRegistry)}.
+   * Use this method to perform initialization such as loading configuration, establishing
+   * connections, or allocating resources.
+   *
+   * <p>Default implementation does nothing.
+   *
+   * @param context the plugin context providing access to agent services and configuration
+   */
+  default void init(PluginContext context) {
+    // no-op by default
+  }
 
-    /**
-     * Register interceptor definitions with the registry.
-     *
-     * <p>Called once during agent startup, after {@link #init(PluginContext)}. This is the
-     * only required method (besides {@link #name()}). All interceptor definitions that
-     * the plugin wishes to activate must be registered here.</p>
-     *
-     * @param registry the interceptor registry to register definitions with
-     */
-    void registerInterceptors(InterceptorRegistry registry);
+  /**
+   * Register interceptor definitions with the registry.
+   *
+   * <p>Called once during agent startup, after {@link #init(PluginContext)}. This is the only
+   * required method (besides {@link #name()}). All interceptor definitions that the plugin wishes
+   * to activate must be registered here.
+   *
+   * @param registry the interceptor registry to register definitions with
+   */
+  void registerInterceptors(InterceptorRegistry registry);
 
-    /**
-     * Declare the names of plugins that must be loaded before this plugin.
-     * The framework will ensure all declared dependencies are initialized
-     * before this plugin's init() is called.
-     *
-     * <p>Default implementation returns an empty array (no dependencies).</p>
-     *
-     * @return the names of plugins this plugin depends on
-     */
-    default String[] depends() {
-        return new String[0];
-    }
+  /**
+   * Declare the names of plugins that must be loaded before this plugin. The framework will ensure
+   * all declared dependencies are initialized before this plugin's init() is called.
+   *
+   * <p>Default implementation returns an empty array (no dependencies).
+   *
+   * @return the names of plugins this plugin depends on
+   */
+  default String[] depends() {
+    return new String[0];
+  }
 
-    /**
-     * Destroy the plugin and release resources.
-     *
-     * <p>Called once during agent shutdown. Use this method to perform cleanup such as
-     * closing connections, flushing buffers, or releasing allocated resources.</p>
-     *
-     * <p>Default implementation does nothing.</p>
-     */
-    default void destroy() {
-        // no-op by default
-    }
+  /**
+   * Destroy the plugin and release resources.
+   *
+   * <p>Called once during agent shutdown. Use this method to perform cleanup such as closing
+   * connections, flushing buffers, or releasing allocated resources.
+   *
+   * <p>Default implementation does nothing.
+   */
+  default void destroy() {
+    // no-op by default
+  }
 
-    /**
-     * Check whether this plugin should be enabled at runtime.
-     *
-     * <p>Called after {@link #init(PluginContext)} but before
-     * {@link #registerInterceptors(InterceptorRegistry)}. If this method returns
-     * {@code false}, the plugin's interceptors will NOT be registered, effectively
-     * disabling the plugin at runtime.</p>
-     *
-     * <p>This allows plugins to perform conditional activation based on:</p>
-     * <ul>
-     *   <li>Configuration values (e.g., {@code context.getConfig("enabled", "true")})</li>
-     *   <li>Environment conditions (e.g., presence of a specific system property)</li>
-     *   <li>Feature flags or runtime state</li>
-     * </ul>
-     *
-     * <p>Default implementation always returns {@code true} (plugin is enabled).</p>
-     *
-     * @param context the plugin context for checking configuration
-     * @return {@code true} if the plugin should register its interceptors
-     * @since 1.0.0
-     */
-    default boolean isEnabled(PluginContext context) {
-        return true;
-    }
+  /**
+   * Check whether this plugin should be enabled at runtime.
+   *
+   * <p>Called after {@link #init(PluginContext)} but before {@link
+   * #registerInterceptors(InterceptorRegistry)}. If this method returns {@code false}, the plugin's
+   * interceptors will NOT be registered, effectively disabling the plugin at runtime.
+   *
+   * <p>This allows plugins to perform conditional activation based on:
+   *
+   * <ul>
+   *   <li>Configuration values (e.g., {@code context.getConfig("enabled", "true")})
+   *   <li>Environment conditions (e.g., presence of a specific system property)
+   *   <li>Feature flags or runtime state
+   * </ul>
+   *
+   * <p>Default implementation always returns {@code true} (plugin is enabled).
+   *
+   * @param context the plugin context for checking configuration
+   * @return {@code true} if the plugin should register its interceptors
+   * @since 1.0.0
+   */
+  default boolean isEnabled(PluginContext context) {
+    return true;
+  }
 }

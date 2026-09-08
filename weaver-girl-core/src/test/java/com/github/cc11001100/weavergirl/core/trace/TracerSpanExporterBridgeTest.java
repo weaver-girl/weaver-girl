@@ -1,91 +1,89 @@
 package com.github.cc11001100.weavergirl.core.trace;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.github.cc11001100.weavergirl.api.tracing.SpanContext;
 import com.github.cc11001100.weavergirl.api.tracing.Tracer;
 import com.github.cc11001100.weavergirl.core.exporter.SpanData;
 import com.github.cc11001100.weavergirl.core.exporter.SpanExporter;
 import com.github.cc11001100.weavergirl.core.exporter.SpanFormatter;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-/**
- * Tests for TracerSpanExporterBridge connecting Tracer to SpanExporter.
- */
+/** Tests for TracerSpanExporterBridge connecting Tracer to SpanExporter. */
 class TracerSpanExporterBridgeTest {
 
-    private SpanExporter exporter;
-    private SpanFormatter.InMemorySpanFormatter inMemory;
-    private TracerSpanExporterBridge bridge;
+  private SpanExporter exporter;
+  private SpanFormatter.InMemorySpanFormatter inMemory;
+  private TracerSpanExporterBridge bridge;
 
-    @BeforeEach
-    void setUp() {
-        Tracer.clearCurrentSpan();
-        Tracer.setCompletionListener(null);
+  @BeforeEach
+  void setUp() {
+    Tracer.clearCurrentSpan();
+    Tracer.setCompletionListener(null);
 
-        exporter = new SpanExporter();
-        inMemory = new SpanFormatter.InMemorySpanFormatter();
-        exporter.addFormatter(inMemory);
-        exporter.start();
+    exporter = new SpanExporter();
+    inMemory = new SpanFormatter.InMemorySpanFormatter();
+    exporter.addFormatter(inMemory);
+    exporter.start();
 
-        bridge = new TracerSpanExporterBridge(exporter);
-        bridge.install();
-    }
+    bridge = new TracerSpanExporterBridge(exporter);
+    bridge.install();
+  }
 
-    @AfterEach
-    void tearDown() {
-        bridge.uninstall();
-        exporter.stop();
-        Tracer.clearCurrentSpan();
-    }
+  @AfterEach
+  void tearDown() {
+    bridge.uninstall();
+    exporter.stop();
+    Tracer.clearCurrentSpan();
+  }
 
-    @Test
-    void endSpan_shouldSubmitToExporter() {
-        Tracer.startSpan();
-        SpanContext ended = Tracer.endSpan("test-op", "OK");
+  @Test
+  void endSpan_shouldSubmitToExporter() {
+    Tracer.startSpan();
+    SpanContext ended = Tracer.endSpan("test-op", "OK");
 
-        assertNotNull(ended);
-        exporter.flush();
+    assertNotNull(ended);
+    exporter.flush();
 
-        List<SpanData> spans = inMemory.getSpans();
-        assertEquals(1, spans.size());
+    List<SpanData> spans = inMemory.getSpans();
+    assertEquals(1, spans.size());
 
-        SpanData data = spans.get(0);
-        assertEquals(ended.getTraceId(), data.getTraceId());
-        assertEquals(ended.getSpanId(), data.getSpanId());
-    }
+    SpanData data = spans.get(0);
+    assertEquals(ended.getTraceId(), data.getTraceId());
+    assertEquals(ended.getSpanId(), data.getSpanId());
+  }
 
-    @Test
-    void endSpan_shouldCalculateDuration() throws InterruptedException {
-        Tracer.startSpan();
-        Thread.sleep(50);
-        Tracer.endSpan("timed-op", "OK");
+  @Test
+  void endSpan_shouldCalculateDuration() throws InterruptedException {
+    Tracer.startSpan();
+    Thread.sleep(50);
+    Tracer.endSpan("timed-op", "OK");
 
-        exporter.flush();
+    exporter.flush();
 
-        List<SpanData> spans = inMemory.getSpans();
-        assertEquals(1, spans.size());
+    List<SpanData> spans = inMemory.getSpans();
+    assertEquals(1, spans.size());
 
-        SpanData data = spans.get(0);
-        assertTrue(data.getDurationMs() >= 50,
-                "Duration should be at least 50ms but was " + data.getDurationMs());
-    }
+    SpanData data = spans.get(0);
+    assertTrue(
+        data.getDurationMs() >= 50,
+        "Duration should be at least 50ms but was " + data.getDurationMs());
+  }
 
-    @Test
-    void endSpan_shouldIncludeOperationName() {
-        Tracer.startSpan();
-        Tracer.endSpan("HTTP GET /api/users", "OK");
+  @Test
+  void endSpan_shouldIncludeOperationName() {
+    Tracer.startSpan();
+    Tracer.endSpan("HTTP GET /api/users", "OK");
 
-        exporter.flush();
+    exporter.flush();
 
-        List<SpanData> spans = inMemory.getSpans();
-        assertEquals(1, spans.size());
+    List<SpanData> spans = inMemory.getSpans();
+    assertEquals(1, spans.size());
 
-        SpanData data = spans.get(0);
-        assertEquals("HTTP GET /api/users", data.getOperationName());
-    }
+    SpanData data = spans.get(0);
+    assertEquals("HTTP GET /api/users", data.getOperationName());
+  }
 }

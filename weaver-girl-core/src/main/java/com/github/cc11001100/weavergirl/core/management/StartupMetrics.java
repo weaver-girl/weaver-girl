@@ -4,8 +4,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Records agent startup duration and per-phase timings.
- * Read by {@link AgentMonitor} and the REST diagnostics endpoint.
+ * Records agent startup duration and per-phase timings. Read by {@link AgentMonitor} and the REST
+ * diagnostics endpoint.
  *
  * @since 1.0.0
  */
@@ -34,7 +34,9 @@ public final class StartupMetrics {
     phaseMillis.put(name, durationNanos / 1_000_000L);
   }
 
-  /** @return total bootstrap time in ms, or -1 if not finished. */
+  /**
+   * @return total bootstrap time in ms, or -1 if not finished.
+   */
   public static long totalMillis() {
     if (startNanos == 0L || endNanos == 0L) {
       return -1L;
@@ -42,12 +44,16 @@ public final class StartupMetrics {
     return Math.max(0L, (endNanos - startNanos) / 1_000_000L);
   }
 
-  /** @return true if startup exceeded the budget. */
+  /**
+   * @return true if startup exceeded the budget.
+   */
   public static boolean overBudget() {
     return totalMillis() > STARTUP_BUDGET_MS;
   }
 
-  /** @return immutable copy of per-phase timings in ms. */
+  /**
+   * @return immutable copy of per-phase timings in ms.
+   */
   public static Map<String, Long> phaseMillis() {
     return new LinkedHashMap<>(phaseMillis);
   }

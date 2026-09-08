@@ -3,212 +3,330 @@ package com.github.cc11001100.weavergirl.core.config;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Data model for weaver-girl YAML configuration.
- */
+/** Data model for weaver-girl YAML configuration. */
 public class WeaverConfig {
 
-    private List<InterceptorConfig> interceptors = new ArrayList<>();
+  private List<InterceptorConfig> interceptors = new ArrayList<>();
 
-    // Agent-level settings
-    private Integer samplingThreshold;      // invocations/second threshold
-    private Integer circuitBreakerFailures;  // consecutive failures before opening
-    private Long circuitBreakerCooldown;     // cooldown in milliseconds
-    private List<String> excludedClasses;    // class name patterns to exclude from instrumentation
-    private String logLevel;                 // TRACE, DEBUG, INFO, WARN, ERROR
-    private Integer maxTransformations;      // max number of classes to transform
-    private List<String> onlyInterceptPackages; // limit instrumentation to these packages
-    private List<String> disabledPlugins;     // plugin names to skip during loading
-    /** Alert rule configurations. */
-    private List<AlertRuleConfig> alertRules = new ArrayList<>();
+  // Agent-level settings
+  private Integer samplingThreshold; // invocations/second threshold
+  private Integer circuitBreakerFailures; // consecutive failures before opening
+  private Long circuitBreakerCooldown; // cooldown in milliseconds
+  private List<String> excludedClasses; // class name patterns to exclude from instrumentation
+  private String logLevel; // TRACE, DEBUG, INFO, WARN, ERROR
+  private Integer maxTransformations; // max number of classes to transform
+  private List<String> onlyInterceptPackages; // limit instrumentation to these packages
+  private List<String> disabledPlugins; // plugin names to skip during loading
 
-    public List<InterceptorConfig> getInterceptors() {
-        return interceptors;
+  /** Alert rule configurations. */
+  private List<AlertRuleConfig> alertRules = new ArrayList<>();
+
+  public List<InterceptorConfig> getInterceptors() {
+    return interceptors;
+  }
+
+  public void setInterceptors(List<InterceptorConfig> interceptors) {
+    this.interceptors = interceptors != null ? interceptors : new ArrayList<>();
+  }
+
+  public Integer getSamplingThreshold() {
+    return samplingThreshold;
+  }
+
+  public void setSamplingThreshold(Integer samplingThreshold) {
+    this.samplingThreshold = samplingThreshold;
+  }
+
+  public Integer getCircuitBreakerFailures() {
+    return circuitBreakerFailures;
+  }
+
+  public void setCircuitBreakerFailures(Integer circuitBreakerFailures) {
+    this.circuitBreakerFailures = circuitBreakerFailures;
+  }
+
+  public Long getCircuitBreakerCooldown() {
+    return circuitBreakerCooldown;
+  }
+
+  public void setCircuitBreakerCooldown(Long circuitBreakerCooldown) {
+    this.circuitBreakerCooldown = circuitBreakerCooldown;
+  }
+
+  public List<String> getExcludedClasses() {
+    return excludedClasses;
+  }
+
+  public void setExcludedClasses(List<String> excludedClasses) {
+    this.excludedClasses = excludedClasses;
+  }
+
+  public String getLogLevel() {
+    return logLevel;
+  }
+
+  public void setLogLevel(String logLevel) {
+    this.logLevel = logLevel;
+  }
+
+  public Integer getMaxTransformations() {
+    return maxTransformations;
+  }
+
+  public void setMaxTransformations(Integer maxTransformations) {
+    this.maxTransformations = maxTransformations;
+  }
+
+  public List<String> getOnlyInterceptPackages() {
+    return onlyInterceptPackages;
+  }
+
+  public void setOnlyInterceptPackages(List<String> onlyInterceptPackages) {
+    this.onlyInterceptPackages = onlyInterceptPackages;
+  }
+
+  public List<String> getDisabledPlugins() {
+    return disabledPlugins;
+  }
+
+  public void setDisabledPlugins(List<String> disabledPlugins) {
+    this.disabledPlugins = disabledPlugins;
+  }
+
+  public List<AlertRuleConfig> getAlertRules() {
+    return alertRules != null ? alertRules : new ArrayList<>();
+  }
+
+  public void setAlertRules(List<AlertRuleConfig> alertRules) {
+    this.alertRules = alertRules;
+  }
+
+  /** Configuration for an alert rule, loaded from YAML. */
+  public static class AlertRuleConfig {
+    private String name;
+    private String type = "custom";
+    private String metric;
+    private String operator = "gt";
+    private double threshold;
+    private long windowMs = 60000;
+    private String severity = "warning";
+    private String message;
+    private boolean enabled = true;
+
+    public String getName() {
+      return name;
     }
 
-    public void setInterceptors(List<InterceptorConfig> interceptors) {
-        this.interceptors = interceptors != null ? interceptors : new ArrayList<>();
+    public void setName(String name) {
+      this.name = name;
     }
 
-    public Integer getSamplingThreshold() {
-        return samplingThreshold;
+    public String getType() {
+      return type;
     }
 
-    public void setSamplingThreshold(Integer samplingThreshold) {
-        this.samplingThreshold = samplingThreshold;
+    public void setType(String type) {
+      this.type = type;
     }
 
-    public Integer getCircuitBreakerFailures() {
-        return circuitBreakerFailures;
+    public String getMetric() {
+      return metric;
     }
 
-    public void setCircuitBreakerFailures(Integer circuitBreakerFailures) {
-        this.circuitBreakerFailures = circuitBreakerFailures;
+    public void setMetric(String metric) {
+      this.metric = metric;
     }
 
-    public Long getCircuitBreakerCooldown() {
-        return circuitBreakerCooldown;
+    public String getOperator() {
+      return operator;
     }
 
-    public void setCircuitBreakerCooldown(Long circuitBreakerCooldown) {
-        this.circuitBreakerCooldown = circuitBreakerCooldown;
+    public void setOperator(String operator) {
+      this.operator = operator;
     }
 
-    public List<String> getExcludedClasses() {
-        return excludedClasses;
+    public double getThreshold() {
+      return threshold;
     }
 
-    public void setExcludedClasses(List<String> excludedClasses) {
-        this.excludedClasses = excludedClasses;
+    public void setThreshold(double threshold) {
+      this.threshold = threshold;
     }
 
-    public String getLogLevel() {
-        return logLevel;
+    public long getWindowMs() {
+      return windowMs;
     }
 
-    public void setLogLevel(String logLevel) {
-        this.logLevel = logLevel;
+    public void setWindowMs(long windowMs) {
+      this.windowMs = windowMs;
     }
 
-    public Integer getMaxTransformations() {
-        return maxTransformations;
+    public String getSeverity() {
+      return severity;
     }
 
-    public void setMaxTransformations(Integer maxTransformations) {
-        this.maxTransformations = maxTransformations;
+    public void setSeverity(String severity) {
+      this.severity = severity;
     }
 
-    public List<String> getOnlyInterceptPackages() {
-        return onlyInterceptPackages;
+    public String getMessage() {
+      return message;
     }
 
-    public void setOnlyInterceptPackages(List<String> onlyInterceptPackages) {
-        this.onlyInterceptPackages = onlyInterceptPackages;
+    public void setMessage(String message) {
+      this.message = message;
     }
 
-    public List<String> getDisabledPlugins() {
-        return disabledPlugins;
+    public boolean isEnabled() {
+      return enabled;
     }
 
-    public void setDisabledPlugins(List<String> disabledPlugins) {
-        this.disabledPlugins = disabledPlugins;
+    public void setEnabled(boolean enabled) {
+      this.enabled = enabled;
     }
 
-    public List<AlertRuleConfig> getAlertRules() {
-        return alertRules != null ? alertRules : new ArrayList<>();
+    /** Convert to an AlertRule instance. */
+    public com.github.cc11001100.weavergirl.api.alert.AlertRule toAlertRule() {
+      return com.github.cc11001100.weavergirl.api.alert.AlertRule.builder()
+          .name(name)
+          .type(type)
+          .metric(metric)
+          .operator(operator)
+          .threshold(threshold)
+          .windowMs(windowMs)
+          .severity(severity)
+          .message(message)
+          .enabled(enabled)
+          .build();
+    }
+  }
+
+  public static class InterceptorConfig {
+    private String className;
+    private String classPattern;
+    private String method;
+    private String methodPattern;
+    private String before;
+    private String after;
+    private String around;
+    private int priority;
+    private String classAnnotation;
+    private String superClass;
+    private String interfaceName;
+    private String methodAnnotation;
+    private String methodSignature;
+    private String pointcut;
+
+    public String getClassName() {
+      return className;
     }
 
-    public void setAlertRules(List<AlertRuleConfig> alertRules) {
-        this.alertRules = alertRules;
+    public void setClassName(String className) {
+      this.className = className;
     }
 
-    /**
-     * Configuration for an alert rule, loaded from YAML.
-     */
-    public static class AlertRuleConfig {
-        private String name;
-        private String type = "custom";
-        private String metric;
-        private String operator = "gt";
-        private double threshold;
-        private long windowMs = 60000;
-        private String severity = "warning";
-        private String message;
-        private boolean enabled = true;
-
-        public String getName() { return name; }
-        public void setName(String name) { this.name = name; }
-        public String getType() { return type; }
-        public void setType(String type) { this.type = type; }
-        public String getMetric() { return metric; }
-        public void setMetric(String metric) { this.metric = metric; }
-        public String getOperator() { return operator; }
-        public void setOperator(String operator) { this.operator = operator; }
-        public double getThreshold() { return threshold; }
-        public void setThreshold(double threshold) { this.threshold = threshold; }
-        public long getWindowMs() { return windowMs; }
-        public void setWindowMs(long windowMs) { this.windowMs = windowMs; }
-        public String getSeverity() { return severity; }
-        public void setSeverity(String severity) { this.severity = severity; }
-        public String getMessage() { return message; }
-        public void setMessage(String message) { this.message = message; }
-        public boolean isEnabled() { return enabled; }
-        public void setEnabled(boolean enabled) { this.enabled = enabled; }
-
-        /**
-         * Convert to an AlertRule instance.
-         */
-        public com.github.cc11001100.weavergirl.api.alert.AlertRule toAlertRule() {
-            return com.github.cc11001100.weavergirl.api.alert.AlertRule.builder()
-                    .name(name)
-                    .type(type)
-                    .metric(metric)
-                    .operator(operator)
-                    .threshold(threshold)
-                    .windowMs(windowMs)
-                    .severity(severity)
-                    .message(message)
-                    .enabled(enabled)
-                    .build();
-        }
+    public String getClassPattern() {
+      return classPattern;
     }
 
-    public static class InterceptorConfig {
-        private String className;
-        private String classPattern;
-        private String method;
-        private String methodPattern;
-        private String before;
-        private String after;
-        private String around;
-        private int priority;
-        private String classAnnotation;
-        private String superClass;
-        private String interfaceName;
-        private String methodAnnotation;
-        private String methodSignature;
-        private String pointcut;
-
-        public String getClassName() { return className; }
-        public void setClassName(String className) { this.className = className; }
-
-        public String getClassPattern() { return classPattern; }
-        public void setClassPattern(String classPattern) { this.classPattern = classPattern; }
-
-        public String getMethod() { return method; }
-        public void setMethod(String method) { this.method = method; }
-
-        public String getMethodPattern() { return methodPattern; }
-        public void setMethodPattern(String methodPattern) { this.methodPattern = methodPattern; }
-
-        public String getBefore() { return before; }
-        public void setBefore(String before) { this.before = before; }
-
-        public String getAfter() { return after; }
-        public void setAfter(String after) { this.after = after; }
-
-        public String getAround() { return around; }
-        public void setAround(String around) { this.around = around; }
-
-        public int getPriority() { return priority; }
-        public void setPriority(int priority) { this.priority = priority; }
-
-        public String getClassAnnotation() { return classAnnotation; }
-        public void setClassAnnotation(String classAnnotation) { this.classAnnotation = classAnnotation; }
-
-        public String getSuperClass() { return superClass; }
-        public void setSuperClass(String superClass) { this.superClass = superClass; }
-
-        public String getInterfaceName() { return interfaceName; }
-        public void setInterfaceName(String interfaceName) { this.interfaceName = interfaceName; }
-
-        public String getMethodAnnotation() { return methodAnnotation; }
-        public void setMethodAnnotation(String methodAnnotation) { this.methodAnnotation = methodAnnotation; }
-
-        public String getMethodSignature() { return methodSignature; }
-        public void setMethodSignature(String methodSignature) { this.methodSignature = methodSignature; }
-
-        public String getPointcut() { return pointcut; }
-        public void setPointcut(String pointcut) { this.pointcut = pointcut; }
+    public void setClassPattern(String classPattern) {
+      this.classPattern = classPattern;
     }
+
+    public String getMethod() {
+      return method;
+    }
+
+    public void setMethod(String method) {
+      this.method = method;
+    }
+
+    public String getMethodPattern() {
+      return methodPattern;
+    }
+
+    public void setMethodPattern(String methodPattern) {
+      this.methodPattern = methodPattern;
+    }
+
+    public String getBefore() {
+      return before;
+    }
+
+    public void setBefore(String before) {
+      this.before = before;
+    }
+
+    public String getAfter() {
+      return after;
+    }
+
+    public void setAfter(String after) {
+      this.after = after;
+    }
+
+    public String getAround() {
+      return around;
+    }
+
+    public void setAround(String around) {
+      this.around = around;
+    }
+
+    public int getPriority() {
+      return priority;
+    }
+
+    public void setPriority(int priority) {
+      this.priority = priority;
+    }
+
+    public String getClassAnnotation() {
+      return classAnnotation;
+    }
+
+    public void setClassAnnotation(String classAnnotation) {
+      this.classAnnotation = classAnnotation;
+    }
+
+    public String getSuperClass() {
+      return superClass;
+    }
+
+    public void setSuperClass(String superClass) {
+      this.superClass = superClass;
+    }
+
+    public String getInterfaceName() {
+      return interfaceName;
+    }
+
+    public void setInterfaceName(String interfaceName) {
+      this.interfaceName = interfaceName;
+    }
+
+    public String getMethodAnnotation() {
+      return methodAnnotation;
+    }
+
+    public void setMethodAnnotation(String methodAnnotation) {
+      this.methodAnnotation = methodAnnotation;
+    }
+
+    public String getMethodSignature() {
+      return methodSignature;
+    }
+
+    public void setMethodSignature(String methodSignature) {
+      this.methodSignature = methodSignature;
+    }
+
+    public String getPointcut() {
+      return pointcut;
+    }
+
+    public void setPointcut(String pointcut) {
+      this.pointcut = pointcut;
+    }
+  }
 }
