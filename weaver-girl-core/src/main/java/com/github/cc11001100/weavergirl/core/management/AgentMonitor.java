@@ -170,6 +170,31 @@ public class AgentMonitor implements AgentMXBean {
   }
 
   @Override
+  public double getCpuUsage() {
+    return AgentSelfMonitor.getCpuUsage();
+  }
+
+  @Override
+  public long getThreadCount() {
+    return AgentSelfMonitor.getThreadCount();
+  }
+
+  @Override
+  public long getDaemonThreadCount() {
+    return AgentSelfMonitor.getDaemonThreadCount();
+  }
+
+  @Override
+  public long getHeapMemoryUsed() {
+    return AgentSelfMonitor.getHeapMemoryUsed();
+  }
+
+  @Override
+  public long getNonHeapMemoryUsed() {
+    return AgentSelfMonitor.getNonHeapMemoryUsed();
+  }
+
+  @Override
   public void resetCounters() {
     interceptCount.set(0);
     interceptTimeNanos.set(0);

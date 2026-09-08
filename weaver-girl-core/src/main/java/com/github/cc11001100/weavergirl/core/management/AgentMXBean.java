@@ -50,6 +50,21 @@ public interface AgentMXBean {
   /** Agent bootstrap time in ms (-1 if not measured). */
   long getStartupMillis();
 
+  /** System CPU usage, 0.0-1.0, or -1 if unavailable. */
+  double getCpuUsage();
+
+  /** Current JVM thread count, or -1 if unavailable. */
+  long getThreadCount();
+
+  /** Current JVM daemon thread count, or -1 if unavailable. */
+  long getDaemonThreadCount();
+
+  /** Heap memory used in bytes, or -1 if unavailable. */
+  long getHeapMemoryUsed();
+
+  /** Non-heap memory used in bytes, or -1 if unavailable. */
+  long getNonHeapMemoryUsed();
+
   /** Reset all counters to zero. */
   void resetCounters();
 }
