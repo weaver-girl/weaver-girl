@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up JDK ${{ matrix.java }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: ${{ matrix.java }}
           distribution: temurin
@@ -62,7 +62,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 17
           distribution: temurin
@@ -96,7 +96,7 @@ jobs:
         # which is not a valid javac flag on JDK 8. JDK 17 is the build JDK; the
         # resulting agent jar is --release 8 bytecode and still loads on JDK 8
         # (verified by agent-smoke.yml's bare-attach matrix).
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 17
           distribution: temurin
@@ -133,7 +133,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up JDK ${{ matrix.java }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: ${{ matrix.java }}
           distribution: temurin
