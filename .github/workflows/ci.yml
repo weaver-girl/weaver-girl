@@ -48,7 +48,7 @@ jobs:
 
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-reports-jdk${{ matrix.java }}
           path: '**/surefire-reports/*.txt'
@@ -79,7 +79,7 @@ jobs:
 
       - name: Upload JaCoCo Report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: jacoco-coverage-report
           path: '**/target/site/jacoco/**'
@@ -114,7 +114,7 @@ jobs:
           echo "Plugin count:"
           jar tf "$AGENT_JAR" | grep 'plugins/.*Plugin\.class' | grep -v '\$' | wc -l
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: weaver-girl-agent
           path: weaver-girl-agent/target/weaver-girl-agent-*.jar
