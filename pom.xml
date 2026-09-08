@@ -63,7 +63,7 @@
         <mockito.version>5.11.0</mockito.version>
 
         <!-- Quality tools -->
-        <jacoco.version>0.8.11</jacoco.version>
+        <jacoco.version>0.8.15</jacoco.version>
         <spotbugs.version>4.8.3.0</spotbugs.version>
         <checkstyle.version>3.3.1</checkstyle.version>
         <jacoco.coverage.minimum>0.80</jacoco.coverage.minimum>
