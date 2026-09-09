@@ -2,6 +2,8 @@ const express = require('express');
 const docsRoutes = require('./routes/docs');
 const pluginsRoutes = require('./routes/plugins');
 const statusRoutes = require('./routes/status');
+const aboutRoutes = require('./routes/about');
+const configRoutes = require('./routes/config');
 
 const app = express();
 app.use(express.json());
@@ -9,6 +11,8 @@ app.use(express.json());
 app.use('/docs', docsRoutes);
 app.use('/plugins', pluginsRoutes);
 app.use('/api/status', statusRoutes);
+app.use('/about', aboutRoutes);
+app.use('/config', configRoutes);
 
 app.get('/', (req, res) => {
   res.json({
@@ -17,7 +21,9 @@ app.get('/', (req, res) => {
     endpoints: [
       '/docs',
       '/plugins',
-      '/api/status'
+      '/api/status',
+      '/about',
+      '/config'
     ]
   });
 });
