@@ -7,6 +7,9 @@ import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
+import com.github.cc11001100.weavergirl.core.event.LifecycleEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,10 +78,20 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
       bumpGeneration();
       fireReloadHooks();
       // Invoke lifecycle hook
+      boolean initOk = true;
       try {
         definition.getInterceptor().initialize();
       } catch (Throwable t) {
+        initOk = false;
         log.warn("Interceptor {} initialize() failed: {}", definition.getName(), t.getMessage());
+      }
+      try {
+        InterceptorEventPublisher.getInstance()
+            .publish(
+                LifecycleEvents.registry(
+                    LifecycleEvents.PHASE_REGISTER, definition.getName(), initOk, null));
+      } catch (Throwable t) {
+        log.debug("Lifecycle event publish failed: {}", t.getMessage());
       }
     }
     log.info("Registered interceptor: {}", definition.getName());
@@ -144,12 +157,20 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
       bumpGeneration();
       fireReloadHooks();
       log.info("Unregistered interceptor: {}", name);
+      boolean destroyOk = true;
       if (toRemove != null) {
         try {
           toRemove.getInterceptor().destroy();
         } catch (Throwable t) {
+          destroyOk = false;
           log.warn("Interceptor {} destroy() failed: {}", name, t.getMessage());
         }
+      }
+      try {
+        InterceptorEventPublisher.getInstance()
+            .publish(LifecycleEvents.registry(LifecycleEvents.PHASE_UNREGISTER, name, destroyOk, null));
+      } catch (Throwable t) {
+        log.debug("Lifecycle event publish failed: {}", t.getMessage());
       }
     }
     return removed;
@@ -167,10 +188,19 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
       fireReloadHooks();
     }
     for (InterceptorDefinition def : clearedDefinitions) {
+      boolean destroyOk = true;
       try {
         def.getInterceptor().destroy();
       } catch (Throwable t) {
+        destroyOk = false;
         log.warn("Interceptor {} destroy() failed during clear(): {}", def.getName(), t.getMessage());
+      }
+      try {
+        InterceptorEventPublisher.getInstance()
+            .publish(
+                LifecycleEvents.registry(LifecycleEvents.PHASE_CLEAR, def.getName(), destroyOk, null));
+      } catch (Throwable t) {
+        log.debug("Lifecycle event publish failed: {}", t.getMessage());
       }
     }
   }

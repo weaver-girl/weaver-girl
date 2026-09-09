@@ -54,6 +54,8 @@ public class MethodMatcher {
     SIGNATURE,
     /** Match constructors only. */
     CONSTRUCTOR,
+    /** Match methods whose parameter types at given indexes carry a specific annotation. */
+    ARGS,
     /** Match all methods. */
     ANY
   }
@@ -61,11 +63,23 @@ public class MethodMatcher {
   private final MatchType matchType;
   private final String pattern;
   private final Pattern compiledRegex;
+  private final String argumentAnnotationClassName;
+  private final int[] argumentIndexes;
 
   private MethodMatcher(MatchType matchType, String pattern) {
+    this(matchType, pattern, null, null);
+  }
+
+  private MethodMatcher(
+      MatchType matchType,
+      String pattern,
+      String argumentAnnotationClassName,
+      int[] argumentIndexes) {
     this.matchType = matchType;
     this.pattern = pattern;
     this.compiledRegex = (matchType == MatchType.NAME_PATTERN) ? Pattern.compile(pattern) : null;
+    this.argumentAnnotationClassName = argumentAnnotationClassName;
+    this.argumentIndexes = argumentIndexes;
   }
 
   /**
@@ -169,6 +183,30 @@ public class MethodMatcher {
   }
 
   /**
+   * Creates a matcher that matches methods whose parameter types at given indexes carry the
+   * specified annotation.
+   *
+   * <p>This corresponds to the {@code @args} pointcut designator. Indexes are zero-based.
+   *
+   * @param annotationClassName the fully-qualified annotation class name present on parameter types
+   * @param argumentIndexes zero-based argument indexes to match
+   * @return a new MethodMatcher with {@link MatchType#ARGS}
+   * @since 1.9.0
+   */
+  public static MethodMatcher byArgumentAnnotation(String annotationClassName, int... argumentIndexes) {
+    ValidationUtils.requireNonEmpty(annotationClassName, "annotationClassName");
+    if (argumentIndexes == null || argumentIndexes.length == 0) {
+      throw new IllegalArgumentException(
+          "argumentIndexes must contain at least one index for @args matching");
+    }
+    return new MethodMatcher(
+        MatchType.ARGS,
+        annotationClassName,
+        annotationClassName,
+        argumentIndexes);
+  }
+
+  /**
    * Returns the match type of this matcher.
    *
    * @return the match type
@@ -187,6 +225,26 @@ public class MethodMatcher {
    */
   public String getPattern() {
     return pattern;
+  }
+
+  /**
+   * Returns the argument annotation class name for {@link MatchType#ARGS} matchers.
+   *
+   * @return the annotation class name, or null
+   * @since 1.9.0
+   */
+  public String getArgumentAnnotationClassName() {
+    return argumentAnnotationClassName;
+  }
+
+  /**
+   * Returns the argument indexes for {@link MatchType#ARGS} matchers.
+   *
+   * @return the argument indexes, or null
+   * @since 1.9.0
+   */
+  public int[] getArgumentIndexes() {
+    return argumentIndexes;
   }
 
   /**
@@ -263,7 +321,39 @@ public class MethodMatcher {
       }
       return true;
     }
+
+    if (matchType == MatchType.ARGS) {
+      return matchesArgumentAnnotation(parameterTypes);
+    }
+
     return matches(methodName);
+  }
+
+  private boolean matchesArgumentAnnotation(Class<?>[] parameterTypes) {
+    if (argumentAnnotationClassName == null
+        || argumentIndexes == null
+        || argumentIndexes.length == 0) {
+      return false;
+    }
+    if (parameterTypes == null || parameterTypes.length == 0) {
+      return false;
+    }
+    try {
+      Class<? extends java.lang.annotation.Annotation> annotationClass =
+          (Class<? extends java.lang.annotation.Annotation>)
+              Class.forName(argumentAnnotationClassName);
+      for (int index : argumentIndexes) {
+        if (index < 0 || index >= parameterTypes.length) {
+          return false;
+        }
+        if (!parameterTypes[index].isAnnotationPresent(annotationClass)) {
+          return false;
+        }
+      }
+      return true;
+    } catch (Throwable e) {
+      return false;
+    }
   }
 
   @Override

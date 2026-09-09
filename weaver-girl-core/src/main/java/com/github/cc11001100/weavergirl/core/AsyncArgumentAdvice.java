@@ -4,6 +4,7 @@ import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.core.InterceptorHolder;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import java.lang.reflect.Method;
 import java.util.List;
@@ -121,7 +122,7 @@ public class AsyncArgumentAdvice {
       MethodInvocation invocation =
           new MethodInvocation(targetClass, methodName, method, null, snapshot);
 
-      List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
+      List<InterceptorDefinition> defs = InterceptorHolder.getInterceptorsForClassSnapshot(className);
       for (InterceptorDefinition def : defs) {
         if (def.getAdviceMode()
             != com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode

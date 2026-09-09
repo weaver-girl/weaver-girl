@@ -1,9 +1,13 @@
 package com.github.cc11001100.weavergirl.core;
 
+import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
+import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
+import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.circuit.InterceptorCircuitBreaker;
 import com.github.cc11001100.weavergirl.core.management.AgentMonitor;
+import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import com.github.cc11001100.weavergirl.core.switches.GlobalInterceptionSwitch;
 import org.slf4j.Logger;
@@ -24,16 +28,110 @@ public class InterceptorHolder {
   private static volatile InterceptorRegistry registry;
   private static final InterceptorCircuitBreaker circuitBreaker = new InterceptorCircuitBreaker();
 
+  // --- Dynamic registry snapshot cache (P103) ---
+  // Lazily-rebuilt snapshot separating EXACT_NAME (indexed) and non-EXACT_NAME (scanned)
+  // interceptors, invalidated when the underlying DefaultInterceptorRegistry's generation changes.
+  private static volatile RegistrySnapshot cachedSnapshot;
+  private static final Object snapshotLock = new Object();
+
+  private static class RegistrySnapshot {
+    final long generation;
+    // Pre-computed EXACT_NAME results from the registry's atomic classIndex
+    final java.util.Map<String, java.util.List<InterceptorDefinition>> exactCache;
+    // Cached copy of non-EXACT_NAME definitions (pattern, annotation, super, interface)
+    final java.util.List<InterceptorDefinition> nonExactDefs;
+
+    RegistrySnapshot(long generation,
+                     java.util.Map<String, java.util.List<InterceptorDefinition>> exactCache,
+                     java.util.List<InterceptorDefinition> nonExactDefs) {
+      this.generation = generation;
+      this.exactCache = exactCache;
+      this.nonExactDefs = nonExactDefs;
+    }
+  }
+
   public static void logInterceptorError(String interceptorName, String phase, Throwable e) {
     LOG.warn("Interceptor '{}' failed in {}: {}", interceptorName, phase, e.getMessage());
   }
 
   public static void setRegistry(InterceptorRegistry registry) {
+    cachedSnapshot = null; // invalidate cache on registry swap
     InterceptorHolder.registry = registry;
   }
 
   public static InterceptorRegistry getRegistry() {
     return registry;
+  }
+
+  /**
+   * Lazily-rebuild and cache the class→interceptors mapping. This avoids scanning all definitions
+   * on every method enter/exit when the registry hasn't changed. The cache is invalidated when
+   * the underlying {@link DefaultInterceptorRegistry} reports a new generation number.
+   *
+   * <p>Optimization: EXACT_NAME interceptors are served from the registry's atomic classIndex
+   * (O(1) lookup per class). Non-EXACT_NAME interceptors (pattern/annotation/super/interface)
+   * are collected once per generation and scanned only when needed.
+   */
+  public static java.util.List<InterceptorDefinition> getInterceptorsForClassSnapshot(String className) {
+    InterceptorRegistry reg = registry;
+    if (reg == null) {
+      return java.util.Collections.emptyList();
+    }
+    if (!(reg instanceof DefaultInterceptorRegistry)) {
+      // Fall back to the raw registry call for non-default implementations
+      return reg.getInterceptorsForClass(className);
+    }
+    DefaultInterceptorRegistry dir = (DefaultInterceptorRegistry) reg;
+    long currentGeneration = dir.getGeneration();
+    RegistrySnapshot snap = cachedSnapshot;
+    if (snap == null || snap.generation != currentGeneration) {
+      synchronized (snapshotLock) {
+        snap = cachedSnapshot;
+        if (snap == null || snap.generation != currentGeneration) {
+          // Build a stable snapshot: EXACT_NAME results from the atomic classIndex,
+          // plus a snapshot of non-EXACT_NAME definitions.
+          java.util.Map<String, java.util.List<InterceptorDefinition>> exactCache =
+              new java.util.HashMap<>(dir.getAllDefinitions().stream()
+                  .filter(d -> d.getPointcut().getClassMatcher().getMatchType()
+                      == ClassMatcher.MatchType.EXACT_NAME)
+                  .collect(java.util.stream.Collectors.groupingBy(
+                      d -> d.getPointcut().getClassMatcher().getPattern(),
+                      java.util.stream.Collectors.toList())));
+          java.util.List<InterceptorDefinition> nonExactDefs = new java.util.ArrayList<>(
+              dir.getAllDefinitions().stream()
+                  .filter(d -> d.getPointcut().getClassMatcher().getMatchType()
+                      != ClassMatcher.MatchType.EXACT_NAME)
+                  .collect(java.util.stream.Collectors.toList()));
+          snap = new RegistrySnapshot(currentGeneration, exactCache, nonExactDefs);
+          cachedSnapshot = snap;
+        }
+      }
+    }
+    // Fast path: EXACT_NAME interceptors from atomic classIndex snapshot (no iteration)
+    java.util.List<InterceptorDefinition> result = new java.util.ArrayList<>(
+        snap.exactCache.getOrDefault(className, java.util.Collections.emptyList()));
+    // Slow path: scan non-EXACT_NAME definitions (pattern/annotation/super/interface)
+    if (!snap.nonExactDefs.isEmpty()) {
+      for (InterceptorDefinition def : snap.nonExactDefs) {
+        if (def.getPointcut().getClassMatcher().matches(className)
+            || dir.matchesByReflection(def.getPointcut().getClassMatcher(), className)) {
+          result.add(def);
+        }
+      }
+    }
+    if (!result.isEmpty()) {
+      result.sort(java.util.Comparator.comparingInt(InterceptorDefinition::getPriority));
+    }
+    return result;
+  }
+
+  /**
+   * Force-invalidate the cached snapshot so the next {@link #getInterceptorsForClassSnapshot(String)}
+   * call rebuilds from the underlying registry. Called by {@code DefaultInterceptorRegistry}'s reload
+   * hooks and on registry swap.
+   */
+  public static void invalidateSnapshot() {
+    cachedSnapshot = null;
   }
 
   // --- Global interception switch delegates ---

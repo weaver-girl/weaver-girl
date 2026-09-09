@@ -67,7 +67,7 @@ public class ConstructorAdvice {
       // stack-walking code (ByteBuddy validates the entire advice class).
       InterceptorHolder.captureCaller(invocation);
 
-      List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
+      List<InterceptorDefinition> defs = InterceptorHolder.getInterceptorsForClassSnapshot(className);
       for (InterceptorDefinition def : defs) {
         // Use the two-arg matches() to also check parameter types for
         // CONSTRUCTOR matchers that specify a signature (e.g.
@@ -152,7 +152,7 @@ public class ConstructorAdvice {
         return;
       }
 
-      List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
+      List<InterceptorDefinition> defs = InterceptorHolder.getInterceptorsForClassSnapshot(className);
       for (InterceptorDefinition def : defs) {
         // Use the two-arg matches() to also check parameter types for
         // CONSTRUCTOR matchers that specify a signature.

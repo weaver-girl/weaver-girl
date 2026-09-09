@@ -19,6 +19,8 @@ import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
  *   <li>{@link Type#WITHIN} &mdash; package/class scope pointcut
  *   <li>{@link Type#SUBCLASS_OF} &mdash; subclass matching pointcut
  *   <li>{@link Type#IMPLEMENTING} &mdash; interface implementation pointcut
+ *   <li>{@link Type#AT_ARGS} &mdash; argument annotation pointcut
+ *   <li>{@link Type#AT_TARGET} &mdash; target object annotation pointcut
  *   <li>{@link Type#AND} / {@link Type#OR} &mdash; composite expressions
  *   <li>{@link Type#NOT} &mdash; logical negation
  * </ul>
@@ -52,6 +54,10 @@ public class PointcutExpression {
     SUBCLASS_OF,
     /** Interface implementation: {@code implementing(interfaceName)}. */
     IMPLEMENTING,
+    /** Argument annotation: {@code @args(annotationClassName, index, ...)}. */
+    AT_ARGS,
+    /** Target class annotation: {@code @target(annotationClassName)}. */
+    AT_TARGET,
     /** Logical AND of two expressions. */
     AND,
     /** Logical OR of two expressions. */
@@ -71,6 +77,9 @@ public class PointcutExpression {
   private final String interfaceName;
   private final PointcutExpression left;
   private final PointcutExpression right;
+  private final String argumentAnnotationClassName;
+  private final int[] argumentIndexes;
+  private final String targetAnnotationClassName;
 
   private PointcutExpression(
       Type type,
@@ -83,7 +92,10 @@ public class PointcutExpression {
       String className,
       String interfaceName,
       PointcutExpression left,
-      PointcutExpression right) {
+      PointcutExpression right,
+      String argumentAnnotationClassName,
+      int[] argumentIndexes,
+      String targetAnnotationClassName) {
     this.type = type;
     this.returnType = returnType;
     this.classPattern = classPattern;
@@ -95,6 +107,9 @@ public class PointcutExpression {
     this.interfaceName = interfaceName;
     this.left = left;
     this.right = right;
+    this.argumentAnnotationClassName = argumentAnnotationClassName;
+    this.argumentIndexes = argumentIndexes;
+    this.targetAnnotationClassName = targetAnnotationClassName;
   }
 
   // ---- Factory methods ----
@@ -121,6 +136,9 @@ public class PointcutExpression {
         null,
         null,
         null,
+        null,
+        null,
+        null,
         null);
   }
 
@@ -142,6 +160,9 @@ public class PointcutExpression {
         null,
         null,
         null,
+        null,
+        null,
+        null,
         null);
   }
 
@@ -153,7 +174,7 @@ public class PointcutExpression {
    */
   public static PointcutExpression atWithin(String annotationClassName) {
     return new PointcutExpression(
-        Type.AT_WITHIN, null, null, null, null, annotationClassName, null, null, null, null, null);
+        Type.AT_WITHIN, null, null, null, null, annotationClassName, null, null, null, null, null, null, null, null);
   }
 
   /**
@@ -164,7 +185,7 @@ public class PointcutExpression {
    */
   public static PointcutExpression within(String packageName) {
     return new PointcutExpression(
-        Type.WITHIN, null, null, null, null, null, packageName, null, null, null, null);
+        Type.WITHIN, null, null, null, null, null, packageName, null, null, null, null, null, null, null);
   }
 
   /**
@@ -175,7 +196,7 @@ public class PointcutExpression {
    */
   public static PointcutExpression subclassOf(String className) {
     return new PointcutExpression(
-        Type.SUBCLASS_OF, null, null, null, null, null, null, className, null, null, null);
+        Type.SUBCLASS_OF, null, null, null, null, null, null, className, null, null, null, null, null, null);
   }
 
   /**
@@ -186,7 +207,59 @@ public class PointcutExpression {
    */
   public static PointcutExpression implementing(String interfaceName) {
     return new PointcutExpression(
-        Type.IMPLEMENTING, null, null, null, null, null, null, null, interfaceName, null, null);
+        Type.IMPLEMENTING, null, null, null, null, null, null, null, interfaceName, null, null, null, null, null);
+  }
+
+  /**
+   * Creates an AT_ARGS pointcut expression.
+   *
+   * @param annotationClassName the fully-qualified annotation class name present on parameter types
+   * @param argumentIndexes zero-based argument indexes to match
+   * @return a new AT_ARGS expression
+   * @since 1.9.0
+   */
+  public static PointcutExpression atArgs(String annotationClassName, int... argumentIndexes) {
+    return new PointcutExpression(
+        Type.AT_ARGS,
+        null,
+        null,
+        null,
+        null,
+        annotationClassName,
+        null,
+        null,
+        null,
+        null,
+        null,
+        annotationClassName,
+        argumentIndexes,
+        null);
+  }
+
+  /**
+   * Creates an AT_TARGET pointcut expression.
+   *
+   * @param annotationClassName the fully-qualified annotation class name present on the runtime
+   *     target object
+   * @return a new AT_TARGET expression
+   * @since 1.9.0
+   */
+  public static PointcutExpression atTarget(String annotationClassName) {
+    return new PointcutExpression(
+        Type.AT_TARGET,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        annotationClassName);
   }
 
   /**
@@ -198,7 +271,7 @@ public class PointcutExpression {
    */
   public static PointcutExpression and(PointcutExpression left, PointcutExpression right) {
     return new PointcutExpression(
-        Type.AND, null, null, null, null, null, null, null, null, left, right);
+        Type.AND, null, null, null, null, null, null, null, null, left, right, null, null, null);
   }
 
   /**
@@ -210,7 +283,7 @@ public class PointcutExpression {
    */
   public static PointcutExpression or(PointcutExpression left, PointcutExpression right) {
     return new PointcutExpression(
-        Type.OR, null, null, null, null, null, null, null, null, left, right);
+        Type.OR, null, null, null, null, null, null, null, null, left, right, null, null, null);
   }
 
   /**
@@ -221,7 +294,7 @@ public class PointcutExpression {
    */
   public static PointcutExpression not(PointcutExpression expr) {
     return new PointcutExpression(
-        Type.NOT, null, null, null, null, null, null, null, null, expr, null);
+        Type.NOT, null, null, null, null, null, null, null, null, expr, null, null, null, null);
   }
 
   // ---- Getters ----
@@ -308,6 +381,36 @@ public class PointcutExpression {
   }
 
   /**
+   * Returns the argument annotation class name for {@link Type#AT_ARGS} expressions.
+   *
+   * @return the annotation class name, or null
+   * @since 1.9.0
+   */
+  public String getArgumentAnnotationClassName() {
+    return argumentAnnotationClassName;
+  }
+
+  /**
+   * Returns the argument indexes for {@link Type#AT_ARGS} expressions.
+   *
+   * @return the argument indexes, or null
+   * @since 1.9.0
+   */
+  public int[] getArgumentIndexes() {
+    return argumentIndexes;
+  }
+
+  /**
+   * Returns the target annotation class name for {@link Type#AT_TARGET} expressions.
+   *
+   * @return the annotation class name, or null
+   * @since 1.9.0
+   */
+  public String getTargetAnnotationClassName() {
+    return targetAnnotationClassName;
+  }
+
+  /**
    * Returns the left operand (AND, OR only).
    *
    * @return the left expression, or null
@@ -362,6 +465,13 @@ public class PointcutExpression {
         return new Pointcut(ClassMatcher.bySuperClass(className), MethodMatcher.any());
       case IMPLEMENTING:
         return new Pointcut(ClassMatcher.byInterface(interfaceName), MethodMatcher.any());
+      case AT_ARGS:
+        return new Pointcut(
+            ClassMatcher.any(),
+            MethodMatcher.byArgumentAnnotation(annotationClassName, argumentIndexes));
+      case AT_TARGET:
+        return new Pointcut(
+            ClassMatcher.byAnnotation(annotationClassName), MethodMatcher.any());
       case AND:
         return left.toPointcut().and(right.toPointcut());
       case OR:
@@ -399,6 +509,12 @@ public class PointcutExpression {
         return new Pointcut(ClassMatcher.bySuperClass(className), MethodMatcher.any());
       case IMPLEMENTING:
         return new Pointcut(ClassMatcher.byInterface(interfaceName), MethodMatcher.any());
+      case AT_ARGS:
+        return new Pointcut(
+            ClassMatcher.any(),
+            MethodMatcher.byArgumentAnnotation(annotationClassName, argumentIndexes));
+      case AT_TARGET:
+        return new Pointcut(ClassMatcher.byAnnotation(annotationClassName), MethodMatcher.any());
       case AND:
         return left.toPointcutWithClassScope(classScope)
             .and(right.toPointcutWithClassScope(classScope));
@@ -498,6 +614,14 @@ public class PointcutExpression {
         return "subclassOf(" + className + ")";
       case IMPLEMENTING:
         return "implementing(" + interfaceName + ")";
+      case AT_ARGS:
+        return "@args("
+            + argumentAnnotationClassName
+            + ", "
+            + java.util.Arrays.toString(argumentIndexes)
+            + ")";
+      case AT_TARGET:
+        return "@target(" + targetAnnotationClassName + ")";
       case AND:
         return "(" + left + " && " + right + ")";
       case OR:

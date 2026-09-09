@@ -3,6 +3,7 @@ package com.github.cc11001100.weavergirl.api.pointcut;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
+import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 import org.junit.jupiter.api.Test;
 
 class PointcutParserTest {
@@ -83,5 +84,67 @@ class PointcutParserTest {
     assertEquals(".*", PointcutExpression.convertToRegex(""));
     assertEquals("a.b[^.]*", PointcutExpression.convertToRegex("a.b*"));
     assertEquals("a.*", PointcutExpression.convertToRegex("a.."));
+  }
+
+  @Test
+  void parsesAtTargetExpression() {
+    PointcutParser parser = PointcutParser.getInstance();
+    PointcutExpression expression = parser.parse("@target(com.example.Traced)");
+    assertEquals(PointcutExpression.Type.AT_TARGET, expression.getType());
+    assertEquals("com.example.Traced", expression.getTargetAnnotationClassName());
+    assertEquals("@target(com.example.Traced)", expression.toString());
+    assertTrue(expression.toPointcut().getClassMatcher().matches("com.example.Traced"));
+    assertEquals(MethodMatcher.any(), expression.toPointcut().getMethodMatcher());
+  }
+
+  @Test
+  void parsesAtArgsExpression() {
+    PointcutParser parser = PointcutParser.getInstance();
+    PointcutExpression expression =
+        parser.parse("@args(com.example.Secure, 0, 2)");
+    assertEquals(PointcutExpression.Type.AT_ARGS, expression.getType());
+    assertEquals("com.example.Secure", expression.getArgumentAnnotationClassName());
+    assertArrayEquals(new int[]{0, 2}, expression.getArgumentIndexes());
+    assertEquals("@args(com.example.Secure, [0, 2])", expression.toString());
+    assertTrue(expression.toPointcut().getClassMatcher().matches("any.class"));
+    MethodMatcher methodMatcher = expression.toPointcut().getMethodMatcher();
+    assertEquals(MethodMatcher.MatchType.ARGS, methodMatcher.getMatchType());
+  }
+
+  @Test
+  void parsesAtArgsWithSingleIndex() {
+    PointcutParser parser = PointcutParser.getInstance();
+    PointcutExpression expression =
+        parser.parse("@args(com.example.Secure, 0)");
+    assertEquals(PointcutExpression.Type.AT_ARGS, expression.getType());
+    assertArrayEquals(new int[]{0}, expression.getArgumentIndexes());
+  }
+
+  @Test
+  void compositeExpressionsWithAtArgsAndAtTarget() {
+    PointcutParser parser = PointcutParser.getInstance();
+    PointcutExpression expression =
+        parser.parse("@target(com.example.Traced) && @args(com.example.Secure, 0)");
+    assertEquals(PointcutExpression.Type.AND, expression.getType());
+    assertEquals(PointcutExpression.Type.AT_TARGET, expression.getLeft().getType());
+    assertEquals(PointcutExpression.Type.AT_ARGS, expression.getRight().getType());
+    Pointcut pointcut = expression.toPointcut();
+    assertTrue(pointcut.getClassMatcher().matches("com.example.Traced"));
+    assertEquals(MethodMatcher.MatchType.ARGS, pointcut.getMethodMatcher().getMatchType());
+  }
+
+  @Test
+  void rejectsMalformedAtArgsExpression() {
+    PointcutParser parser = PointcutParser.getInstance();
+    assertThrows(IllegalArgumentException.class, () -> parser.parse("@args(com.example.Secure)"));
+    assertThrows(IllegalArgumentException.class, () -> parser.parse("@args(com.example.Secure,)"));
+    assertThrows(IllegalArgumentException.class, () -> parser.parse("@args(com.example.Secure, x)"));
+    assertThrows(IllegalArgumentException.class, () -> parser.parse("@args(com.example.Secure, -1)"));
+  }
+
+  @Test
+  void rejectsMalformedAtTargetExpression() {
+    PointcutParser parser = PointcutParser.getInstance();
+    assertThrows(IllegalArgumentException.class, () -> parser.parse("@target()"));
   }
 }

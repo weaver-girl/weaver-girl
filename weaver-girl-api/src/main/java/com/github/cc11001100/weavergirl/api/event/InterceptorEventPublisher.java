@@ -1,5 +1,6 @@
 package com.github.cc11001100.weavergirl.api.event;
 
+import com.github.cc11001100.weavergirl.api.exporter.ExporterRegistry;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -60,8 +61,9 @@ public class InterceptorEventPublisher {
   }
 
   /**
-   * Publish an event to all registered listeners. If a listener throws an exception, it is printed
-   * to stderr but does not prevent other listeners from receiving the event.
+   * Publish an event to all registered listeners and active exporters. If a listener or exporter
+   * throws an exception, it is printed to stderr but does not prevent other consumers from
+   * receiving the event.
    *
    * @param event the event to publish
    */
@@ -72,6 +74,11 @@ public class InterceptorEventPublisher {
       } catch (Exception e) {
         System.err.println("[weaver-girl] Event listener threw exception: " + e.getMessage());
       }
+    }
+    try {
+      ExporterRegistry.exportEvent(event);
+    } catch (Exception e) {
+      System.err.println("[weaver-girl] ExporterRegistry threw exception: " + e.getMessage());
     }
   }
 }

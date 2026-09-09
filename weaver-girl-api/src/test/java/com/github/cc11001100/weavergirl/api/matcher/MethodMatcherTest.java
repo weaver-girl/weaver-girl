@@ -1,8 +1,14 @@
 package com.github.cc11001100.weavergirl.api.matcher;
 
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.Test;
+
+@Retention(RetentionPolicy.RUNTIME)
+@interface SecureParam {}
 
 class MethodMatcherTest {
 
@@ -133,5 +139,64 @@ class MethodMatcherTest {
     assertThrows(IllegalArgumentException.class, () -> MethodMatcher.bySignature(null, ""));
     assertThrows(NullPointerException.class, () -> MethodMatcher.bySignature("x", null));
     assertThrows(NullPointerException.class, () -> MethodMatcher.byConstructor(null));
+  }
+
+  @Test
+  void byArgumentAnnotation_matchesParameterAnnotations() {
+    MethodMatcher matcher = MethodMatcher.byArgumentAnnotation(
+        "com.github.cc11001100.weavergirl.api.matcher.SecureParam", 0);
+    assertEquals(MethodMatcher.MatchType.ARGS, matcher.getMatchType());
+    assertEquals("com.github.cc11001100.weavergirl.api.matcher.SecureParam",
+        matcher.getArgumentAnnotationClassName());
+    assertArrayEquals(new int[]{0}, matcher.getArgumentIndexes());
+
+    // Method with SecureParam at index 0 should match
+    assertTrue(matcher.matches("process",
+        new Class<?>[] {SecureParam.class, String.class}));
+
+    // Missing annotation at index 0 should not match
+    assertFalse(matcher.matches("process",
+        new Class<?>[] {String.class, SecureParam.class}));
+
+    // Wrong index should not match
+    assertFalse(matcher.matches("process",
+        new Class<?>[] {String.class, SecureParam.class}));
+
+    // Index out of bounds should not match
+    assertFalse(matcher.matches("process", new Class<?>[] {String.class}));
+  }
+
+  @Test
+  void byArgumentAnnotation_rejectsBadInputs() {
+    assertThrows(IllegalArgumentException.class,
+        () -> MethodMatcher.byArgumentAnnotation(""));
+    assertThrows(IllegalArgumentException.class,
+        () -> MethodMatcher.byArgumentAnnotation("A"));
+    assertThrows(IllegalArgumentException.class,
+        () -> MethodMatcher.byArgumentAnnotation("A", new int[]{}));
+  }
+
+  @Test
+  void byArgumentAnnotation_handlesMissingOrInvalidAnnotationsGracefully() {
+    MethodMatcher matcher = MethodMatcher.byArgumentAnnotation(
+        "com.github.cc11001100.weavergirl.api.matcher.MethodMatcherTest$MissingAnnotation", 0);
+    // Class does not exist; matches should fail closed and return false
+    assertFalse(matcher.matches("process", new Class<?>[] {String.class}));
+    assertFalse(matcher.matches("process", null));
+    assertFalse(matcher.matches("process", new Class<?>[0]));
+  }
+
+  @Test
+  void byArgumentAnnotation_matchesMultipleIndexes() {
+    MethodMatcher matcher = MethodMatcher.byArgumentAnnotation(
+        "com.github.cc11001100.weavergirl.api.matcher.SecureParam",
+        0,
+        2);
+    assertTrue(matcher.matches("process",
+        new Class<?>[] {SecureParam.class, String.class, SecureParam.class}));
+    assertFalse(matcher.matches("process",
+        new Class<?>[] {SecureParam.class, String.class, String.class}));
+    assertFalse(matcher.matches("process",
+        new Class<?>[] {String.class, SecureParam.class, SecureParam.class}));
   }
 }

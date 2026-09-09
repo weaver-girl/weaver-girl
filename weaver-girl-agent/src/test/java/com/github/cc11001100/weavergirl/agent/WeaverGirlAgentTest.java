@@ -30,16 +30,12 @@ class WeaverGirlAgentTest {
 
   @Test
   void parseConfigAndWatchUsingKeyValueFormat() throws Exception {
-    // When the string does NOT start with "config=", it uses key=value parsing
-    Map<String, String> result = invokeParseAgentArgs("config=/path/to/weaver.yml,watch=true");
-    // The legacy handler grabs the entire rest after "config=", so this includes
-    // ",watch=true" in the config value. The key=value format is only used when
-    // the string does NOT start with "config=".
+    // When the string does NOT start with "config=", it uses key=value parsing.
     // To get both parsed, use a format that doesn't start with "config=":
     // e.g., "watch=true,config=/path/to/weaver.yml"
-    Map<String, String> result2 = invokeParseAgentArgs("watch=true,config=/path/to/weaver.yml");
-    assertEquals("true", result2.get("watch"));
-    assertEquals("/path/to/weaver.yml", result2.get("config"));
+    Map<String, String> result = invokeParseAgentArgs("watch=true,config=/path/to/weaver.yml");
+    assertEquals("true", result.get("watch"));
+    assertEquals("/path/to/weaver.yml", result.get("config"));
   }
 
   @Test
@@ -66,5 +62,20 @@ class WeaverGirlAgentTest {
     Map<String, String> result = invokeParseAgentArgs("watch=true");
     assertEquals("true", result.get("watch"));
     assertNull(result.get("config"));
+  }
+
+  @Test
+  void parseApiPort() throws Exception {
+    Map<String, String> result = invokeParseAgentArgs("apiPort=9402");
+    assertEquals("9402", result.get("apiPort"));
+  }
+
+  @Test
+  void parseApiPortWithOtherArgs() throws Exception {
+    Map<String, String> result =
+        invokeParseAgentArgs("config=/path/weaver.yml,apiPort=9402,watch=true");
+    assertEquals("9402", result.get("apiPort"));
+    assertEquals("/path/weaver.yml", result.get("config"));
+    assertEquals("true", result.get("watch"));
   }
 }

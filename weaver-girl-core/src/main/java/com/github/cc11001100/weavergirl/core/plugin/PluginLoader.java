@@ -3,6 +3,8 @@ package com.github.cc11001100.weavergirl.core.plugin;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
+import com.github.cc11001100.weavergirl.core.event.LifecycleEvents;
 import com.github.cc11001100.weavergirl.core.WeaverGirl;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import java.util.ArrayList;
@@ -310,18 +312,30 @@ public class PluginLoader {
       Map<String, String> config,
       java.util.Map<String, Long> perPluginMs) {
     long pluginStart = System.nanoTime();
+    boolean initOk = false;
+    boolean registerOk = false;
     try {
       PluginContext context = new DefaultPluginContext(registry, config, plugin.name());
       plugin.init(context);
+      initOk = true;
       if (!plugin.isEnabled(context)) {
         log.info(
             "Plugin {} is disabled via isEnabled() check — skipping interceptors", plugin.name());
         AgentStatus.getInstance()
             .recordPluginStatus(plugin.name(), false, "disabled via isEnabled()");
         perPluginMs.put(plugin.name(), (System.nanoTime() - pluginStart) / 1_000_000L);
+        try {
+          InterceptorEventPublisher.getInstance()
+              .publish(
+                  LifecycleEvents.plugin(
+                      LifecycleEvents.PHASE_INIT, plugin.name(), false, "disabled via isEnabled()"));
+        } catch (Throwable t) {
+          log.debug("Lifecycle event publish failed: {}", t.getMessage());
+        }
         return;
       }
       plugin.registerInterceptors(registry);
+      registerOk = true;
       loadedPlugins.add(plugin);
       AgentStatus.getInstance().recordPluginStatus(plugin.name(), true, null);
       log.info("Plugin {} loaded successfully", plugin.name());
@@ -329,6 +343,17 @@ public class PluginLoader {
       String errorMsg = e.getClass().getSimpleName() + ": " + e.getMessage();
       AgentStatus.getInstance().recordPluginStatus(plugin.name(), false, errorMsg);
       log.error("Failed to load plugin {}: {}", plugin.name(), e.getMessage(), e);
+    }
+    try {
+      InterceptorEventPublisher.getInstance()
+          .publish(
+              LifecycleEvents.plugin(
+                  LifecycleEvents.PHASE_REGISTER_INTERCEPTORS,
+                  plugin.name(),
+                  registerOk,
+                  initOk ? "" : "init-failed"));
+    } catch (Throwable t) {
+      log.debug("Lifecycle event publish failed: {}", t.getMessage());
     }
     perPluginMs.put(plugin.name(), (System.nanoTime() - pluginStart) / 1_000_000L);
   }

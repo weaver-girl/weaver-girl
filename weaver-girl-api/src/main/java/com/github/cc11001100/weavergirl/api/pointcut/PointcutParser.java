@@ -169,6 +169,13 @@ public class PointcutParser {
       String content = expr.substring("implementing(".length(), expr.length() - 1).trim();
       return PointcutExpression.implementing(content);
     }
+    if (expr.startsWith("@args(") && expr.endsWith(")")) {
+      return parseAtArgs(expr);
+    }
+    if (expr.startsWith("@target(") && expr.endsWith(")")) {
+      String content = expr.substring("@target(".length(), expr.length() - 1).trim();
+      return PointcutExpression.atTarget(content);
+    }
     throw new IllegalArgumentException("Invalid pointcut expression: " + expr);
   }
 
@@ -220,5 +227,49 @@ public class PointcutParser {
     String methodPattern = qualifiedMethod.substring(lastDot + 1);
 
     return PointcutExpression.execution(returnType, classPattern, methodPattern, paramPattern);
+  }
+
+  /**
+   * Parses the content inside {@code @args(...)}.
+   *
+   * <p>Expected format: {@code @args(annotationClassName, index, ...)} where index is a zero-based
+   * argument position.
+   *
+   * @param expr the full expression including the {@code @args(} prefix
+   * @return an AT_ARGS PointcutExpression
+   */
+  private PointcutExpression parseAtArgs(String expr) {
+    String content = expr.substring("@args(".length(), expr.length() - 1).trim();
+    int firstComma = content.indexOf(',');
+    if (firstComma < 0) {
+      throw new IllegalArgumentException(
+          "Invalid @args expression — expected '@args(annotationClassName, index)': " + expr);
+    }
+    String annotationClassName = content.substring(0, firstComma).trim();
+    String indexesPart = content.substring(firstComma + 1).trim();
+    if (indexesPart.isEmpty()) {
+      throw new IllegalArgumentException(
+          "Invalid @args expression — expected at least one argument index: " + expr);
+    }
+    String[] parts = indexesPart.split(",");
+    int[] indexes = new int[parts.length];
+    for (int i = 0; i < parts.length; i++) {
+      String trimmed = parts[i].trim();
+      if (trimmed.isEmpty()) {
+        throw new IllegalArgumentException(
+            "Invalid @args expression — empty argument index: " + expr);
+      }
+      try {
+        indexes[i] = Integer.parseInt(trimmed);
+      } catch (NumberFormatException e) {
+        throw new IllegalArgumentException(
+            "Invalid @args expression — argument index is not an integer: " + expr, e);
+      }
+      if (indexes[i] < 0) {
+        throw new IllegalArgumentException(
+            "Invalid @args expression — argument index must be non-negative: " + expr);
+      }
+    }
+    return PointcutExpression.atArgs(annotationClassName, indexes);
   }
 }

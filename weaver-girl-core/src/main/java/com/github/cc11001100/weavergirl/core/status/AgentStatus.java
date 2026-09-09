@@ -257,7 +257,7 @@ public class AgentStatus {
   public static class InterceptorMetrics {
 
     /** Cumulative upper bounds (nanoseconds) for each latency bucket. */
-    static final long[] BUCKET_BOUNDS_NS = {
+    public static final long[] BUCKET_BOUNDS_NS = {
       1_000L,
       10_000L,
       100_000L,
@@ -350,6 +350,11 @@ public class AgentStatus {
       return n > 0 ? (double) totalNanos.get() / n : 0.0;
     }
 
+    /** Management/observability accessor for the latency histogram buckets. */
+    public AtomicLong[] getLatencyBucketsRef() {
+      return latencyBuckets;
+    }
+
     /**
      * Approximate percentile (0-100) of the latency distribution, interpolated across the
      * cumulative histogram buckets. Returns nanoseconds. Read-only; call infrequently (e.g. from
@@ -382,6 +387,42 @@ public class AgentStatus {
         lowerBound = BUCKET_BOUNDS_NS[i];
       }
       return maxNanos.get();
+    }
+
+    /**
+     * Render a Prometheus text-representation slice for this single hook point's latency histogram.
+     *
+     * <p>This is a read-only snapshot over the cumulative histogram; it does not mutate the bucket
+     * counters.
+     */
+    public String renderInterceptorHistogramPrometheus(String hookName) {
+      StringBuilder sb = new StringBuilder();
+      long cumulative = 0;
+      for (int i = 0; i < BUCKET_BOUNDS_NS.length; i++) {
+        cumulative += latencyBuckets[i].get();
+        String le = BUCKET_BOUNDS_NS[i] == Long.MAX_VALUE ? "+Inf" : String.format("%.3f", BUCKET_BOUNDS_NS[i] / 1_000_000_000.0);
+        sb.append("weavergirl_interceptor_duration_seconds_bucket")
+            .append("{hook=\"")
+            .append(hookName)
+            .append("\",le=\"")
+            .append(le)
+            .append("\"} ")
+            .append(cumulative)
+            .append("\n");
+      }
+      sb.append("weavergirl_interceptor_duration_seconds_sum")
+          .append("{hook=\"")
+          .append(hookName)
+          .append("\"} ")
+          .append(String.format("%.3f", totalNanos.get() / 1_000_000_000.0))
+          .append("\n");
+      sb.append("weavergirl_interceptor_duration_seconds_count")
+          .append("{hook=\"")
+          .append(hookName)
+          .append("\"} ")
+          .append(invocations.get())
+          .append("\n");
+      return sb.toString();
     }
   }
 

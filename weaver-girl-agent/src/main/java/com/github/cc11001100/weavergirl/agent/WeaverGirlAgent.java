@@ -11,11 +11,14 @@ import com.github.cc11001100.weavergirl.core.event.JsonEventListener;
 import com.github.cc11001100.weavergirl.core.metrics.PrometheusExporter;
 import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
+import com.github.cc11001100.weavergirl.core.status.AgentStatus.InterceptorMetrics;
 import com.sun.net.httpserver.HttpServer;
+import java.io.*;
 import java.lang.instrument.Instrumentation;
 import java.net.InetSocketAddress;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,6 +42,7 @@ public class WeaverGirlAgent {
   private static final String CONFIG_PREFIX = "config=";
   private static volatile ConfigWatcher configWatcher;
   private static volatile HttpServer healthServer;
+  private static volatile com.github.cc11001100.weavergirl.core.management.AgentApiServer apiServer;
   private static volatile WeaverGirl weaverGirlInstance;
   private static volatile long startTimeMs = System.currentTimeMillis();
 
@@ -221,6 +225,21 @@ public class WeaverGirlAgent {
         log.info("Retransformed {} already-loaded classes for dynamic attach", retransformed);
       }
 
+      // Start management REST API if apiPort is specified
+      String apiPortStr = args.get("apiPort");
+      if (apiPortStr != null) {
+        try {
+          int apiPort = Integer.parseInt(apiPortStr);
+          apiServer = new com.github.cc11001100.weavergirl.core.management.AgentApiServer(apiPort);
+          apiServer.start();
+          log.info("[WeaverGirlAgent] Management API started on port {}", apiPort);
+        } catch (NumberFormatException e) {
+          log.warn("Invalid apiPort value: {}, expected integer", apiPortStr);
+        } catch (Exception e) {
+          log.warn("Failed to start management API server: {}", e.getMessage());
+        }
+      }
+
       // Start health check endpoint if healthPort is specified
       String healthPortStr = args.get("healthPort");
       if (healthPortStr != null) {
@@ -249,6 +268,10 @@ public class WeaverGirlAgent {
                       if (healthServer != null) {
                         healthServer.stop(2);
                         log.info("Health check endpoint stopped");
+                      }
+                      if (apiServer != null) {
+                        apiServer.stop();
+                        log.info("Management API stopped");
                       }
                       if (configWatcher != null) {
                         configWatcher.stop();
@@ -459,6 +482,11 @@ public class WeaverGirlAgent {
     return sb.toString();
   }
 
+  private static String escMetric(String s) {
+    if (s == null) return "";
+    return s.replace("\\", "\\\\").replace("\"", "\\\"");
+  }
+
   private static void startHealthEndpoint(int port) throws Exception {
     healthServer = HttpServer.create(new InetSocketAddress(port), 0);
 
@@ -603,6 +631,75 @@ public class WeaverGirlAgent {
                 .append("}");
             byte[] bytes = sb.toString().getBytes("UTF-8");
             exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.getResponseBody().close();
+          } catch (Exception e) {
+            exchange.sendResponseHeaders(500, 0);
+            exchange.getResponseBody().close();
+          }
+        });
+
+    // Prometheus-compatible metric snapshot over the existing AgentStatus counters
+    // and per-hook latency histogram. This keeps a single observability port useful
+    // for both human-friendly /stats and scraping-oriented /metrics.
+    healthServer.createContext(
+        "/metrics",
+        exchange -> {
+          try {
+            StringBuilder sb = new StringBuilder(2048);
+            AgentStatus status = AgentStatus.getInstance();
+            long uptimeSec = (System.currentTimeMillis() - startTimeMs) / 1000;
+            WeaverGirl wg = weaverGirlInstance;
+            int registered =
+                (wg != null)
+                    ? wg.getRegistry().getAllDefinitions().size()
+                    : status.getRegisteredInterceptorCount();
+
+            sb.append("# HELP weavergirl_uptime_seconds Agent uptime in seconds\n");
+            sb.append("# TYPE weavergirl_uptime_seconds gauge\n");
+            sb.append("weavergirl_uptime_seconds ").append(uptimeSec).append("\n\n");
+
+            sb.append("# HELP weavergirl_transformations_total Total class transformations\n");
+            sb.append("# TYPE weavergirl_transformations_total counter\n");
+            sb.append("weavergirl_transformations_total ")
+                .append(status.getTransformationCount())
+                .append("\n\n");
+
+            sb.append("# HELP weavergirl_transformation_errors_total Transformation errors\n");
+            sb.append("# TYPE weavergirl_transformation_errors_total counter\n");
+            sb.append("weavergirl_transformation_errors_total ")
+                .append(status.getTransformationErrorCount())
+                .append("\n\n");
+
+            sb.append("# HELP weavergirl_interceptor_invocations_total Total interceptor invocations\n");
+            sb.append("# TYPE weavergirl_interceptor_invocations_total counter\n");
+            sb.append("weavergirl_interceptor_invocations_total ")
+                .append(status.getInterceptorInvocationCount())
+                .append("\n\n");
+
+            sb.append("# HELP weavergirl_interceptor_errors_total Interceptor errors\n");
+            sb.append("# TYPE weavergirl_interceptor_errors_total counter\n");
+            sb.append("weavergirl_interceptor_errors_total ")
+                .append(status.getInterceptorErrorCount())
+                .append("\n\n");
+
+            sb.append("# HELP weavergirl_registered_interceptors Number of registered interceptor definitions\n");
+            sb.append("# TYPE weavergirl_registered_interceptors gauge\n");
+            sb.append("weavergirl_registered_interceptors ").append(registered).append("\n\n");
+
+            sb.append("# HELP weavergirl_active_plugins Number of active plugins\n");
+            sb.append("# TYPE weavergirl_active_plugins gauge\n");
+            sb.append("weavergirl_active_plugins ").append(status.getActivePluginCount()).append("\n\n");
+
+            for (Map.Entry<String, InterceptorMetrics> entry : status.getInterceptorMetrics().entrySet()) {
+              String name = entry.getKey();
+              InterceptorMetrics m = entry.getValue();
+              sb.append(m.renderInterceptorHistogramPrometheus(escMetric(name)));
+            }
+
+            byte[] bytes = sb.toString().getBytes("UTF-8");
+            exchange.getResponseHeaders().set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
             exchange.sendResponseHeaders(200, bytes.length);
             exchange.getResponseBody().write(bytes);
             exchange.getResponseBody().close();

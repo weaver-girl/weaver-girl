@@ -34,9 +34,19 @@ import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import com.github.cc11001100.weavergirl.core.status.JmxRegistrar;
 import com.github.cc11001100.weavergirl.core.trace.TracerSpanExporterBridge;
 import com.github.cc11001100.weavergirl.core.transformer.WeaverTransformer;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
+import com.github.cc11001100.weavergirl.core.event.LifecycleEvents;
 import java.lang.instrument.Instrumentation;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -68,6 +78,8 @@ public class WeaverGirl {
   private SpanExporter spanExporter;
   private TracerSpanExporterBridge spanExportBridge;
   private UpdateChecker updateChecker;
+  private volatile long dynamicRefreshIntervalSeconds = 0;
+  private java.util.concurrent.ScheduledExecutorService refreshScheduler;
 
   private WeaverGirl() {
     this.registry = new DefaultInterceptorRegistry();
@@ -148,6 +160,12 @@ public class WeaverGirl {
       weaverGirl.instrumentation = instrumentation;
 
       InterceptorHolder.setRegistry(weaverGirl.registry);
+      // Wire registry reload hook so InterceptorHolder invalidates its snapshot
+      // whenever any interceptor is registered/unregistered at runtime.
+      if (weaverGirl.registry instanceof DefaultInterceptorRegistry) {
+        ((DefaultInterceptorRegistry) weaverGirl.registry)
+            .addReloadHook(() -> InterceptorHolder.invalidateSnapshot());
+      }
 
       // Merge disabledPlugins from WeaverConfig into the config map for PluginLoader
       java.util.Map<String, String> pluginConfig =
@@ -227,6 +245,9 @@ public class WeaverGirl {
       weaverGirl.dynamicConfigManager.addListener(weaverGirl.new DynamicCoreConfigListener());
       weaverGirl.dynamicConfigManager.snapshot("initial-bootstrap");
 
+      // P103: optional periodic dynamic refresh of interceptor registry
+      weaverGirl.initDynamicRefresh(pluginConfig);
+
       long mgmtStart = System.nanoTime();
       JmxRegistrar.register();
 
@@ -244,6 +265,16 @@ public class WeaverGirl {
       log.info(
           "WeaverGirl agent started with {} interceptor definitions",
           weaverGirl.registry.getAllDefinitions().size());
+      try {
+        InterceptorEventPublisher.getInstance()
+            .publish(
+                LifecycleEvents.registry(
+                    LifecycleEvents.PHASE_INIT, "bootstrap", true,
+                    "interceptors=" + weaverGirl.registry.getAllDefinitions().size()
+                        + ";plugins=" + weaverGirl.pluginLoader.getLoadedPlugins().size()));
+      } catch (Throwable t) {
+        log.debug("Lifecycle event publish failed: {}", t.getMessage());
+      }
       return weaverGirl;
     } finally {
       com.github.cc11001100.weavergirl.core.management.StartupMetrics.end();
@@ -303,6 +334,7 @@ public class WeaverGirl {
     if (dynamicConfigManager != null) {
       dynamicConfigManager.shutdown();
     }
+    stopDynamicRefresh();
     pluginLoader.destroyAll();
 
     DefaultPluginManager localPluginManager = this.pluginManager;
@@ -323,6 +355,12 @@ public class WeaverGirl {
     AgentMonitor.getInstance().unregister();
     JmxRegistrar.unregister();
     InterceptorHolder.setRegistry(null);
+    try {
+      InterceptorEventPublisher.getInstance()
+          .publish(LifecycleEvents.registry(LifecycleEvents.PHASE_SHUTDOWN, "shutdown", true, null));
+    } catch (Throwable t) {
+      log.debug("Lifecycle event publish failed: {}", t.getMessage());
+    }
     log.info("WeaverGirl agent shut down complete");
   }
 
@@ -667,6 +705,70 @@ public class WeaverGirl {
       updateChecker = null;
     }
   }
+
+  // --- P103: Dynamic refresh support -----------------------------------------------
+
+  /**
+   * Trigger a manual refresh of the interceptor registry snapshot cache. This forces {@link
+   * InterceptorHolder} to rebuild its cached class→interceptors mapping on the next interception,
+   * ensuring dynamic register/unregister changes take effect immediately.
+   *
+   * <p>Also triggers retransformation of already-loaded classes so new/removed interceptors are
+   * applied to already-loaded classes.
+   */
+  public void refresh() {
+    InterceptorHolder.invalidateSnapshot();
+    if (transformer != null) {
+      retransformLoadedClasses();
+    }
+    log.info("Interceptor registry manually refreshed");
+  }
+
+  /**
+   * Initialize optional periodic auto-refresh based on {@code weavergirl.dynamic.refreshIntervalSeconds}.
+   * Default 0 (disabled). When > 0, a daemon thread calls {@link #refresh()} at the configured interval.
+   */
+  void initDynamicRefresh(java.util.Map<String, String> config) {
+    if (config == null) return;
+    String intervalStr = config.get("weavergirl.dynamic.refreshIntervalSeconds");
+    if (intervalStr == null || intervalStr.trim().isEmpty()) {
+      return;
+    }
+    long intervalSeconds;
+    try {
+      intervalSeconds = Long.parseLong(intervalStr.trim());
+    } catch (NumberFormatException e) {
+      log.warn("Invalid weavergirl.dynamic.refreshIntervalSeconds '{}', skipping auto-refresh", intervalStr);
+      return;
+    }
+    if (intervalSeconds <= 0) {
+      return;
+    }
+    this.dynamicRefreshIntervalSeconds = intervalSeconds;
+    refreshScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+      Thread t = new Thread(r, "weaver-girl-dynamic-refresh");
+      t.setDaemon(true);
+      return t;
+    });
+    refreshScheduler.scheduleAtFixedRate(() -> {
+      try {
+        refresh();
+      } catch (Throwable t) {
+        log.warn("[DynamicRefresh] Scheduled refresh failed: {}", t.getMessage());
+      }
+    }, intervalSeconds, intervalSeconds, TimeUnit.SECONDS);
+    log.info("Dynamic auto-refresh enabled: interval={}s", intervalSeconds);
+  }
+
+  /** Stop the dynamic refresh scheduler. Called from {@link #shutdown()}. */
+  void stopDynamicRefresh() {
+    if (refreshScheduler != null) {
+      refreshScheduler.shutdownNow();
+      refreshScheduler = null;
+    }
+  }
+
+  // -------------------------------------------------------------------------------
 
   /** Set the ConfigWatcher so it can be stopped during shutdown. */
   public void setConfigWatcher(ConfigWatcher watcher) {

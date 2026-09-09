@@ -63,7 +63,7 @@ public class InterceptAdvice {
       // during inlining and rejects methods that reference getStackTrace).
       InterceptorHolder.captureCaller(invocation);
 
-      List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
+      List<InterceptorDefinition> defs = InterceptorHolder.getInterceptorsForClassSnapshot(className);
       List<InterceptorDefinition> aroundDefs = new ArrayList<>();
       for (InterceptorDefinition def : defs) {
         if (def.getPointcut().getMethodMatcher().matches(methodName)) {
@@ -174,7 +174,7 @@ public class InterceptAdvice {
         return;
       }
 
-      List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
+      List<InterceptorDefinition> defs = InterceptorHolder.getInterceptorsForClassSnapshot(className);
       for (InterceptorDefinition def : defs) {
         if (def.getPointcut().getMethodMatcher().matches(methodName)) {
           if (!InterceptorHolder.shouldInvoke(def.getName())) {
