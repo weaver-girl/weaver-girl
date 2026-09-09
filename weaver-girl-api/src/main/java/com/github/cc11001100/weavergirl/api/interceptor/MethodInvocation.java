@@ -399,6 +399,10 @@ public class MethodInvocation {
    * <p>This is the public API for interceptors to override the return value. After calling this
    * method, {@link #isReturnOverridden()} will return {@code true}.
    *
+   * <p><strong>Conflict resolution:</strong> when multiple interceptors call this method, the
+   * <em>last</em> call wins. Because interceptors execute in priority order, this means the
+   * highest-priority interceptor that runs last determines the final return value.
+   *
    * @param returnValue the value to return instead of the original method's return
    */
   public void setReturnValue(Object returnValue) {
@@ -559,6 +563,10 @@ public class MethodInvocation {
    * Advance the around-advice chain to the next interceptor or the original method. Each call
    * increments an internal depth counter to guard against infinite around recursion.
    *
+   * <p>Only the <strong>first</strong> call advances the chain; subsequent calls throw {@link
+   * IllegalStateException}. This enforces the standard AOP contract that around advice calls {@code
+   * proceed()} exactly once.
+   *
    * <p>Throws {@link IllegalStateException} if proceeding is not allowed, if the depth limit is
    * exceeded, or if the chain has already been exhausted.
    *
@@ -572,6 +580,7 @@ public class MethodInvocation {
     }
     proceedDepth++;
     proceedCalled = true;
+    proceedable = false;
   }
 
   // --- CallSite tracking API ---
