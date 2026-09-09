@@ -137,4 +137,42 @@ class AgentStatusTest {
     assertTrue(status.getCustomMetrics().isEmpty());
     assertTrue(status.getUptimeSeconds() >= 0);
   }
+
+  @Test
+  void getPressureFactor_returnsZeroWhenNoInvocations() {
+    assertEquals(0.0, status.getPressureFactor(), 0.0);
+  }
+
+  @Test
+  void getPressureFactor_returnsHighWhenErrorRatioExceedsThreshold() {
+    status.incrementInterceptorInvocationCount();
+    status.incrementInterceptorInvocationCount();
+    status.incrementInterceptorInvocationCount();
+    status.incrementInterceptorErrorCount();
+    status.incrementInterceptorErrorCount();
+
+    assertEquals(0.9, status.getPressureFactor(), 0.0);
+  }
+
+  @Test
+  void getPressureFactor_returnsHighWhenSlowRatioExceedsThreshold() {
+    for (int i = 0; i < 7; i++) {
+      status.incrementInterceptorInvocationCount();
+    }
+    status.recordInterceptorInvocation("slow-hook-1", true, 50_000_001L);
+    status.recordInterceptorInvocation("slow-hook-2", true, 50_000_001L);
+    status.recordInterceptorInvocation("slow-hook-3", true, 50_000_001L);
+
+    assertEquals(0.9, status.getPressureFactor(), 0.0);
+  }
+
+  @Test
+  void getPressureFactor_returnsZeroWhenBelowThresholds() {
+    status.incrementInterceptorInvocationCount();
+    status.incrementInterceptorInvocationCount();
+    status.incrementInterceptorInvocationCount();
+    status.recordInterceptorInvocation("fast-hook", true, 1_000L);
+
+    assertEquals(0.0, status.getPressureFactor(), 0.0);
+  }
 }

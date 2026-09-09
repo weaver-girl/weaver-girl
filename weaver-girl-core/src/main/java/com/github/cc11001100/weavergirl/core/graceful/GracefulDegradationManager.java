@@ -2,6 +2,8 @@ package com.github.cc11001100.weavergirl.core.graceful;
 
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
 import com.github.cc11001100.weavergirl.core.switches.GlobalInterceptionSwitch;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
+import com.github.cc11001100.weavergirl.core.event.LifecycleEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,6 +48,12 @@ public final class GracefulDegradationManager {
       SamplingController.getInstance().setSamplingRate(SamplingController.getInstance().getMaxRate());
     } catch (Exception e) {
       log.debug("[GracefulDegradation] Failed to cap sampling rate: {}", e.getMessage());
+    }
+    try {
+      InterceptorEventPublisher.getInstance()
+          .publish(LifecycleEvents.registry(LifecycleEvents.PHASE_EMERGENCY, reason, true, null));
+    } catch (Throwable t) {
+      log.debug("Lifecycle event publish failed: {}", t.getMessage());
     }
   }
 
@@ -94,6 +102,17 @@ public final class GracefulDegradationManager {
           consecutiveFailures);
       updateSamplingPressure(0.9);
       lastExportFailureNanos = now;
+      try {
+        InterceptorEventPublisher.getInstance()
+            .publish(
+                LifecycleEvents.registry(
+                    LifecycleEvents.PHASE_EMERGENCY,
+                    "export-backend-unavailable",
+                    true,
+                    "consecutiveFailures=" + consecutiveFailures));
+      } catch (Throwable t) {
+        log.debug("Lifecycle event publish failed: {}", t.getMessage());
+      }
     }
     if (consecutiveFailures >= 200) {
       enterEmergencyMode("export-failure:" + consecutiveFailures);
@@ -106,7 +125,7 @@ public final class GracefulDegradationManager {
   }
 
   /** Reset state for tests. */
-  static void resetForTest() {
+  public static void resetForTest() {
     emergencyMode = false;
     emergencyLogged = false;
     lastLoadFactor = 0.0;

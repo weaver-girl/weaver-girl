@@ -3,7 +3,9 @@ package com.github.cc11001100.weavergirl.core.sampling;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.github.cc11001100.weavergirl.core.InterceptorHolder;
+import com.github.cc11001100.weavergirl.core.graceful.GracefulDegradationManager;
 import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
+import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import java.lang.instrument.Instrumentation;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import org.junit.jupiter.api.*;
@@ -123,5 +125,31 @@ class SamplingIntegrationTest {
     // Even under very low load, rate should not go below 1
     controller.adaptRate(0.0);
     assertEquals(1, controller.getSamplingRate(), "Sampling rate should never go below 1");
+  }
+
+  @Test
+  void samplingMonitor_pressureHookUpdatesGracefulDegradation() throws Exception {
+    AgentStatus status = AgentStatus.getInstance();
+    status.reset();
+    for (int i = 0; i < 7; i++) {
+      status.incrementInterceptorInvocationCount();
+    }
+    status.incrementInterceptorErrorCount();
+    status.recordInterceptorInvocation("slow-hook-1", true, 50_000_001L);
+    status.recordInterceptorInvocation("slow-hook-2", true, 50_000_001L);
+    status.recordInterceptorInvocation("slow-hook-3", true, 50_000_001L);
+
+    GracefulDegradationManager.resetForTest();
+    SamplingController.getInstance().setMaxRate(100);
+    SamplingController.getInstance().setSamplingRate(2);
+
+    SamplingMonitor monitor = new SamplingMonitor(SamplingController.getInstance());
+    monitor.setCheckIntervalSeconds(5);
+    java.lang.reflect.Method check = SamplingMonitor.class.getDeclaredMethod("check");
+    check.setAccessible(true);
+    check.invoke(monitor);
+
+    assertEquals(0.9, GracefulDegradationManager.getLastLoadFactor(), 0.0);
+    assertEquals(50, SamplingController.getInstance().getSamplingRate());
   }
 }

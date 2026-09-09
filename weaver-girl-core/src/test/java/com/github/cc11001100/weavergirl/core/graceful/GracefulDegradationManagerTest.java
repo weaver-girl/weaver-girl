@@ -42,6 +42,46 @@ class GracefulDegradationManagerTest {
   }
 
   @Test
+  void updateSamplingPressure_highLoad_increasesSamplingRate() {
+    com.github.cc11001100.weavergirl.core.sampling.SamplingController controller =
+        com.github.cc11001100.weavergirl.core.sampling.SamplingController.getInstance();
+    controller.setMaxRate(100);
+    controller.setSamplingRate(2);
+    GracefulDegradationManager.resetForTest();
+
+    GracefulDegradationManager.updateSamplingPressure(0.9);
+
+    assertEquals(50, controller.getSamplingRate());
+  }
+
+  @Test
+  void updateSamplingPressure_lowLoad_doesNotChangeRate() {
+    com.github.cc11001100.weavergirl.core.sampling.SamplingController controller =
+        com.github.cc11001100.weavergirl.core.sampling.SamplingController.getInstance();
+    controller.setMaxRate(100);
+    controller.setSamplingRate(10);
+    GracefulDegradationManager.resetForTest();
+
+    GracefulDegradationManager.updateSamplingPressure(0.0);
+
+    assertEquals(10, controller.getSamplingRate());
+  }
+
+  @Test
+  void updateSamplingPressure_doesNothingInEmergencyMode() {
+    com.github.cc11001100.weavergirl.core.sampling.SamplingController controller =
+        com.github.cc11001100.weavergirl.core.sampling.SamplingController.getInstance();
+    controller.setMaxRate(100);
+    GracefulDegradationManager.resetForTest();
+    GracefulDegradationManager.enterEmergencyMode("test");
+
+    assertTrue(GracefulDegradationManager.isEmergencyMode());
+    assertEquals(100, controller.getSamplingRate());
+    GracefulDegradationManager.updateSamplingPressure(0.9);
+    assertEquals(100, controller.getSamplingRate());
+  }
+
+  @Test
   void notifyExportBackendUnavailable_repeatedFailures_eventuallyEntersEmergency() {
     for (int i = 0; i < 199; i++) {
       GracefulDegradationManager.notifyExportBackendUnavailable(i + 1);

@@ -134,6 +134,30 @@ public class AgentStatus {
     return Collections.unmodifiableMap(interceptorMetrics);
   }
 
+  /**
+   * Derive a lightweight 0.0-1.0 pressure factor from current invocation/error/slow-call metrics.
+   *
+   * <p>This is read-only and intended for off-path consumers such as {@link
+   * com.github.cc11001100.weavergirl.core.sampling.SamplingMonitor}. It does not mutate any state.
+   */
+  public double getPressureFactor() {
+    long invocations = interceptorInvocationCount.get();
+    if (invocations == 0) {
+      return 0.0;
+    }
+    long errors = interceptorErrorCount.get();
+    long slowCalls = 0L;
+    for (InterceptorMetrics metrics : interceptorMetrics.values()) {
+      slowCalls += metrics.getSlowCalls();
+    }
+    double errorRatio = (double) errors / (double) invocations;
+    double slowRatio = (double) slowCalls / (double) invocations;
+    if (errorRatio > 0.1 || slowRatio > 0.2) {
+      return 0.9;
+    }
+    return 0.0;
+  }
+
   // --- Plugin status tracking ---
 
   /** Record plugin load result. */

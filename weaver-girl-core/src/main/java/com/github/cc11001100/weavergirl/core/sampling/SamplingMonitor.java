@@ -5,6 +5,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import com.github.cc11001100.weavergirl.core.graceful.GracefulDegradationManager;
+import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,6 +68,7 @@ public class SamplingMonitor {
       long delta = currentCount - previousCount;
       double invocationsPerSecond = (double) delta / checkIntervalSeconds;
       controller.adaptRate(invocationsPerSecond);
+      GracefulDegradationManager.updateSamplingPressure(AgentStatus.getInstance().getPressureFactor());
     } catch (Exception e) {
       log.warn("Sampling monitor check failed: {}", e.getMessage());
     }
