@@ -34,6 +34,12 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
       definitions.removeIf(d -> d.getName().equals(definition.getName()));
       definitions.add(definition);
       indexDirty = true;
+      // Invoke lifecycle hook
+      try {
+        definition.getInterceptor().initialize();
+      } catch (Throwable t) {
+        log.warn("Interceptor {} initialize() failed: {}", definition.getName(), t.getMessage());
+      }
     }
     log.info("Registered interceptor: {}", definition.getName());
   }
@@ -84,10 +90,25 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
   @Override
   public boolean unregister(String name) {
     ValidationUtils.requireNonEmpty(name, "name");
+    // Find the definition before removal so we can call destroy()
+    InterceptorDefinition toRemove = null;
+    for (InterceptorDefinition def : definitions) {
+      if (name.equals(def.getName())) {
+        toRemove = def;
+        break;
+      }
+    }
     boolean removed = definitions.removeIf(d -> name.equals(d.getName()));
     if (removed) {
       indexDirty = true;
       log.info("Unregistered interceptor: {}", name);
+      if (toRemove != null) {
+        try {
+          toRemove.getInterceptor().destroy();
+        } catch (Throwable t) {
+          log.warn("Interceptor {} destroy() failed: {}", name, t.getMessage());
+        }
+      }
     }
     return removed;
   }

@@ -170,6 +170,7 @@ public class InterceptAdvice {
 
       InterceptorRegistry registry = InterceptorHolder.getRegistry();
       if (registry == null) {
+        MethodInvocationPool.release(context);
         return;
       }
 
@@ -215,6 +216,20 @@ public class InterceptAdvice {
       // the original/default return value with the override.
       if (context.isReturnOverridden()) {
         returnValue = context.getReturnValue();
+      }
+
+      // Version the return value for downstream consumers (tracing, caching).
+      if (throwable == null) {
+        String methodKey = targetClass.getName() + "." + methodName;
+        try {
+          long version = com.github.cc11001100.weavergirl.api.interceptor.ReturnVersion.next(methodKey);
+          com.github.cc11001100.weavergirl.api.interceptor.ReturnSnapshot snapshot =
+              new com.github.cc11001100.weavergirl.api.interceptor.ReturnSnapshot(
+                  returnValue, version, methodName, method.getReturnType());
+          context.setReturnSnapshot(snapshot);
+        } catch (Throwable versionError) {
+          // Never let bookkeeping break the return path
+        }
       }
 
       // Return the MethodInvocation to the pool for reuse.

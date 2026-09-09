@@ -58,7 +58,9 @@ public class InterceptorDefinition {
    */
   public enum AdviceMode {
     STANDARD,
-    ARGUMENT_REWRITE
+    ARGUMENT_REWRITE,
+    FIELD,
+    CATCH
   }
 
   private final String name;
@@ -67,6 +69,8 @@ public class InterceptorDefinition {
   private final int priority;
   private final AdviceMode adviceMode;
   private final boolean hasAround;
+  private final com.github.cc11001100.weavergirl.api.matcher.FieldMatcher fieldMatcher;
+  private final String catchExceptionTypeName;
 
   /**
    * Creates a new interceptor definition with default priority (0).
@@ -76,7 +80,7 @@ public class InterceptorDefinition {
    * @param interceptor the interceptor to invoke when the pointcut matches
    */
   public InterceptorDefinition(String name, Pointcut pointcut, Interceptor interceptor) {
-    this(name, pointcut, interceptor, 0, AdviceMode.STANDARD);
+    this(name, pointcut, interceptor, 0, AdviceMode.STANDARD, false, null, null);
   }
 
   /**
@@ -89,7 +93,7 @@ public class InterceptorDefinition {
    */
   public InterceptorDefinition(
       String name, Pointcut pointcut, Interceptor interceptor, int priority) {
-    this(name, pointcut, interceptor, priority, AdviceMode.STANDARD);
+    this(name, pointcut, interceptor, priority, AdviceMode.STANDARD, false, null, null);
   }
 
   /**
@@ -108,24 +112,7 @@ public class InterceptorDefinition {
       Interceptor interceptor,
       int priority,
       AdviceMode adviceMode) {
-    if (name == null || name.isEmpty()) {
-      throw new IllegalArgumentException("Interceptor name must not be null or empty");
-    }
-    if (pointcut == null) {
-      throw new IllegalArgumentException("Pointcut must not be null for interceptor: " + name);
-    }
-    if (interceptor == null) {
-      throw new IllegalArgumentException("Interceptor must not be null for interceptor: " + name);
-    }
-    if (adviceMode == null) {
-      throw new IllegalArgumentException("AdviceMode must not be null for interceptor: " + name);
-    }
-    this.name = name;
-    this.pointcut = pointcut;
-    this.interceptor = interceptor;
-    this.priority = priority;
-    this.adviceMode = adviceMode;
-    this.hasAround = interceptor != null && interceptor.hasAround();
+    this(name, pointcut, interceptor, priority, adviceMode, false, null, null);
   }
 
   /**
@@ -146,6 +133,31 @@ public class InterceptorDefinition {
       int priority,
       AdviceMode adviceMode,
       boolean hasAround) {
+    this(name, pointcut, interceptor, priority, adviceMode, hasAround, null, null);
+  }
+
+  /**
+   * Creates a new interceptor definition with all fields specified, including field/catch matchers.
+   *
+   * @param name unique name for this definition
+   * @param pointcut determines which classes and methods are intercepted
+   * @param interceptor the interceptor to invoke when the pointcut matches
+   * @param priority execution priority
+   * @param adviceMode which inlined advice class to use
+   * @param hasAround whether this interceptor implements around advice
+   * @param fieldMatcher the field matcher for FIELD advice mode, or null
+   * @param catchExceptionTypeName the exception type name for CATCH advice mode, or null
+   * @since 1.7.0
+   */
+  public InterceptorDefinition(
+      String name,
+      Pointcut pointcut,
+      Interceptor interceptor,
+      int priority,
+      AdviceMode adviceMode,
+      boolean hasAround,
+      com.github.cc11001100.weavergirl.api.matcher.FieldMatcher fieldMatcher,
+      String catchExceptionTypeName) {
     if (name == null || name.isEmpty()) {
       throw new IllegalArgumentException("Interceptor name must not be null or empty");
     }
@@ -164,6 +176,8 @@ public class InterceptorDefinition {
     this.priority = priority;
     this.adviceMode = adviceMode;
     this.hasAround = hasAround;
+    this.fieldMatcher = fieldMatcher;
+    this.catchExceptionTypeName = catchExceptionTypeName;
   }
 
   /**

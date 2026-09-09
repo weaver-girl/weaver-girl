@@ -112,4 +112,31 @@ public interface Interceptor {
   default boolean hasAround() {
     return false;
   }
+
+  /**
+   * Lifecycle hook called once after the interceptor is registered with the registry.
+   *
+   * <p>Use this to initialize one-time resources such as caches, connection pools, or background
+   * threads. The framework calls this on the same thread that performed the registration.
+   *
+   * <p>This callback is optional. The default implementation is a no-op.
+   *
+   * @since 1.7.0
+   */
+  default void initialize() {}
+
+  /**
+   * Lifecycle hook called once before the interceptor is removed from the registry or when the
+   * agent shuts down.
+   *
+   * <p>Use this to release resources initialized in {@link #initialize()}, such as shutting down
+   * background threads or flushing caches. The framework calls this on the same thread that
+   * performs the unregistration or shutdown.
+   *
+   * <p>This callback is optional. The default implementation is a no-op. Implementations must not
+   * throw exceptions; if cleanup fails, log the error internally.
+   *
+   * @since 1.7.0
+   */
+  default void destroy() {}
 }

@@ -54,6 +54,8 @@ public class ClassMatcher {
     EXACT_NAME,
     /** Match by regex pattern against the fully-qualified class name. */
     NAME_PATTERN,
+    /** Match any class. */
+    ANY,
     /** Match classes bearing a specific annotation. */
     ANNOTATION,
     /** Match classes that extend a specific superclass. */
@@ -168,12 +170,22 @@ public class ClassMatcher {
   }
 
   /**
+   * Creates a matcher that matches every class.
+   *
+   * @return a new ClassMatcher with {@link MatchType#ANY}
+   * @since 1.7.0
+   */
+  public static ClassMatcher any() {
+    return new ClassMatcher(MatchType.ANY, "*");
+  }
+
+  /**
    * Tests whether the given class name matches this matcher.
    *
-   * <p>This method only supports {@link MatchType#EXACT_NAME} and {@link MatchType#NAME_PATTERN}.
-   * For {@code ANNOTATION}, {@code SUPER_CLASS}, and {@code INTERFACE} match types, this method
-   * always returns {@code false}; those are resolved by the core engine at bytecode-instrumentation
-   * time.
+   * <p>This method supports {@link MatchType#EXACT_NAME} and {@link MatchType#NAME_PATTERN} and
+   * {@link MatchType#ANY}. For {@code ANNOTATION}, {@code SUPER_CLASS}, and {@code INTERFACE} match
+   * types, this method always returns {@code false}; those are resolved by the core engine at
+   * bytecode-instrumentation time.
    *
    * @param className the fully-qualified class name to test
    * @return true if the class name matches
@@ -184,6 +196,8 @@ public class ClassMatcher {
         return pattern.equals(className);
       case NAME_PATTERN:
         return compiledRegex != null && compiledRegex.matcher(className).matches();
+      case ANY:
+        return true;
       default:
         return false;
     }

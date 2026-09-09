@@ -91,6 +91,9 @@ public class MethodInvocation {
   private volatile boolean proceedCalled;
   private static final int MAX_PROCEED_DEPTH = 32;
 
+  // Return value snapshot for versioning
+  private com.github.cc11001100.weavergirl.api.interceptor.ReturnSnapshot returnSnapshot;
+
   /**
    * Constructs a new MethodInvocation.
    *
@@ -151,6 +154,7 @@ public class MethodInvocation {
     this.proceedable = false;
     this.proceedDepth = 0;
     this.proceedCalled = false;
+    this.returnSnapshot = null;
     if (this.attachments != null) {
       this.attachments.clear();
     }
@@ -176,6 +180,7 @@ public class MethodInvocation {
     this.proceedable = false;
     this.proceedDepth = 0;
     this.proceedCalled = false;
+    this.returnSnapshot = null;
     if (this.attachments != null) {
       this.attachments.clear();
     }
@@ -641,5 +646,31 @@ public class MethodInvocation {
    */
   public boolean hasCaller() {
     return callerClass != null;
+  }
+
+  /**
+   * Sets the return snapshot for this invocation. This is an internal framework method used by the
+   * exit advice to attach a {@link com.github.cc11001100.weavergirl.api.interceptor.ReturnSnapshot}
+   * to the invocation. Interceptors should not call this.
+   *
+   * @param snapshot the return snapshot, or null
+   * @since 1.7.0
+   */
+  public void setReturnSnapshot(
+      com.github.cc11001100.weavergirl.api.interceptor.ReturnSnapshot snapshot) {
+    this.returnSnapshot = snapshot;
+  }
+
+  /**
+   * Returns the return snapshot attached to this invocation, if any.
+   *
+   * <p>This is populated by the framework after the method returns. It may be null if the method
+   * threw an exception or if the interceptor chain did not reach the return-value recording path.
+   *
+   * @return the return snapshot, or null
+   * @since 1.7.0
+   */
+  public com.github.cc11001100.weavergirl.api.interceptor.ReturnSnapshot getReturnSnapshot() {
+    return returnSnapshot;
   }
 }

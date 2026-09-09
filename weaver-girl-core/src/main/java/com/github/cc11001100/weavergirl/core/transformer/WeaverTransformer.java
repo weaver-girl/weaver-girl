@@ -20,7 +20,9 @@ import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.AsyncArgumentAdvice;
+import com.github.cc11001100.weavergirl.core.CatchAdvice;
 import com.github.cc11001100.weavergirl.core.ConstructorAdvice;
+import com.github.cc11001100.weavergirl.core.FieldAdvice;
 import com.github.cc11001100.weavergirl.core.InterceptAdvice;
 import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
@@ -263,7 +265,11 @@ public class WeaverTransformer {
         com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode mode =
             definition.getAdviceMode();
         Class<?> adviceClass;
-        if (definition.getPointcut().getMethodMatcher().getMatchType()
+        if (mode == com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode.FIELD) {
+          adviceClass = FieldAdvice.class;
+        } else if (mode == com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode.CATCH) {
+          adviceClass = CatchAdvice.class;
+        } else if (definition.getPointcut().getMethodMatcher().getMatchType()
             == com.github.cc11001100.weavergirl.api.matcher.MethodMatcher.MatchType.CONSTRUCTOR) {
           adviceClass = ConstructorAdvice.class;
         } else if (mode
