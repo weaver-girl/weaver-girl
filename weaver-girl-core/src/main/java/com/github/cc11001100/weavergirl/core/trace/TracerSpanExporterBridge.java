@@ -30,11 +30,21 @@ public class TracerSpanExporterBridge implements SpanCompletionListener {
             .operationName(span.getOperationName() != null ? span.getOperationName() : "unknown")
             .startTimeMs(span.getStartTimeMs())
             .durationMs(durationMs)
-            .status("OK");
+            .status(span.getErrorStatus() != null ? span.getErrorStatus() : "OK");
 
     // Copy baggage to attributes
     for (Map.Entry<String, String> entry : span.getBaggage().entrySet()) {
       spanDataBuilder.attribute("baggage." + entry.getKey(), entry.getValue());
+    }
+
+    // Populate parent link when present so downstream exporters/topology can
+    // reconstruct causal relationships without re-parsing parentSpanId.
+    if (span.getParentSpanId() != null) {
+      spanDataBuilder.link(
+          com.github.cc11001100.weavergirl.api.tracing.SpanLink.builder()
+              .traceId(span.getTraceId())
+              .spanId(span.getParentSpanId())
+              .build());
     }
 
     exporter.submit(spanDataBuilder.build());

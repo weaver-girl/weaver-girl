@@ -195,6 +195,13 @@ public class SpanData {
       return this;
     }
 
+    public Builder link(SpanLink link) {
+      if (link != null) {
+        this.links.add(link);
+      }
+      return this;
+    }
+
     public SpanData build() {
       return new SpanData(this);
     }

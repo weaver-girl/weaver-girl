@@ -105,21 +105,26 @@ public final class Tracer {
 
     long durationMs = System.currentTimeMillis() - span.getStartTimeMs();
 
-    // Update operation name if provided
-    SpanContext finalSpan = span;
+    SpanContext.Builder builder =
+        SpanContext.builder()
+            .traceId(span.getTraceId())
+            .spanId(span.getSpanId())
+            .parentSpanId(span.getParentSpanId())
+            .sampled(span.isSampled())
+            .baggage(span.getBaggage())
+            .startTimeMs(span.getStartTimeMs());
     if (operationName != null && !operationName.isEmpty()) {
-      finalSpan =
-          SpanContext.builder()
-              .traceId(span.getTraceId())
-              .spanId(span.getSpanId())
-              .parentSpanId(span.getParentSpanId())
-              .sampled(span.isSampled())
-              .baggage(span.getBaggage())
-              .startTimeMs(span.getStartTimeMs())
-              .operationName(operationName)
-              .build();
+      builder.operationName(operationName);
+    } else if (span.getOperationName() != null && !span.getOperationName().isEmpty()) {
+      builder.operationName(span.getOperationName());
+    } else {
+      builder.operationName("unknown");
+    }
+    if (status != null && !status.isEmpty()) {
+      builder.errorStatus(status);
     }
 
+    SpanContext finalSpan = builder.build();
     CURRENT_SPAN.remove();
 
     if (completionListeners.size() > 0) {

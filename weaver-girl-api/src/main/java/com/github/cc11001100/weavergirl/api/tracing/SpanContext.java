@@ -19,6 +19,7 @@ public class SpanContext {
   private final boolean sampled;
   private final long startTimeMs;
   private final String operationName;
+  private final String errorStatus;
 
   private SpanContext(Builder builder) {
     this.traceId = builder.traceId;
@@ -28,6 +29,7 @@ public class SpanContext {
     this.sampled = builder.sampled;
     this.startTimeMs = builder.startTimeMs;
     this.operationName = builder.operationName;
+    this.errorStatus = builder.errorStatus;
   }
 
   /** Trace ID (unique per trace). */
@@ -75,6 +77,11 @@ public class SpanContext {
     return operationName;
   }
 
+  /** Error status if this span ended abnormally, or null if OK. */
+  public String getErrorStatus() {
+    return errorStatus;
+  }
+
   /**
    * Create a child span context from this one.
    *
@@ -105,6 +112,7 @@ public class SpanContext {
     private boolean sampled = true;
     private long startTimeMs = System.currentTimeMillis();
     private String operationName = "";
+    private String errorStatus;
 
     public Builder traceId(String traceId) {
       this.traceId = traceId;
@@ -143,6 +151,11 @@ public class SpanContext {
 
     public Builder operationName(String operationName) {
       this.operationName = operationName;
+      return this;
+    }
+
+    public Builder errorStatus(String errorStatus) {
+      this.errorStatus = errorStatus;
       return this;
     }
 

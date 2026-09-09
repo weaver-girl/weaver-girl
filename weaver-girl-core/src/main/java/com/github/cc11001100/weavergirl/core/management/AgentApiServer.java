@@ -1,8 +1,11 @@
 package com.github.cc11001100.weavergirl.core.management;
 
 import com.github.cc11001100.weavergirl.api.alert.AlertEngine;
+import com.github.cc11001100.weavergirl.api.context.ContextPropagatorRegistry;
+import com.github.cc11001100.weavergirl.api.context.ContextSnapshot;
 import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
 import com.github.cc11001100.weavergirl.api.plugin.PluginManager;
+import com.github.cc11001100.weavergirl.api.tracing.Tracer;
 import com.github.cc11001100.weavergirl.core.alert.DefaultAlertEngine;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -25,6 +28,8 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code GET /alerts} — alert history
  *   <li>{@code GET /metrics} — metric snapshots
  *   <li>{@code GET /diagnostics} — full diagnostics report
+ *   <li>{@code GET /traces} — current/live span and thread context snapshot
+ *   <li>{@code GET /context/propagators} — registered cross-thread propagators
  * </ul>
  *
  * @since 1.2.0
@@ -56,6 +61,8 @@ public class AgentApiServer {
     server.createContext("/alerts", this::handleAlerts);
     server.createContext("/metrics", this::handleMetrics);
     server.createContext("/diagnostics", this::handleDiagnostics);
+    server.createContext("/traces", this::handleTraces);
+    server.createContext("/context/propagators", this::handleContextPropagators);
 
     server.setExecutor(null); // default executor
     server.start();
@@ -183,6 +190,64 @@ public class AgentApiServer {
   private void handleDiagnostics(HttpExchange exchange) throws IOException {
     String report = AgentDiagnostics.getInstance().generateReport();
     sendText(exchange, report);
+  }
+
+  private void handleTraces(HttpExchange exchange) throws IOException {
+    com.github.cc11001100.weavergirl.api.tracing.SpanContext span =
+        com.github.cc11001100.weavergirl.api.tracing.Tracer.getCurrentSpan();
+    ContextSnapshot snapshot = ContextSnapshot.capture();
+    StringBuilder json = new StringBuilder();
+    json.append("{");
+    if (span != null) {
+      json.append("\"span\":{");
+      json.append("\"traceId\":\"").append(esc(span.getTraceId())).append("\",");
+      json.append("\"spanId\":\"").append(esc(span.getSpanId())).append("\",");
+      if (span.getParentSpanId() != null) {
+        json.append("\"parentSpanId\":\"").append(esc(span.getParentSpanId())).append("\",");
+      }
+      json.append("\"operationName\":\"").append(esc(span.getOperationName())).append("\",");
+      json.append("\"startTimeMs\":").append(span.getStartTimeMs()).append(",");
+      json.append("\"sampled\":").append(span.isSampled()).append(",");
+      json.append("\"root\":").append(span.isRoot()).append(",");
+      if (span.getErrorStatus() != null) {
+        json.append("\"errorStatus\":\"").append(esc(span.getErrorStatus())).append("\",");
+      }
+      json.append("\"baggageCount\":").append(span.getBaggage().size());
+      json.append("},");
+    }
+    json.append("\"threadContext\":{");
+    Map<String, Object> threadContext = snapshot.getThreadContext();
+    boolean first = true;
+    for (Map.Entry<String, Object> entry : threadContext.entrySet()) {
+      if (!first) json.append(",");
+      first = false;
+      json.append("\"").append(esc(entry.getKey())).append("\":\"");
+      json.append(esc(entry.getValue() != null ? entry.getValue().toString() : "null"));
+      json.append("\"");
+    }
+    json.append("},");
+    json.append("\"hasSpan\":").append(span != null).append(",");
+    json.append("\"snapshotEmpty\":").append(snapshot.isEmpty());
+    json.append("}");
+    sendJson(exchange, json.toString());
+  }
+
+  private void handleContextPropagators(HttpExchange exchange) throws IOException {
+    List<com.github.cc11001100.weavergirl.api.context.ContextPropagator> propagators =
+        ContextPropagatorRegistry.getAll();
+    StringBuilder json = new StringBuilder();
+    json.append("{\"propagators\":[");
+    for (int i = 0; i < propagators.size(); i++) {
+      if (i > 0) json.append(",");
+      com.github.cc11001100.weavergirl.api.context.ContextPropagator p = propagators.get(i);
+      json.append("{");
+      json.append("\"name\":\"").append(esc(p.name())).append("\",");
+      json.append("\"priority\":").append(p.priority());
+      json.append("}");
+    }
+    json.append("],\"count\":").append(propagators.size());
+    json.append("}");
+    sendJson(exchange, json.toString());
   }
 
   // ===== Helpers =====
