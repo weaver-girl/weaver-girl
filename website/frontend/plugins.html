@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Plugins - Weaver-Girl</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <h1>Weaver-Girl</h1>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/docs">Docs</a>
+        <a href="/plugins">Plugins</a>
+        <a href="/api">API</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <h2>Plugins</h2>
+      <p>Available built-in interception plugins.</p>
+    </section>
+
+    <section class="features">
+      <h3>Plugin List</h3>
+      <ul id="plugins-list"></ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>Weaver-Girl. MIT License.</p>
+    </div>
+  </footer>
+
+  <script>
+    fetch('/plugins')
+      .then(r => r.json())
+      .then(data => {
+        const list = document.getElementById('plugins-list');
+        (data.plugins || []).forEach(plugin => {
+          const li = document.createElement('li');
+          li.innerHTML = `<strong>${plugin.name}</strong><br/>${plugin.description}`;
+          list.appendChild(li);
+        });
+      })
+      .catch(() => {
+        document.getElementById('plugins-list').innerHTML = '<li>Failed to load plugins.</li>';
+      });
+  </script>
+</body>
+</html>

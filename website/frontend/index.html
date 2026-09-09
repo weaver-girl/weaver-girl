@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Weaver-Girl - Java Bytecode Instrumentation Framework</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container">
+        <h1>Weaver-Girl</h1>
+        <nav>
+          <a href="/index.html">Home</a>
+          <a href="/docs.html">Docs</a>
+          <a href="/plugins.html">Plugins</a>
+          <a href="/api.html">API</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="hero">
+        <h2>Modular Java bytecode instrumentation built on ByteBuddy</h2>
+        <p>Inspired by SkyWalking and OpenTelemetry Java Agent.</p>
+        <pre><code>java -javaagent:weaver-girl-agent.jar -jar your-app.jar</code></pre>
+      </section>
+
+      <section class="features">
+        <h3>Features</h3>
+        <ul>
+          <li>16 built-in plugins</li>
+          <li>SPI-based plugin discovery</li>
+          <li>ByteBuddy Advice interception</li>
+          <li>Dynamic attach</li>
+          <li>Hot reload</li>
+          <li>Circuit breaker</li>
+          <li>Adaptive sampling</li>
+          <li>REST API and Prometheus metrics</li>
+        </ul>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container">
+        <p>Weaver-Girl. MIT License.</p>
+      </div>
+    </footer>
+  </body>
+</html>

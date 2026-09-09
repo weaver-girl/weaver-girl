@@ -85,6 +85,29 @@ class PremainLifecycleTest {
   }
 
   @Test
+  void bootstrapWithEmergencyDisableConfig() {
+    Assumptions.assumeTrue(
+        instrumentation != null, "ByteBuddyAgent self-attach not available in this environment");
+
+    Map<String, String> config = new java.util.HashMap<>();
+    config.put("weavergirl.emergency.disable", "true");
+
+    WeaverGirl weaverGirl;
+    try {
+      weaverGirl = WeaverGirl.bootstrap(instrumentation, config);
+    } catch (NoClassDefFoundError e) {
+      Assumptions.assumeTrue(
+          false, "ByteBuddy transformation classes not available: " + e.getMessage());
+      return;
+    }
+    assertNotNull(weaverGirl);
+    assertTrue(
+        com.github.cc11001100.weavergirl.core.graceful.GracefulDegradationManager.isEmergencyMode());
+
+    assertDoesNotThrow(() -> weaverGirl.shutdown());
+  }
+
+  @Test
   void parseAgentArgsWithConfig() throws Exception {
     Map<String, String> args = invokeParseAgentArgs("config=/path/to/weaver.yml");
     assertEquals("/path/to/weaver.yml", args.get("config"));

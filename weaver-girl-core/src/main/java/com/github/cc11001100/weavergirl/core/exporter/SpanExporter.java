@@ -1,5 +1,6 @@
 package com.github.cc11001100.weavergirl.core.exporter;
 
+import com.github.cc11001100.weavergirl.core.graceful.GracefulDegradationManager;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -181,6 +182,7 @@ public class SpanExporter {
             "[SpanExporter] Formatter {} failed: {}",
             formatter.getClass().getSimpleName(),
             e.getMessage());
+        GracefulDegradationManager.notifyExportBackendUnavailable(getFailedExportCount());
       }
     }
 

@@ -27,6 +27,7 @@ import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry
 import com.github.cc11001100.weavergirl.core.release.AgentUpdater;
 import com.github.cc11001100.weavergirl.core.release.UpdateChecker;
 import com.github.cc11001100.weavergirl.core.release.VersionInfo;
+import com.github.cc11001100.weavergirl.core.graceful.GracefulDegradationManager;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingMonitor;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
@@ -963,6 +964,12 @@ public class WeaverGirl {
     // Log configuration with sensitive values masked
     java.util.Map<String, String> safeConfig = SecurityUtils.sanitizeForLogging(config);
     log.info("Agent configuration: {}", safeConfig);
+
+    // P102: emergency disable switch
+    String emergencyDisable = config.get("weavergirl.emergency.disable");
+    if ("true".equalsIgnoreCase(emergencyDisable)) {
+      GracefulDegradationManager.enterEmergencyMode("config");
+    }
 
     // SamplingController configuration
     SamplingController sampling = SamplingController.getInstance();

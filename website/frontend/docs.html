@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Docs - Weaver-Girl</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <h1>Weaver-Girl</h1>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/docs">Docs</a>
+        <a href="/plugins">Plugins</a>
+        <a href="/api">API</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <h2>Documentation</h2>
+      <p>Quick links to get started with the agent and its configuration.</p>
+    </section>
+
+    <section class="features">
+      <h3>Guides</h3>
+      <ul id="docs-list"></ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>Weaver-Girl. MIT License.</p>
+    </div>
+  </footer>
+
+  <script>
+    fetch('/docs')
+      .then(r => r.json())
+      .then(data => {
+        const list = document.getElementById('docs-list');
+        (data.docs || []).forEach(item => {
+          const li = document.createElement('li');
+          li.innerHTML = `<strong>${item.title}</strong><br/>${item.content}`;
+          list.appendChild(li);
+        });
+      })
+      .catch(() => {
+        document.getElementById('docs-list').innerHTML = '<li>Failed to load docs.</li>';
+      });
+  </script>
+</body>
+</html>

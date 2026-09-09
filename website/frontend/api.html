@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API - Weaver-Girl</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <h1>Weaver-Girl</h1>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/docs">Docs</a>
+        <a href="/plugins">Plugins</a>
+        <a href="/api">API</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <h2>API Status</h2>
+      <p>Live status from the backend API.</p>
+    </section>
+
+    <section class="features">
+      <h3>Status</h3>
+      <ul id="api-status"></ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>Weaver-Girl. MIT License.</p>
+    </div>
+  </footer>
+
+  <script>
+    fetch('/api/status')
+      .then(r => r.json())
+      .then(data => {
+        const list = document.getElementById('api-status');
+        const entries = [
+          { label: 'Status', value: data.status },
+          { label: 'Timestamp', value: data.timestamp },
+          { label: 'Environment', value: data.environment }
+        ];
+        entries.forEach(entry => {
+          const li = document.createElement('li');
+          li.innerHTML = `<strong>${entry.label}:</strong> ${entry.value}`;
+          list.appendChild(li);
+        });
+      })
+      .catch(() => {
+        document.getElementById('api-status').innerHTML = '<li>Failed to load API status.</li>';
+      });
+  </script>
+</body>
+</html>
