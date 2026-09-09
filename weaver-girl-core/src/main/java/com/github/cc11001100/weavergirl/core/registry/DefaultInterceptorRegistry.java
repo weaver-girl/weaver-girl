@@ -21,6 +21,44 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
   private final List<InterceptorDefinition> definitions = new CopyOnWriteArrayList<>();
   private volatile Map<String, List<InterceptorDefinition>> classIndex = new ConcurrentHashMap<>();
   private volatile boolean indexDirty = true;
+  private volatile long generation = 0;
+  private final CopyOnWriteArrayList<Runnable> reloadHooks = new CopyOnWriteArrayList<>();
+
+  /** Return the current generation counter, incremented on every mutation. */
+  public long getGeneration() {
+    return generation;
+  }
+
+  private void bumpGeneration() {
+    generation++;
+  }
+
+  /**
+   * Register a hook to be invoked after any mutation (register/unregister/clear).
+   * The hook runs inside the same lock as the mutation, so it must be fast and non-blocking.
+   * Hooks are stored in a CopyOnWriteArrayList, so iteration is safe during invocation.
+   */
+  public void addReloadHook(Runnable hook) {
+    if (hook != null) {
+      reloadHooks.add(hook);
+    }
+  }
+
+  /** Remove a previously registered reload hook. */
+  public void removeReloadHook(Runnable hook) {
+    reloadHooks.remove(hook);
+  }
+
+  /** Invoke all registered reload hooks. Must be called inside the synchronized block. */
+  private void fireReloadHooks() {
+    for (Runnable hook : reloadHooks) {
+      try {
+        hook.run();
+      } catch (Throwable t) {
+        log.warn("[DynamicRegistry] Reload hook failed: {}", t.getMessage());
+      }
+    }
+  }
 
   @Override
   public void register(InterceptorDefinition definition) {
@@ -34,6 +72,8 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
       definitions.removeIf(d -> d.getName().equals(definition.getName()));
       definitions.add(definition);
       indexDirty = true;
+      bumpGeneration();
+      fireReloadHooks();
       // Invoke lifecycle hook
       try {
         definition.getInterceptor().initialize();
@@ -101,6 +141,8 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
     boolean removed = definitions.removeIf(d -> name.equals(d.getName()));
     if (removed) {
       indexDirty = true;
+      bumpGeneration();
+      fireReloadHooks();
       log.info("Unregistered interceptor: {}", name);
       if (toRemove != null) {
         try {
@@ -115,9 +157,22 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
 
   /** Clear all registered definitions. For testing purposes. */
   public void clear() {
-    definitions.clear();
-    classIndex = new ConcurrentHashMap<>();
-    indexDirty = true;
+    List<InterceptorDefinition> clearedDefinitions;
+    synchronized (this) {
+      clearedDefinitions = new ArrayList<>(definitions);
+      definitions.clear();
+      classIndex = new ConcurrentHashMap<>();
+      indexDirty = true;
+      bumpGeneration();
+      fireReloadHooks();
+    }
+    for (InterceptorDefinition def : clearedDefinitions) {
+      try {
+        def.getInterceptor().destroy();
+      } catch (Throwable t) {
+        log.warn("Interceptor {} destroy() failed during clear(): {}", def.getName(), t.getMessage());
+      }
+    }
   }
 
   /**
@@ -130,12 +185,15 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
    * consulted for classes reported by {@code Instrumentation.getAllLoadedClasses()} during
    * retransformation, the class is already loaded and this is a no-op lookup.
    *
+   * <p>Public so {@code InterceptorHolder}'s snapshot cache can reuse the reflective runtime check
+   * for INTERFACE/SUPER_CLASS/ANNOTATION matchers without duplicating logic.
+   *
    * @param classMatcher the matcher with a non-name match type
    * @param className the fully-qualified class name to test
    * @return true if the loaded class satisfies the matcher, false otherwise (including when the
    *     class cannot be loaded)
    */
-  private boolean matchesByReflection(ClassMatcher classMatcher, String className) {
+  public boolean matchesByReflection(ClassMatcher classMatcher, String className) {
     Class<?> candidate;
     try {
       candidate = Class.forName(className, false, Thread.currentThread().getContextClassLoader());

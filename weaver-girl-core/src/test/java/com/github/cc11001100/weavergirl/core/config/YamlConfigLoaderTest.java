@@ -8,6 +8,8 @@ import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import java.io.StringReader;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -234,12 +236,12 @@ class YamlConfigLoaderTest {
   void parseFromFile_appliesDefaultsAndHandlesMalformedFile() throws Exception {
     Path file = Files.createTempFile("weaver-girl", ".yml");
     try {
-      Files.writeString(file, "interceptors: []\n");
+      Files.write(file, "interceptors: []\n".getBytes(StandardCharsets.UTF_8));
       WeaverConfig config = loader.parseFromFile(file.toString());
       assertEquals(100, config.getSamplingThreshold());
       assertEquals("INFO", config.getLogLevel());
 
-      Files.writeString(file, "not: [valid");
+      Files.write(file, "not: [valid".getBytes(StandardCharsets.UTF_8));
       assertNotNull(loader.parseFromFile(file.toString()));
     } finally {
       Files.deleteIfExists(file);
