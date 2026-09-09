@@ -4,6 +4,8 @@ import com.github.cc11001100.weavergirl.api.ValidationUtils;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.api.security.SecurityPolicy;
+import com.github.cc11001100.weavergirl.api.security.SecurityAuditLog;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -26,14 +28,20 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
   private volatile boolean indexDirty = true;
   private volatile long generation = 0;
   private final CopyOnWriteArrayList<Runnable> reloadHooks = new CopyOnWriteArrayList<>();
+  private volatile SecurityPolicy securityPolicy;
 
   /** Return the current generation counter, incremented on every mutation. */
   public long getGeneration() {
     return generation;
   }
 
-  private void bumpGeneration() {
-    generation++;
+  public void setSecurityPolicy(SecurityPolicy policy) {
+    this.securityPolicy = policy;
+  }
+
+  private SecurityPolicy getSecurityPolicy() {
+    SecurityPolicy p = securityPolicy;
+    return p != null ? p : SecurityPolicy.builder().defaultAllow(true).build();
   }
 
   /**
@@ -71,6 +79,18 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
           new Exception());
       return;
     }
+
+    // Security policy enforcement
+    SecurityPolicy policy = getSecurityPolicy();
+    if (policy != null) {
+      String targetClass = definition.getPointcut().getClassMatcher().getPattern();
+      if (!policy.isClassAllowed(targetClass)) {
+        log.warn("SecurityPolicy denied registration of interceptor {} for class {}", definition.getName(), targetClass);
+        SecurityAuditLog.recordInterception(definition.getName(), targetClass, false);
+        return;
+      }
+    }
+
     synchronized (this) {
       definitions.removeIf(d -> d.getName().equals(definition.getName()));
       definitions.add(definition);
@@ -301,5 +321,9 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
     }
     classIndex = newIndex; // atomic swap
     indexDirty = false;
+  }
+
+  private void bumpGeneration() {
+    generation++;
   }
 }

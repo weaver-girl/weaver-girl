@@ -26,9 +26,9 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li><b>Lifecycle:</b> @Before, @After, @Around, @OnException, @AfterReturning,
- *       @OnConstructor, @OnFieldGet, @OnFieldSet, @OnStaticInit
- *   <li><b>Matching:</b> @WeaveClass, @OnMethodPattern, @WhenAnnotated
- *   <li><b>Ordering:</b> @Order
+ *       @AfterThrowing, @OnConstructor, @OnFieldGet, @OnFieldSet, @OnStaticInit
+ *   <li><b>Matching:</b> @WeaveClass, @OnMethodPattern, @WhenAnnotated, @Pointcut
+ *   <li><b>Ordering:</b> @Order, @DeclarePrecedence
  *   <li><b>Condition:</b> @EnableIf, @SampleRate
  *   <li><b>Observability:</b> @Timed, @Trace, @Tag, @Counted, @Logged, @Metric, @Histogram, @Gauge
  *   <li><b>Resilience:</b> @RetryOnException, @CircuitBreaker, @Timeout, @Fallback, @Bulkhead, @RateLimiter
@@ -119,6 +119,7 @@ public class AnnotationPluginLoader {
     Map<String, List<Method>> aroundMethods = new HashMap<>();
     Map<String, List<Method>> onExceptionMethods = new HashMap<>();
     Map<String, List<Method>> afterReturningMethods = new HashMap<>();
+    Map<String, List<Method>> afterThrowingMethods = new HashMap<>();
     Map<String, List<Method>> retryMethods = new HashMap<>();
     Map<String, List<Method>> traceMethods = new HashMap<>();
     Map<String, List<Method>> tagMethods = new HashMap<>();
@@ -148,36 +149,51 @@ public class AnnotationPluginLoader {
     List<Method> fieldSetMethods = new ArrayList<>();
     List<Method> staticInitMethods = new ArrayList<>();
 
+    // Collect named @Pointcut definitions: methodName -> PointcutExpression
+    Map<String, PointcutExpression> namedPointcuts = new HashMap<>();
+    for (Method m : clazz.getDeclaredMethods()) {
+      if (m.isAnnotationPresent(com.github.cc11001100.weavergirl.annotation.Pointcut.class)) {
+        com.github.cc11001100.weavergirl.annotation.Pointcut ann = m.getAnnotation(com.github.cc11001100.weavergirl.annotation.Pointcut.class);
+        namedPointcuts.put(m.getName(), PointcutParser.getInstance().parse(ann.value()));
+      }
+    }
+
     for (Method m : clazz.getDeclaredMethods()) {
       // Lifecycle annotations
       if (m.isAnnotationPresent(Before.class)) {
         Before ann = m.getAnnotation(Before.class);
         beforeMethods
-            .computeIfAbsent(methodKey(ann.value(), ann.parameterTypes()), k -> new ArrayList<>())
+            .computeIfAbsent(resolvePointcutKey(ann.value(), namedPointcuts), k -> new ArrayList<>())
             .add(m);
       }
       if (m.isAnnotationPresent(After.class)) {
         After ann = m.getAnnotation(After.class);
         afterMethods
-            .computeIfAbsent(methodKey(ann.value(), ann.parameterTypes()), k -> new ArrayList<>())
+            .computeIfAbsent(resolvePointcutKey(ann.value(), namedPointcuts), k -> new ArrayList<>())
             .add(m);
       }
       if (m.isAnnotationPresent(Around.class)) {
         Around ann = m.getAnnotation(Around.class);
         aroundMethods
-            .computeIfAbsent(methodKey(ann.value(), ann.parameterTypes()), k -> new ArrayList<>())
+            .computeIfAbsent(resolvePointcutKey(ann.value(), namedPointcuts), k -> new ArrayList<>())
             .add(m);
       }
       if (m.isAnnotationPresent(OnException.class)) {
         OnException ann = m.getAnnotation(OnException.class);
         onExceptionMethods
-            .computeIfAbsent(methodKey(ann.value(), ann.parameterTypes()), k -> new ArrayList<>())
+            .computeIfAbsent(resolvePointcutKey(ann.value(), namedPointcuts), k -> new ArrayList<>())
             .add(m);
       }
       if (m.isAnnotationPresent(AfterReturning.class)) {
         AfterReturning ann = m.getAnnotation(AfterReturning.class);
         afterReturningMethods
-            .computeIfAbsent(methodKey(ann.value(), ann.parameterTypes()), k -> new ArrayList<>())
+            .computeIfAbsent(resolvePointcutKey(ann.value(), namedPointcuts), k -> new ArrayList<>())
+            .add(m);
+      }
+      if (m.isAnnotationPresent(AfterThrowing.class)) {
+        AfterThrowing ann = m.getAnnotation(AfterThrowing.class);
+        afterThrowingMethods
+            .computeIfAbsent(resolvePointcutKey(ann.value(), namedPointcuts), k -> new ArrayList<>())
             .add(m);
       }
       if (m.isAnnotationPresent(OnConstructor.class)) {
@@ -317,6 +333,7 @@ public class AnnotationPluginLoader {
               flattenAll(aroundMethods),
               flattenAll(onExceptionMethods),
               flattenAll(afterReturningMethods),
+              flattenAll(afterThrowingMethods),
               sampleRate,
               isTimed,
               timedAnnotation);
@@ -397,6 +414,7 @@ public class AnnotationPluginLoader {
     allTargetMethods.addAll(aroundMethods.keySet());
     allTargetMethods.addAll(onExceptionMethods.keySet());
     allTargetMethods.addAll(afterReturningMethods.keySet());
+    allTargetMethods.addAll(afterThrowingMethods.keySet());
     allTargetMethods.addAll(retryMethods.keySet());
     allTargetMethods.addAll(traceMethods.keySet());
     allTargetMethods.addAll(tagMethods.keySet());
@@ -432,6 +450,8 @@ public class AnnotationPluginLoader {
           onExceptionMethods.getOrDefault(targetMethod, Collections.emptyList());
       List<Method> afterReturnings =
           afterReturningMethods.getOrDefault(targetMethod, Collections.emptyList());
+      List<Method> afterThrowings =
+          afterThrowingMethods.getOrDefault(targetMethod, Collections.emptyList());
       List<Method> retries = retryMethods.getOrDefault(targetMethod, Collections.emptyList());
       List<Method> traces = traceMethods.getOrDefault(targetMethod, Collections.emptyList());
       List<Method> tags = tagMethods.getOrDefault(targetMethod, Collections.emptyList());
@@ -474,6 +494,7 @@ public class AnnotationPluginLoader {
               arounds,
               onExceptions,
               afterReturnings,
+              afterThrowings,
               sampleRate,
               isTimed,
               timedAnnotation);
@@ -1383,6 +1404,7 @@ public class AnnotationPluginLoader {
       List<Method> arounds,
       List<Method> onExceptions,
       List<Method> afterReturnings,
+      List<Method> afterThrowings,
       double sampleRate,
       boolean isTimed,
       Timed timedAnnotation) {
@@ -1401,6 +1423,7 @@ public class AnnotationPluginLoader {
         invokeMethods(instance, arounds, inv);
         invokeMethods(instance, afters, inv);
         invokeMethods(instance, afterReturnings, inv);
+        invokeOnExceptionThrowingFiltered(instance, afterThrowings, inv);
         if (isTimed) recordTiming(inv, timedAnnotation);
       }
 
@@ -1584,6 +1607,40 @@ public class AnnotationPluginLoader {
         log.warn("Error invoking onException method {}: {}", m.getName(), e.getMessage());
       }
     }
+  }
+
+  private void invokeOnExceptionThrowingFiltered(
+      Object inst, List<Method> afterThrowings, MethodInvocation inv) {
+    Throwable thrown = inv.getThrowable();
+    for (Method m : afterThrowings) {
+      AfterThrowing ann = m.getAnnotation(AfterThrowing.class);
+      if (ann != null && ann.exceptionType() != Throwable.class) {
+        if (thrown != null && !ann.exceptionType().isInstance(thrown)) continue;
+      }
+      try {
+        m.setAccessible(true);
+        m.invoke(inst, inv);
+      } catch (Exception e) {
+        log.warn("Error invoking afterThrowing method {}: {}", m.getName(), e.getMessage());
+      }
+    }
+  }
+
+  private String resolvePointcutKey(String rawKey, Map<String, PointcutExpression> namedPointcuts) {
+    if (rawKey == null || rawKey.isEmpty()) {
+      return rawKey;
+    }
+    // Support named pointcut references: "pointcutName()"
+    int parenIdx = rawKey.indexOf('(');
+    int closeParenIdx = rawKey.indexOf(')');
+    if (parenIdx > 0 && closeParenIdx == rawKey.length() - 1) {
+      String name = rawKey.substring(0, parenIdx);
+      PointcutExpression expr = namedPointcuts.get(name);
+      if (expr != null) {
+        return expr.toString();
+      }
+    }
+    return rawKey;
   }
 
   private void recordTiming(MethodInvocation invocation, Timed timedAnnotation) {
