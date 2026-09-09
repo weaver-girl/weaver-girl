@@ -4,6 +4,7 @@ import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.core.context.MdcInjector;
 import com.github.cc11001100.weavergirl.core.interceptor.MethodInvocationPool;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
@@ -27,8 +28,16 @@ import net.bytebuddy.implementation.bytecode.assign.Assigner;
  * exit advice to write a modified return value back to the caller. When an interceptor calls {@code
  * invocation.setReturnValue(newValue)}, we assign it to the returnValue parameter, and ByteBuddy
  * stores it into the return-value local variable slot.
+ *
+ * <p><strong>Automatic MDC injection:</strong> When SLF4J is available, this advice automatically
+ * injects trace/span/tenant context from ThreadContext into MDC before method execution and
+ * restores the previous MDC state after method completion. This ensures application log statements
+ * are automatically correlated with the current trace context without manual MDC management.
  */
 public class InterceptAdvice {
+
+  private static final ThreadLocal<MdcInjector.MdcSnapshot> MDC_SNAPSHOT =
+      new ThreadLocal<>();
 
   @Advice.OnMethodEnter(skipOn = MethodInvocation.class)
   public static MethodInvocation onMethodEnter(
@@ -50,6 +59,12 @@ public class InterceptAdvice {
       // Sampling check: skip interception if not sampled this invocation
       if (!SamplingController.getInstance().shouldSample()) {
         return null;
+      }
+
+      // Automatic MDC injection: capture previous MDC state and inject trace/span/tenant
+      // context from ThreadContext so application logs are automatically correlated.
+      if (MdcInjector.isMdcAvailable()) {
+        MDC_SNAPSHOT.set(MdcInjector.inject());
       }
 
       String methodName = method.getName();
@@ -230,6 +245,15 @@ public class InterceptAdvice {
         } catch (Throwable versionError) {
           // Never let bookkeeping break the return path
         }
+      }
+
+      // Restore MDC to the state before this intercepted method executed.
+      if (MdcInjector.isMdcAvailable()) {
+        MdcInjector.MdcSnapshot snapshot = MDC_SNAPSHOT.get();
+        if (snapshot != null) {
+          MdcInjector.restore(snapshot);
+        }
+        MDC_SNAPSHOT.remove();
       }
 
       // Return the MethodInvocation to the pool for reuse.

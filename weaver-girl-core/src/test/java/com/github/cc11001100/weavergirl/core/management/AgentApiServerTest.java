@@ -105,6 +105,20 @@ class AgentApiServerTest {
     assertTrue(response.contains("Diagnostics Report"));
   }
 
+  @Test
+  void tracesEndpoint_returnsJson() throws Exception {
+    String response = get("/traces");
+    assertTrue(response.contains("\"span\"") || response.contains("\"hasSpan\""));
+    assertTrue(response.contains("\"threadContext\""));
+  }
+
+  @Test
+  void contextPropagatorsEndpoint_returnsJson() throws Exception {
+    String response = get("/context/propagators");
+    assertTrue(response.contains("\"propagators\""));
+    assertTrue(response.contains("\"count\""));
+  }
+
   // ===== Helper =====
 
   private String get(String path) throws Exception {
