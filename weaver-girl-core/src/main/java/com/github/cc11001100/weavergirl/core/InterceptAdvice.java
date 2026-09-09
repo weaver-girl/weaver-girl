@@ -8,6 +8,7 @@ import com.github.cc11001100.weavergirl.core.interceptor.MethodInvocationPool;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.implementation.bytecode.assign.Assigner;
@@ -63,29 +64,48 @@ public class InterceptAdvice {
       InterceptorHolder.captureCaller(invocation);
 
       List<InterceptorDefinition> defs = registry.getInterceptorsForClass(className);
+      List<InterceptorDefinition> aroundDefs = new ArrayList<>();
       for (InterceptorDefinition def : defs) {
         if (def.getPointcut().getMethodMatcher().matches(methodName)) {
           if (!InterceptorHolder.shouldInvoke(def.getName())) {
             continue; // circuit breaker is open
           }
-          long hookStart = System.nanoTime();
-          try {
-            def.getInterceptor().before(invocation);
-            long hookNanos = System.nanoTime() - hookStart;
-            InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
-            AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true, hookNanos);
-          } catch (Throwable e) {
-            // Catch Throwable (not just Exception) to prevent OutOfMemoryError
-            // and StackOverflowError from plugins crashing the target application.
-            // If this interceptor called skipMethod and then failed,
-            // don't let its skip decision stand.
-            long hookNanos = System.nanoTime() - hookStart;
-            invocation.setSkipMethod(false);
-            InterceptorHolder.logInterceptorError(def.getName(), "before", e);
-            InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
-            AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false, hookNanos);
+          if (def.getInterceptor().hasAround()) {
+            aroundDefs.add(def);
           }
         }
+      }
+
+      // Execute around-advice callbacks in priority order. Each around interceptor
+      // may call proceed() to continue, or skip the method entirely. If any
+      // around interceptor skips, the original method body does not execute.
+      boolean proceedAllowed = true;
+      for (InterceptorDefinition def : aroundDefs) {
+        long hookStart = System.nanoTime();
+        try {
+          // Mark invocation as proceedable before invoking around advice
+          invocation.setProceedable(true);
+          def.getInterceptor().around(invocation);
+          if (!invocation.isProceedCalled()) {
+            proceedAllowed = false;
+          }
+          long hookNanos = System.nanoTime() - hookStart;
+          InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
+          AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true, hookNanos);
+        } catch (Throwable e) {
+          long hookNanos = System.nanoTime() - hookStart;
+          InterceptorHolder.logInterceptorError(def.getName(), "around", e);
+          InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
+          AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false, hookNanos);
+          proceedAllowed = false;
+        }
+      }
+
+      // If any around interceptor did not call proceed(), prevent the method from executing.
+      // This distinguishes "interceptor skipped" from "interceptor ran but forgot to call proceed"
+      // and avoids the previous isProceedable() check which conflated depth exhaustion with skipping.
+      if (invocation.isSkipped() || !proceedAllowed) {
+        return invocation;
       }
 
       // If any interceptor called skipMethod(), return the invocation to trigger skipOn.

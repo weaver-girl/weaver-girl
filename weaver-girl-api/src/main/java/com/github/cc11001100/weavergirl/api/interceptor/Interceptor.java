@@ -83,4 +83,33 @@ public interface Interceptor {
    * @param invocation context object containing the thrown exception and invocation details
    */
   default void onException(MethodInvocation invocation) {}
+
+  /**
+   * Around advice: called before the target method executes. Implementations may call {@code
+   * invocation.proceed()} to continue the interception chain, or omit it to short-circuit the call.
+   *
+   * <p>When multiple around interceptors target the same method, they execute in priority order.
+   * Each interceptor must call {@link MethodInvocation#proceed()} to allow the chain (and ultimately
+   * the original method) to continue. If any interceptor does not call proceed, the method is
+   * skipped and any return value set by an interceptor is used instead.
+   *
+   * <p>This callback is optional. If not implemented, the method proceeds with the normal
+   * before/after/onException lifecycle.
+   *
+   * @param invocation context object containing the target class, method name, arguments, and
+   *     controls for proceeding or short-circuiting
+   * @since 1.6.0
+   */
+  default void around(MethodInvocation invocation) {}
+
+  /**
+   * Returns whether this interceptor implements around advice. Used by the framework to select
+   * interceptors for the around-advice chain without reflection.
+   *
+   * @return true if around advice is implemented
+   * @since 1.6.0
+   */
+  default boolean hasAround() {
+    return false;
+  }
 }

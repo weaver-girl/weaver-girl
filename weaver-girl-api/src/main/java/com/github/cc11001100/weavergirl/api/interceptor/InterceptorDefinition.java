@@ -66,6 +66,7 @@ public class InterceptorDefinition {
   private final Interceptor interceptor;
   private final int priority;
   private final AdviceMode adviceMode;
+  private final boolean hasAround;
 
   /**
    * Creates a new interceptor definition with default priority (0).
@@ -124,6 +125,45 @@ public class InterceptorDefinition {
     this.interceptor = interceptor;
     this.priority = priority;
     this.adviceMode = adviceMode;
+    this.hasAround = interceptor != null && interceptor.hasAround();
+  }
+
+  /**
+   * Creates a new interceptor definition with all fields specified.
+   *
+   * @param name unique name for this definition, used for unregistration
+   * @param pointcut determines which classes and methods are intercepted
+   * @param interceptor the interceptor to invoke when the pointcut matches
+   * @param priority execution priority; lower values = higher priority (executed first)
+   * @param adviceMode which inlined advice class to use; see {@link AdviceMode}
+   * @param hasAround whether this interceptor implements around advice
+   * @since 1.6.0
+   */
+  public InterceptorDefinition(
+      String name,
+      Pointcut pointcut,
+      Interceptor interceptor,
+      int priority,
+      AdviceMode adviceMode,
+      boolean hasAround) {
+    if (name == null || name.isEmpty()) {
+      throw new IllegalArgumentException("Interceptor name must not be null or empty");
+    }
+    if (pointcut == null) {
+      throw new IllegalArgumentException("Pointcut must not be null for interceptor: " + name);
+    }
+    if (interceptor == null) {
+      throw new IllegalArgumentException("Interceptor must not be null for interceptor: " + name);
+    }
+    if (adviceMode == null) {
+      throw new IllegalArgumentException("AdviceMode must not be null for interceptor: " + name);
+    }
+    this.name = name;
+    this.pointcut = pointcut;
+    this.interceptor = interceptor;
+    this.priority = priority;
+    this.adviceMode = adviceMode;
+    this.hasAround = hasAround;
   }
 
   /**

@@ -289,6 +289,31 @@ public abstract class AbstractPlugin implements WeaverPlugin {
     }
 
     /**
+     * Register an around-advice callback that wraps the target method execution. The interceptor
+     * must call {@link MethodInvocation#proceed()} to continue the chain; otherwise the method is
+     * skipped.
+     *
+     * @param callback the around callback
+     * @return this builder for chaining
+     * @since 1.6.0
+     */
+    public InterceptorDefinitionBuilder around(final AroundCallback callback) {
+      this.interceptor =
+          new Interceptor() {
+            @Override
+            public void around(MethodInvocation invocation) {
+              callback.around(invocation);
+            }
+
+            @Override
+            public boolean hasAround() {
+              return true;
+            }
+          };
+      return this;
+    }
+
+    /**
      * Build the interceptor definition from this builder's configuration.
      *
      * <p>The definition name is auto-generated from the plugin name, class matcher pattern, and
@@ -307,6 +332,23 @@ public abstract class AbstractPlugin implements WeaverPlugin {
           interceptor,
           priority);
     }
+  }
+
+  /**
+   * Functional interface for around-advice callbacks.
+   *
+   * @since 1.6.0
+   */
+  @FunctionalInterface
+  protected interface AroundCallback {
+    /**
+     * Around advice: called before the target method executes. Implementations must call {@link
+     * MethodInvocation#proceed()} to continue the interception chain, or omit it to short-circuit
+     * the call.
+     *
+     * @param invocation context object for the intercepted method call
+     */
+    void around(MethodInvocation invocation);
   }
 
   /**

@@ -238,5 +238,215 @@ class InterceptAdviceTest {
     public String greet() {
       return "hello";
     }
+
+    public String echo(String msg) {
+      return "echo:" + msg;
+    }
+  }
+
+  // --- around-advice tests ---
+
+  @Test
+  void onMethodEnter_aroundInterceptor_callsProceed_returnsNullAndMethodRuns() throws Exception {
+    long[] before = {0};
+    long[] after = {0};
+    Interceptor aroundInterceptor =
+        new Interceptor() {
+          @Override
+          public void around(MethodInvocation invocation) {
+            before[0] = System.nanoTime();
+            invocation.proceed();
+            after[0] = System.nanoTime();
+          }
+
+          @Override
+          public boolean hasAround() {
+            return true;
+          }
+        };
+    registry.register(
+        new InterceptorDefinition(
+            "around-proceed",
+            new Pointcut(
+                ClassMatcher.byName(SampleClass.class.getName()), MethodMatcher.byName("greet")),
+            aroundInterceptor));
+
+    Method method = SampleClass.class.getMethod("greet");
+    MethodInvocation result =
+        InterceptAdvice.onMethodEnter(
+            SampleClass.class, method, new SampleClass(), new Object[0]);
+
+    assertNull(result, "Should return null when around interceptor calls proceed");
+    assertTrue(before[0] > 0, "around() should have been invoked");
+    assertTrue(after[0] >= before[0], "after proceed() should complete");
+  }
+
+  @Test
+  void onMethodEnter_aroundInterceptor_skipsProceed_returnsInvocation() throws Exception {
+    boolean[] aroundCalled = {false};
+    Interceptor aroundInterceptor =
+        new Interceptor() {
+          @Override
+          public void around(MethodInvocation invocation) {
+            aroundCalled[0] = true;
+          }
+
+          @Override
+          public boolean hasAround() {
+            return true;
+          }
+        };
+    registry.register(
+        new InterceptorDefinition(
+            "around-skip",
+            new Pointcut(
+                ClassMatcher.byName(SampleClass.class.getName()), MethodMatcher.byName("greet")),
+            aroundInterceptor));
+
+    Method method = SampleClass.class.getMethod("greet");
+    MethodInvocation result =
+        InterceptAdvice.onMethodEnter(
+            SampleClass.class, method, new SampleClass(), new Object[0]);
+
+    assertNotNull(result, "Should return non-null MethodInvocation when proceed is skipped");
+    assertTrue(result.isSkipped(), "Invocation should be marked as skipped");
+    assertTrue(aroundCalled[0], "around() should have been invoked");
+  }
+
+  @Test
+  void onMethodEnter_multipleAroundInterceptors_executeInPriorityOrder() throws Exception {
+    java.util.List<String> order = new java.util.ArrayList<>();
+    Interceptor first =
+        new Interceptor() {
+          @Override
+          public void around(MethodInvocation invocation) {
+            order.add("first");
+            invocation.proceed();
+          }
+
+          @Override
+          public boolean hasAround() {
+            return true;
+          }
+        };
+    Interceptor second =
+        new Interceptor() {
+          @Override
+          public void around(MethodInvocation invocation) {
+            order.add("second");
+            invocation.proceed();
+          }
+
+          @Override
+          public boolean hasAround() {
+            return true;
+          }
+        };
+
+    registry.register(
+        new InterceptorDefinition(
+            "around-first",
+            new Pointcut(
+                ClassMatcher.byName(SampleClass.class.getName()), MethodMatcher.byName("greet")),
+            first,
+            0));
+    registry.register(
+        new InterceptorDefinition(
+            "around-second",
+            new Pointcut(
+                ClassMatcher.byName(SampleClass.class.getName()), MethodMatcher.byName("greet")),
+            second,
+            10));
+
+    Method method = SampleClass.class.getMethod("greet");
+    InterceptAdvice.onMethodEnter(
+        SampleClass.class, method, new SampleClass(), new Object[0]);
+
+    java.util.List<String> expected = new java.util.ArrayList<>();
+    expected.add("first");
+    expected.add("second");
+    assertEquals(
+        expected,
+        order,
+        "Around interceptors should execute in ascending priority order");
+  }
+
+  @Test
+  void onMethodEnter_aroundInterceptor_setsReturnValueAndSkipsMethod() throws Exception {
+    Interceptor aroundInterceptor =
+        new Interceptor() {
+          @Override
+          public void around(MethodInvocation invocation) {
+            invocation.skipMethod();
+            invocation.setReturnValue("cached");
+          }
+
+          @Override
+          public boolean hasAround() {
+            return true;
+          }
+        };
+    registry.register(
+        new InterceptorDefinition(
+            "around-return",
+            new Pointcut(
+                ClassMatcher.byName(SampleClass.class.getName()), MethodMatcher.byName("greet")),
+            aroundInterceptor));
+
+    Method method = SampleClass.class.getMethod("greet");
+    MethodInvocation result =
+        InterceptAdvice.onMethodEnter(
+            SampleClass.class, method, new SampleClass(), new Object[0]);
+
+    assertNotNull(result, "Should return invocation when method is skipped");
+    assertTrue(result.isSkipped());
+    assertEquals("cached", result.getReturnValue(), "Return value should be overridden by interceptor");
+  }
+
+  @Test
+  void onMethodEnter_aroundInterceptor_throws_exceptionIsSwallowed() throws Exception {
+    Interceptor badInterceptor =
+        new Interceptor() {
+          @Override
+          public void around(MethodInvocation invocation) {
+            throw new RuntimeException("boom");
+          }
+
+          @Override
+          public boolean hasAround() {
+            return true;
+          }
+        };
+    registry.register(
+        new InterceptorDefinition(
+            "around-bad",
+            new Pointcut(
+                ClassMatcher.byName(SampleClass.class.getName()), MethodMatcher.byName("greet")),
+            badInterceptor));
+
+    Method method = SampleClass.class.getMethod("greet");
+    MethodInvocation result =
+        InterceptAdvice.onMethodEnter(
+            SampleClass.class, method, new SampleClass(), new Object[0]);
+
+    assertNotNull(result, "Should return invocation when around interceptor throws");
+    assertTrue(result.isSkipped(), "Method should be skipped when around interceptor throws");
+  }
+
+  @Test
+  void onMethodEnter_aroundInterceptor_proceedDepth_exhaustion_blocksFurtherProceed() throws Exception {
+    MethodInvocation invocation =
+        new MethodInvocation(SampleClass.class, "greet", new SampleClass(), new Object[0]);
+    invocation.setProceedable(true);
+
+    for (int i = 0; i < 32; i++) {
+      invocation.proceed();
+    }
+
+    assertThrows(
+        IllegalStateException.class,
+        () -> invocation.proceed(),
+        "proceed() should throw when depth limit is exceeded");
+    assertFalse(invocation.isProceedable(), "Invocation should not be proceedable at max depth");
   }
 }

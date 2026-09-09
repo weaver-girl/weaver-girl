@@ -85,6 +85,12 @@ public class MethodInvocation {
   private String callerMethodName;
   private int callerLineNumber;
 
+  // Around-advice chain state
+  private volatile boolean proceedable;
+  private volatile int proceedDepth;
+  private volatile boolean proceedCalled;
+  private static final int MAX_PROCEED_DEPTH = 32;
+
   /**
    * Constructs a new MethodInvocation.
    *
@@ -142,6 +148,9 @@ public class MethodInvocation {
     this.callerClass = null;
     this.callerMethodName = null;
     this.callerLineNumber = -1;
+    this.proceedable = false;
+    this.proceedDepth = 0;
+    this.proceedCalled = false;
     if (this.attachments != null) {
       this.attachments.clear();
     }
@@ -164,6 +173,9 @@ public class MethodInvocation {
     this.callerClass = null;
     this.callerMethodName = null;
     this.callerLineNumber = -1;
+    this.proceedable = false;
+    this.proceedDepth = 0;
+    this.proceedCalled = false;
     if (this.attachments != null) {
       this.attachments.clear();
     }
@@ -501,6 +513,65 @@ public class MethodInvocation {
    */
   public boolean isExceptionSuppressed() {
     return exceptionSuppressed;
+  }
+
+  // --- Around-advice chain API ---
+
+  /**
+   * Mark this invocation as proceedable. Called by the framework before around-advice callbacks so
+   * interceptors may continue the chain.
+   *
+   * <p>This is an internal framework method; interceptors should not call it directly.
+   *
+   * @since 1.6.0
+   */
+  public void setProceedable(boolean proceedable) {
+    this.proceedable = proceedable;
+  }
+
+  /**
+   * Returns whether this invocation can proceed through the around-advice chain.
+   *
+   * <p>Returns {@code false} if the maximum proceed depth has been reached, protecting against
+   * runaway around chains.
+   *
+   * @return true if proceeding is allowed
+   * @since 1.6.0
+   */
+  public boolean isProceedable() {
+    return proceedable && proceedDepth < MAX_PROCEED_DEPTH;
+  }
+
+  /**
+   * Returns whether {@link #proceed()} was called during the current around-advice chain.
+   *
+   * <p>This can be used by the framework or advanced interceptors to detect whether an interceptor
+   * actually invoked proceed, as opposed to merely having proceedable state set.
+   *
+   * @return true if proceed has been called at least once
+   * @since 1.6.0
+   */
+  public boolean isProceedCalled() {
+    return proceedCalled;
+  }
+
+  /**
+   * Advance the around-advice chain to the next interceptor or the original method. Each call
+   * increments an internal depth counter to guard against infinite around recursion.
+   *
+   * <p>Throws {@link IllegalStateException} if proceeding is not allowed, if the depth limit is
+   * exceeded, or if the chain has already been exhausted.
+   *
+   * @throws IllegalStateException if the invocation cannot proceed
+   * @since 1.6.0
+   */
+  public void proceed() {
+    if (!isProceedable()) {
+      throw new IllegalStateException(
+          "MethodInvocation cannot proceed: proceedable=" + proceedable + ", depth=" + proceedDepth);
+    }
+    proceedDepth++;
+    proceedCalled = true;
   }
 
   // --- CallSite tracking API ---
