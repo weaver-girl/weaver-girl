@@ -1,6 +1,7 @@
 package com.github.cc11001100.weavergirl.api.event;
 
 import com.github.cc11001100.weavergirl.api.exporter.ExporterRegistry;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -29,10 +30,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class InterceptorEventPublisher {
 
+  private static final int MAX_HISTORY = 500;
   private static final InterceptorEventPublisher INSTANCE = new InterceptorEventPublisher();
 
   private final CopyOnWriteArrayList<InterceptorEventListener> listeners =
       new CopyOnWriteArrayList<>();
+  private final java.util.concurrent.CopyOnWriteArrayList<InterceptorEvent> history =
+      new java.util.concurrent.CopyOnWriteArrayList<>();
 
   private InterceptorEventPublisher() {}
 
@@ -60,6 +64,29 @@ public class InterceptorEventPublisher {
     return Collections.unmodifiableList(listeners);
   }
 
+  /** Get the number of registered listeners. */
+  public int getListenerCount() {
+    return listeners.size();
+  }
+
+  /** Record an event to local history for observability endpoints. */
+  private void recordHistory(InterceptorEvent event) {
+    history.add(event);
+    while (history.size() > MAX_HISTORY) {
+      history.remove(0);
+    }
+  }
+
+  /** Get recent event history, most recent last. */
+  public List<InterceptorEvent> getHistory() {
+    return Collections.unmodifiableList(new ArrayList<>(history));
+  }
+
+  /** Clear all recorded event history. */
+  public void clearHistory() {
+    history.clear();
+  }
+
   /**
    * Publish an event to all registered listeners and active exporters. If a listener or exporter
    * throws an exception, it is printed to stderr but does not prevent other consumers from
@@ -68,6 +95,7 @@ public class InterceptorEventPublisher {
    * @param event the event to publish
    */
   public void publish(InterceptorEvent event) {
+    recordHistory(event);
     for (InterceptorEventListener listener : listeners) {
       try {
         listener.onEvent(event);

@@ -4,7 +4,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import com.github.cc11001100.weavergirl.api.alert.AlertEngine;
 import com.github.cc11001100.weavergirl.api.alert.AlertRule;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
+import com.github.cc11001100.weavergirl.api.security.SecurityAuditLog;
 import java.util.Map;
 import java.io.*;
 import java.net.*;
@@ -20,6 +23,8 @@ class AgentApiServerTest {
   void setUp() throws Exception {
     AlertEngine.clear();
     MetricRegistry.clear();
+    SecurityAuditLog.clear();
+    InterceptorEventPublisher.getInstance().clearHistory();
     // Find free port
     try (ServerSocket ss = new ServerSocket(0)) {
       port = ss.getLocalPort();
@@ -35,6 +40,8 @@ class AgentApiServerTest {
     }
     AlertEngine.clear();
     MetricRegistry.clear();
+    SecurityAuditLog.clear();
+    InterceptorEventPublisher.getInstance().clearHistory();
   }
 
   @Test
@@ -117,6 +124,38 @@ class AgentApiServerTest {
     String response = get("/context/propagators");
     assertTrue(response.contains("\"propagators\""));
     assertTrue(response.contains("\"count\""));
+  }
+
+  @Test
+  void eventsEndpoint_returnsHistory() throws Exception {
+    InterceptorEventPublisher.getInstance().publish(
+        InterceptorEvent.builder()
+            .type("test-event")
+            .plugin("test")
+            .className("com.example.Foo")
+            .methodName("bar")
+            .durationMs(12)
+            .build());
+
+    String response = get("/events");
+    assertTrue(response.contains("\"events\""));
+    assertTrue(response.contains("\"count\":1"));
+    assertTrue(response.contains("test-event"));
+    assertTrue(response.contains("com.example.Foo"));
+    assertTrue(response.contains("bar"));
+  }
+
+  @Test
+  void auditEndpoint_returnsRecords() throws Exception {
+    SecurityAuditLog.recordInterception("com.example.Secret", "getPassword", false);
+
+    String response = get("/audit");
+    assertTrue(response.contains("\"records\""));
+    assertTrue(response.contains("\"count\":1"));
+    assertTrue(response.contains("INTERCEPT"));
+    assertTrue(response.contains("com.example.Secret"));
+    assertTrue(response.contains("getPassword"));
+    assertTrue(response.contains("DENIED"));
   }
 
   @Test

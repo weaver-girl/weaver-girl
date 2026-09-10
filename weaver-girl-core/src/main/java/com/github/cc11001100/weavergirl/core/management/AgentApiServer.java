@@ -30,6 +30,8 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code GET /diagnostics} — full diagnostics report
  *   <li>{@code GET /traces} — current/live span and thread context snapshot
  *   <li>{@code GET /context/propagators} — registered cross-thread propagators
+ *   <li>{@code GET /events} — recent interceptor event history
+ *   <li>{@code GET /audit} — security audit log records
  * </ul>
  *
  * @since 1.2.0
@@ -63,6 +65,8 @@ public class AgentApiServer {
     server.createContext("/diagnostics", this::handleDiagnostics);
     server.createContext("/traces", this::handleTraces);
     server.createContext("/context/propagators", this::handleContextPropagators);
+    server.createContext("/events", this::handleEvents);
+    server.createContext("/audit", this::handleAudit);
 
     server.setExecutor(null); // default executor
     server.start();
@@ -246,6 +250,56 @@ public class AgentApiServer {
       json.append("}");
     }
     json.append("],\"count\":").append(propagators.size());
+    json.append("}");
+    sendJson(exchange, json.toString());
+  }
+
+  private void handleEvents(HttpExchange exchange) throws IOException {
+    List<com.github.cc11001100.weavergirl.api.event.InterceptorEvent> events =
+        com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher.getInstance().getHistory();
+    StringBuilder json = new StringBuilder("{\"events\":[");
+    for (int i = 0; i < events.size(); i++) {
+      if (i > 0) json.append(",");
+      com.github.cc11001100.weavergirl.api.event.InterceptorEvent e = events.get(i);
+      json.append("{");
+      json.append("\"type\":\"").append(esc(e.getType())).append("\",");
+      json.append("\"plugin\":\"").append(esc(e.getPlugin())).append("\",");
+      json.append("\"className\":\"").append(esc(e.getClassName())).append("\",");
+      json.append("\"methodName\":\"").append(esc(e.getMethodName())).append("\",");
+      json.append("\"timestamp\":").append(e.getTimestamp()).append(",");
+      json.append("\"durationMs\":").append(e.getDurationMs());
+      json.append("}");
+    }
+    json.append("],\"count\":").append(events.size());
+    json.append("}");
+    sendJson(exchange, json.toString());
+  }
+
+  private void handleAudit(HttpExchange exchange) throws IOException {
+    List<com.github.cc11001100.weavergirl.api.security.AuditRecord> records =
+        com.github.cc11001100.weavergirl.api.security.SecurityAuditLog.getRecords();
+    StringBuilder json = new StringBuilder("{\"records\":[");
+    for (int i = 0; i < records.size(); i++) {
+      if (i > 0) json.append(",");
+      com.github.cc11001100.weavergirl.api.security.AuditRecord r = records.get(i);
+      json.append("{");
+      json.append("\"operation\":\"").append(esc(r.getOperation())).append("\",");
+      json.append("\"principal\":\"").append(esc(r.getPrincipal())).append("\",");
+      json.append("\"target\":\"").append(esc(r.getTarget())).append("\",");
+      json.append("\"result\":\"").append(esc(r.getResult())).append("\",");
+      json.append("\"detail\":{");
+      java.util.Map<String, String> detail = r.getDetails();
+      boolean first = true;
+      for (java.util.Map.Entry<String, String> entry : detail.entrySet()) {
+        if (!first) json.append(",");
+        first = false;
+        json.append("\"").append(esc(entry.getKey())).append("\":\"");
+        json.append(esc(entry.getValue())).append("\"");
+      }
+      json.append("}");
+      json.append("}");
+    }
+    json.append("],\"count\":").append(records.size());
     json.append("}");
     sendJson(exchange, json.toString());
   }
