@@ -8,6 +8,7 @@ import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
 import com.github.cc11001100.weavergirl.api.security.SecurityAuditLog;
+import com.github.cc11001100.weavergirl.core.event.LifecycleEvents;
 import java.util.Map;
 import java.io.*;
 import java.net.*;
@@ -156,6 +157,27 @@ class AgentApiServerTest {
     assertTrue(response.contains("com.example.Secret"));
     assertTrue(response.contains("getPassword"));
     assertTrue(response.contains("DENIED"));
+  }
+
+  @Test
+  void lifecycleEndpoint_returnsRegistryAndPluginEvents() throws Exception {
+    InterceptorEventPublisher.getInstance().publish(
+        LifecycleEvents.registry("register", "test-reg", true, "ok"));
+    InterceptorEventPublisher.getInstance().publish(
+        LifecycleEvents.plugin("enable", "test-plugin", true, "enabled"));
+
+    String response = get("/lifecycle");
+    assertTrue(response.contains("\"events\""));
+    assertTrue(response.contains("\"count\":2"));
+    assertTrue(response.contains("\"registryCount\":1"));
+    assertTrue(response.contains("\"pluginCount\":1"));
+    assertTrue(response.contains("weaver-girl.lifecycle.registry"));
+    assertTrue(response.contains("weaver-girl.lifecycle.plugin"));
+    assertTrue(response.contains("test-reg"));
+    assertTrue(response.contains("test-plugin"));
+    assertTrue(response.contains("\"phase\":\"register\""));
+    assertTrue(response.contains("\"phase\":\"enable\""));
+    assertTrue(response.contains("\"success\":\"true\""));
   }
 
   @Test

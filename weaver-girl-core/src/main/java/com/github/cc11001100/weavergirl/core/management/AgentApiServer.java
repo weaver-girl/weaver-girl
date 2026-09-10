@@ -3,6 +3,8 @@ package com.github.cc11001100.weavergirl.core.management;
 import com.github.cc11001100.weavergirl.api.alert.AlertEngine;
 import com.github.cc11001100.weavergirl.api.context.ContextPropagatorRegistry;
 import com.github.cc11001100.weavergirl.api.context.ContextSnapshot;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
 import com.github.cc11001100.weavergirl.api.plugin.PluginManager;
 import com.github.cc11001100.weavergirl.api.tracing.Tracer;
@@ -34,6 +36,7 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code GET /context/propagators} — registered cross-thread propagators
  *   <li>{@code GET /events} — recent interceptor event history
  *   <li>{@code GET /audit} — security audit log records
+ *   <li>{@code GET /lifecycle} — recent lifecycle event history
  * </ul>
  *
  * @since 1.2.0
@@ -70,6 +73,7 @@ public class AgentApiServer {
     server.createContext("/context/propagators", this::handleContextPropagators);
     server.createContext("/events", this::handleEvents);
     server.createContext("/audit", this::handleAudit);
+    server.createContext("/lifecycle", this::handleLifecycle);
 
     server.setExecutor(null); // default executor
     server.start();
@@ -316,6 +320,46 @@ public class AgentApiServer {
       json.append("}");
     }
     json.append("],\"count\":").append(records.size());
+    json.append("}");
+    sendJson(exchange, json.toString());
+  }
+
+  private void handleLifecycle(HttpExchange exchange) throws IOException {
+    List<com.github.cc11001100.weavergirl.api.event.InterceptorEvent> events =
+        com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher.getInstance().getHistory();
+    List<com.github.cc11001100.weavergirl.api.event.InterceptorEvent> lifecycleEvents = new ArrayList<>();
+    int registryCount = 0;
+    int pluginCount = 0;
+    for (com.github.cc11001100.weavergirl.api.event.InterceptorEvent e : events) {
+      String type = e.getType();
+      if ("weaver-girl.lifecycle.registry".equals(type)) {
+        registryCount++;
+        lifecycleEvents.add(e);
+      } else if ("weaver-girl.lifecycle.plugin".equals(type)) {
+        pluginCount++;
+        lifecycleEvents.add(e);
+      }
+    }
+    StringBuilder json = new StringBuilder("{\"events\":[");
+    for (int i = 0; i < lifecycleEvents.size(); i++) {
+      if (i > 0) json.append(",");
+      com.github.cc11001100.weavergirl.api.event.InterceptorEvent e = lifecycleEvents.get(i);
+      json.append("{");
+      json.append("\"type\":\"").append(esc(e.getType())).append("\",");
+      json.append("\"plugin\":\"").append(esc(e.getPlugin())).append("\",");
+      json.append("\"className\":\"").append(esc(e.getClassName())).append("\",");
+      json.append("\"methodName\":\"").append(esc(e.getMethodName())).append("\",");
+      json.append("\"timestamp\":").append(e.getTimestamp()).append(",");
+      json.append("\"durationMs\":").append(e.getDurationMs()).append(",");
+      java.util.Map<String, String> attributes = e.getAttributes();
+      json.append("\"phase\":\"").append(esc(attributes.get("phase"))).append("\",");
+      json.append("\"success\":\"").append(esc(attributes.get("success"))).append("\",");
+      json.append("\"detail\":\"").append(esc(attributes.get("detail"))).append("\"");
+      json.append("}");
+    }
+    json.append("],\"count\":").append(lifecycleEvents.size());
+    json.append(",\"registryCount\":").append(registryCount);
+    json.append(",\"pluginCount\":").append(pluginCount);
     json.append("}");
     sendJson(exchange, json.toString());
   }

@@ -145,7 +145,9 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
         InterceptorEventPublisher.getInstance()
             .publish(
                 LifecycleEvents.registry(
-                    LifecycleEvents.PHASE_REGISTER, definition.getName(), initOk, null));
+                    LifecycleEvents.PHASE_REGISTER, definition.getName(), initOk,
+                    "targetClass=" + definition.getPointcut().getClassMatcher().getPattern()
+                        + ";success=" + initOk));
       } catch (Throwable t) {
         log.debug("Lifecycle event publish failed: {}", t.getMessage());
       }
