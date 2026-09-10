@@ -78,13 +78,17 @@ public final class ContextCompletableFuture {
    * Run a Runnable asynchronously on the given executor with the caller's context propagated to the
    * worker thread.
    *
+   * <p>If the runnable already implements {@link ContextRunnable}, it is submitted unchanged to
+   * avoid double-wrapping when the same task crosses multiple executor boundaries.
+   *
    * @param runnable task to run; must not be null
    * @param executor executor to run on; null selects the common ForkJoinPool
    * @return future completing when the task finishes
    */
   public static CompletableFuture<Void> runAsync(Runnable runnable, Executor executor) {
     Objects.requireNonNull(runnable, "runnable");
-    return CompletableFuture.runAsync(runnable, wrapExecutor(executor));
+    Runnable task = (runnable instanceof ContextRunnable) ? runnable : ContextPropagators.wrap(runnable);
+    return CompletableFuture.runAsync(task, wrapExecutor(executor));
   }
 
   /**

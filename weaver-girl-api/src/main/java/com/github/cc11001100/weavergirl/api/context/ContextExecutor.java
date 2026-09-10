@@ -52,6 +52,9 @@ public class ContextExecutor implements Executor {
   /**
    * Wrap an executor with context propagation.
    *
+   * <p>If the delegate is already a {@link ContextExecutor}, it is returned unchanged to avoid
+   * double-wrapping when the same executor passes through multiple wrapper boundaries.
+   *
    * @param delegate executor to wrap
    * @return context-propagating executor
    */

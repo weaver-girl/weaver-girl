@@ -326,4 +326,24 @@ class ContextCompletableFutureTest {
       delegate.shutdownNow();
     }
   }
+
+  @Test
+  void runAsync_alreadyWrappedRunnable_isNotDoubleWrapped() throws Exception {
+    ExecutorService delegate = Executors.newSingleThreadExecutor();
+    try {
+      ThreadContext.put("traceId", "cf-api-nowrap");
+      Runnable wrapped = ContextPropagators.wrap((Runnable) () -> ThreadContext.get("traceId"));
+      assertTrue(wrapped instanceof ContextRunnable, "wrap() should return a ContextRunnable");
+
+      CompletableFuture<Void> submitted = ContextCompletableFuture.runAsync(wrapped, delegate);
+      submitted.get(5, TimeUnit.SECONDS);
+
+      assertEquals(
+          "cf-api-nowrap",
+          ThreadContext.<String>get("traceId"),
+          "ContextRunnable should not be double-wrapped when submitted via ContextCompletableFuture");
+    } finally {
+      delegate.shutdownNow();
+    }
+  }
 }
