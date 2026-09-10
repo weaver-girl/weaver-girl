@@ -61,6 +61,8 @@
         <snakeyaml.version>2.2</snakeyaml.version>
         <junit.version>5.10.2</junit.version>
         <mockito.version>5.11.0</mockito.version>
+        <micrometer.version>1.14.5</micrometer.version>
+        <aopalliance.version>1.0</aopalliance.version>
 
         <!-- Quality tools -->
         <jacoco.version>0.8.11</jacoco.version>
@@ -112,6 +114,20 @@
                 <groupId>org.yaml</groupId>
                 <artifactId>snakeyaml</artifactId>
                 <version>${snakeyaml.version}</version>
+            </dependency>
+
+            <!-- Micrometer -->
+            <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-core</artifactId>
+                <version>${micrometer.version}</version>
+            </dependency>
+
+            <!-- AOP Alliance -->
+            <dependency>
+                <groupId>aopalliance</groupId>
+                <artifactId>aopalliance</artifactId>
+                <version>${aopalliance.version}</version>
             </dependency>
 
             <!-- Internal modules -->

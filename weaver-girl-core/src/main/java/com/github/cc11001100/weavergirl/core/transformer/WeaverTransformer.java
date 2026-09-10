@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import net.bytebuddy.agent.builder.AgentBuilder;
 import net.bytebuddy.description.type.TypeDescription;
@@ -449,14 +450,25 @@ public class WeaverTransformer {
           }
         }
         break;
+      case CFIELD_GET:
+      case CFIELD_SET:
+        // Field accessors are synthetic ByteBuddy-generated methods.
+        // Match by field-name substring so synthetic accessor names resolve correctly.
+        userMatcher = nameMatches(".*" + Pattern.quote(methodMatcher.getPattern()) + ".*");
+        break;
       default:
         userMatcher = isMethod();
     }
-    // Always exclude bridge, synthetic, native, and abstract methods
-    // These cannot be or should not be instrumented by ByteBuddy Advice
+
+    // Always exclude bridge, native, and abstract methods.
+    // For CFIELD_GET / CFIELD_SET we must NOT exclude synthetic methods,
+    // because ByteBuddy generates synthetic field-accessor stubs.
+    if (methodMatcher.getMatchType() != com.github.cc11001100.weavergirl.api.matcher.MethodMatcher.MatchType.CFIELD_GET
+        && methodMatcher.getMatchType() != com.github.cc11001100.weavergirl.api.matcher.MethodMatcher.MatchType.CFIELD_SET) {
+      userMatcher = userMatcher.and(not(isSynthetic()));
+    }
     return userMatcher
         .and(not(isBridge()))
-        .and(not(isSynthetic()))
         .and(not(isNative()))
         .and(not(isAbstract()));
   }

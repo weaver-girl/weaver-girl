@@ -21,6 +21,18 @@ import com.github.cc11001100.weavergirl.api.ValidationUtils;
  *       <td>{@code subclassOf(com.example.BaseService)}</td></tr>
  *   <tr><td>{@code implementing(interfaceName)}</td><td>{@link PointcutExpression.Type#IMPLEMENTING}</td>
  *       <td>{@code implementing(java.io.Serializable)}</td></tr>
+ *   <tr><td>{@code @args(annotationClassName, index, ...)}</td><td>{@link PointcutExpression.Type#AT_ARGS}</td>
+ *       <td>{@code @args(com.example.Arg, 0)}</td></tr>
+ *   <tr><td>{@code @target(annotationClassName)}</td><td>{@link PointcutExpression.Type#AT_TARGET}</td>
+ *       <td>{@code @target(com.example.Target)}</td></tr>
+ *   <tr><td>{@code call(retType class.method(params))}</td><td>{@link PointcutExpression.Type#CALL}</td>
+ *       <td>{@code call(* com.example.Service.process(..))}</td></tr>
+ *   <tr><td>{@code handler(exceptionType)}</td><td>{@link PointcutExpression.Type#HANDLER}</td>
+ *       <td>{@code handler(java.io.IOException)}</td></tr>
+ *   <tr><td>{@code cflow(expr)}</td><td>{@link PointcutExpression.Type#CFLOW}</td>
+ *       <td>{@code cflow(execution(* com.example..*(..)))}</td></tr>
+ *   <tr><td>{@code if(condition)}</td><td>{@link PointcutExpression.Type#IF}</td>
+ *       <td>{@code if(args.length > 0)}</td></tr>
  *   <tr><td>{@code expr1 && expr2}</td><td>{@link PointcutExpression.Type#AND}</td>
  *       <td>{@code execution(* com.example..*(..)) && @annotation(com.example.Trace)}</td></tr>
  *   <tr><td>{@code expr1 || expr2}</td><td>{@link PointcutExpression.Type#OR}</td>
@@ -174,7 +186,27 @@ public class PointcutParser {
     }
     if (expr.startsWith("@target(") && expr.endsWith(")")) {
       String content = expr.substring("@target(".length(), expr.length() - 1).trim();
+      if (content.isEmpty()) {
+        throw new IllegalArgumentException(
+            "Invalid @target expression — expected annotation class name: " + expr);
+      }
       return PointcutExpression.atTarget(content);
+    }
+    if (expr.startsWith("call(") && expr.endsWith(")")) {
+      return parseCall(expr);
+    }
+    if (expr.startsWith("handler(") && expr.endsWith(")")) {
+      String content = expr.substring("handler(".length(), expr.length() - 1).trim();
+      return PointcutExpression.handler(content);
+    }
+    if (expr.startsWith("cflow(") && expr.endsWith(")")) {
+      String content = expr.substring("cflow(".length(), expr.length() - 1).trim();
+      PointcutExpression inner = parseInternal(content);
+      return PointcutExpression.cflow(inner);
+    }
+    if (expr.startsWith("if(") && expr.endsWith(")")) {
+      String content = expr.substring("if(".length(), expr.length() - 1).trim();
+      return PointcutExpression.ifCondition(content);
     }
     throw new IllegalArgumentException("Invalid pointcut expression: " + expr);
   }
@@ -271,5 +303,52 @@ public class PointcutParser {
       }
     }
     return PointcutExpression.atArgs(annotationClassName, indexes);
+  }
+
+  /**
+   * Parses the content inside {@code call(...)}.
+   *
+   * <p>Expected format: {@code call(retType classPattern.methodPattern(paramPattern))}.
+   *
+   * @param expr the full expression including the {@code call(} prefix
+   * @return a CALL PointcutExpression
+   * @since 2.0.0
+   */
+  private PointcutExpression parseCall(String expr) {
+    String content = expr.substring("call(".length(), expr.length() - 1).trim();
+
+    // Find the last '(' that starts the parameter list
+    int paramStart = content.lastIndexOf('(');
+    int paramEnd = content.lastIndexOf(')');
+    if (paramStart < 0 || paramEnd < 0 || paramEnd <= paramStart) {
+      throw new IllegalArgumentException(
+          "Invalid call expression — missing parameter parentheses: call(" + content + ")");
+    }
+
+    String paramPattern = content.substring(paramStart + 1, paramEnd).trim();
+    String beforeParams = content.substring(0, paramStart).trim();
+
+    // Split returnType from classPattern.methodPattern if present
+    int spaceIdx = beforeParams.indexOf(' ');
+    String returnType = null;
+    String qualifiedMethod;
+    if (spaceIdx >= 0) {
+      returnType = beforeParams.substring(0, spaceIdx).trim();
+      qualifiedMethod = beforeParams.substring(spaceIdx + 1).trim();
+    } else {
+      qualifiedMethod = beforeParams;
+    }
+
+    // Split classPattern from methodPattern at the last '.'
+    int lastDot = qualifiedMethod.lastIndexOf('.');
+    if (lastDot < 0) {
+      throw new IllegalArgumentException(
+          "Invalid call expression — expected 'class.method': call(" + content + ")");
+    }
+
+    String classPattern = qualifiedMethod.substring(0, lastDot);
+    String methodPattern = qualifiedMethod.substring(lastDot + 1);
+
+    return PointcutExpression.call(returnType, classPattern, methodPattern, paramPattern);
   }
 }

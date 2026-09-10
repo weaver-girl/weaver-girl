@@ -3,6 +3,7 @@ package com.github.cc11001100.weavergirl.core;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
+import com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.context.MdcInjector;
 import com.github.cc11001100.weavergirl.core.interceptor.MethodInvocationPool;
@@ -84,6 +85,16 @@ public class InterceptAdvice {
         if (def.getPointcut().getMethodMatcher().matches(methodName)) {
           if (!InterceptorHolder.shouldInvoke(def.getName())) {
             continue; // circuit breaker is open
+          }
+          // Evaluate runtime conditions (cflow/if)
+          PointcutExpression expr = def.getPointcut().getExpression();
+          if (expr != null
+              && (expr.getType() == PointcutExpression.Type.CFLOW
+                  || expr.getType() == PointcutExpression.Type.IF)) {
+            if (!expr.evaluateRuntimeCondition(
+                className, methodName, arguments, null, null)) {
+              continue; // condition not met, skip this interceptor
+            }
           }
           if (def.getInterceptor().hasAround()) {
             aroundDefs.add(def);
@@ -194,6 +205,17 @@ public class InterceptAdvice {
         if (def.getPointcut().getMethodMatcher().matches(methodName)) {
           if (!InterceptorHolder.shouldInvoke(def.getName())) {
             continue; // circuit breaker is open
+          }
+          PointcutExpression expr = def.getPointcut().getExpression();
+          if (expr != null
+              && (expr.getType() == PointcutExpression.Type.CFLOW
+                  || expr.getType() == PointcutExpression.Type.IF)) {
+            boolean matched =
+                expr.evaluateRuntimeCondition(
+                    className, methodName, arguments, returnValue, throwable);
+            if (!matched) {
+              continue;
+            }
           }
           long hookStart = System.nanoTime();
           try {

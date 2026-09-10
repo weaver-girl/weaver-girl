@@ -170,6 +170,20 @@ public final class ContextSnapshot {
   }
 
   /**
+   * Return a copy of all captured values as a flat map.
+   *
+   * <p>For snapshots created via {@link #capture()} or {@link #fromThreadContext(Map)}, this returns
+   * the ThreadContext values. For other propagator types, the returned map may be empty.
+   *
+   * @return immutable map of context values
+   * @since 2.0.0
+   */
+  public Map<String, Object> values() {
+    Map<String, Object> threadContext = getThreadContext();
+    return Collections.unmodifiableMap(new HashMap<>(threadContext));
+  }
+
+  /**
    * Activate this snapshot on the current thread.
    *
    * <p>The returned scope restores the previous thread context when closed. Use try-with-resources

@@ -35,6 +35,19 @@
             <artifactId>snakeyaml</artifactId>
         </dependency>
 
+        <!-- Micrometer bridge -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
+
+        <!-- AOP Alliance compatibility -->
+        <dependency>
+            <groupId>aopalliance</groupId>
+            <artifactId>aopalliance</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Internal — core depends on api (api transitively depends on annotation) -->
         <dependency>
             <groupId>com.github.cc11001100</groupId>

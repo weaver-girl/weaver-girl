@@ -160,6 +160,25 @@ class PointcutParserTest {
     assertEquals(ClassMatcher.MatchType.EXACT_NAME, pointcut.getClassMatcher().getMatchType());
   }
 
+  @Test
+  void parse_callPointcut() {
+    PointcutExpression expr = parser.parse("call(String com.example.Service.process(String) throws IOException)");
+
+    assertEquals(PointcutExpression.Type.CALL, expr.getType());
+    assertEquals("String", expr.getCallReturnType());
+    assertEquals("com.example.Service", expr.getCallClassPattern());
+    assertEquals("process", expr.getCallMethodPattern());
+    assertEquals("String", expr.getCallParamPattern());
+  }
+
+  @Test
+  void parse_handlerPointcut() {
+    PointcutExpression expr = parser.parse("handler(java.io.IOException)");
+
+    assertEquals(PointcutExpression.Type.HANDLER, expr.getType());
+    assertEquals("java.io.IOException", expr.getHandlerExceptionType());
+  }
+
   // ---- Invalid input tests ----
 
   @Test

@@ -193,6 +193,29 @@ public class InterceptorDefinition {
   }
 
   /**
+   * Returns the aspect class name associated with this definition, if any.
+   *
+   * <p>This is used for {@code @DeclarePrecedence} resolution. For definitions created by
+   * {@link com.github.cc11001100.weavergirl.core.plugin.AnnotationPluginLoader}, this returns the
+   * simple name of the aspect class. For programmatically registered definitions, this may return
+   * the definition name as a fallback.
+   *
+   * @return the aspect class name, or the definition name if not available
+   * @since 2.0.0
+   */
+  public String getAspectClassName() {
+    // Heuristic: AnnotationPluginLoader names definitions as
+    // "annotation-" + aspectClassSimpleName + "-" + methodKey
+    if (name.startsWith("annotation-")) {
+      int firstDash = name.indexOf('-', "annotation-".length());
+      if (firstDash > 0) {
+        return name.substring("annotation-".length(), firstDash);
+      }
+    }
+    return name;
+  }
+
+  /**
    * Returns the pointcut that determines which classes and methods this interceptor applies to.
    *
    * @return the pointcut, never null

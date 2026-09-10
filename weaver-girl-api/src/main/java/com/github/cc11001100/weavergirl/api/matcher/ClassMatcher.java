@@ -198,6 +198,15 @@ public class ClassMatcher {
         return compiledRegex != null && compiledRegex.matcher(className).matches();
       case ANY:
         return true;
+      case ANNOTATION:
+        // Match when the tested class IS the annotation class, or when the
+        // annotation class pattern equals the tested class name. This allows
+        // @target() pointcuts to be validated at the API level against the
+        // annotation class name itself.
+        return pattern.equals(className);
+      case SUPER_CLASS:
+      case INTERFACE:
+        return false;
       default:
         return false;
     }

@@ -94,6 +94,10 @@ public class MethodInvocation {
   // Return value snapshot for versioning
   private com.github.cc11001100.weavergirl.api.interceptor.ReturnSnapshot returnSnapshot;
 
+  // Runtime condition support (cflow/if)
+  private boolean conditionMatched = true;
+  private boolean conditionEvaluated = false;
+
   /**
    * Constructs a new MethodInvocation.
    *
@@ -124,6 +128,8 @@ public class MethodInvocation {
     this.target = target;
     this.arguments = arguments != null ? arguments.clone() : new Object[0];
     this.isSkipped = false;
+    this.conditionMatched = true;
+    this.conditionEvaluated = false;
   }
 
   /**
@@ -155,6 +161,8 @@ public class MethodInvocation {
     this.proceedDepth = 0;
     this.proceedCalled = false;
     this.returnSnapshot = null;
+    this.conditionMatched = true;
+    this.conditionEvaluated = false;
     if (this.attachments != null) {
       this.attachments.clear();
     }
@@ -181,6 +189,8 @@ public class MethodInvocation {
     this.proceedDepth = 0;
     this.proceedCalled = false;
     this.returnSnapshot = null;
+    this.conditionMatched = true;
+    this.conditionEvaluated = false;
     if (this.attachments != null) {
       this.attachments.clear();
     }
@@ -672,5 +682,39 @@ public class MethodInvocation {
    */
   public com.github.cc11001100.weavergirl.api.interceptor.ReturnSnapshot getReturnSnapshot() {
     return returnSnapshot;
+  }
+
+  // --- Runtime condition support (cflow/if) ---
+
+  /**
+   * Set whether the runtime condition (cflow/if) matched for this invocation. This is an internal
+   * framework method; interceptors should not call this.
+   *
+   * @param matched true if the condition matched
+   * @since 2.0.0
+   */
+  public void setConditionMatched(boolean matched) {
+    this.conditionMatched = matched;
+    this.conditionEvaluated = true;
+  }
+
+  /**
+   * Returns whether the runtime condition (cflow/if) matched for this invocation.
+   *
+   * @return true if the condition matched
+   * @since 2.0.0
+   */
+  public boolean isConditionMatched() {
+    return conditionMatched;
+  }
+
+  /**
+   * Returns whether the runtime condition has been evaluated for this invocation.
+   *
+   * @return true if the condition was evaluated
+   * @since 2.0.0
+   */
+  public boolean isConditionEvaluated() {
+    return conditionEvaluated;
   }
 }

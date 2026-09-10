@@ -44,6 +44,7 @@ public class Pointcut {
 
   private final ClassMatcher classMatcher;
   private final MethodMatcher methodMatcher;
+  private final com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression expression;
 
   /**
    * Creates a new pointcut with the given class and method matchers.
@@ -52,8 +53,35 @@ public class Pointcut {
    * @param methodMatcher matcher for selecting target methods within matched classes
    */
   public Pointcut(ClassMatcher classMatcher, MethodMatcher methodMatcher) {
+    this(classMatcher, methodMatcher, null);
+  }
+
+  /**
+   * Creates a new pointcut with the given class and method matchers and an optional runtime
+   * expression for conditional pointcuts such as cflow/if.
+   *
+   * @param classMatcher matcher for selecting target classes
+   * @param methodMatcher matcher for selecting target methods within matched classes
+   * @param expression the optional runtime expression, may be null
+   * @since 2.0.0
+   */
+  public Pointcut(
+      ClassMatcher classMatcher,
+      MethodMatcher methodMatcher,
+      com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression expression) {
     this.classMatcher = classMatcher;
     this.methodMatcher = methodMatcher;
+    this.expression = expression;
+  }
+
+  /**
+   * Returns the runtime expression associated with this pointcut, if any.
+   *
+   * @return the expression, or null if none
+   * @since 2.0.0
+   */
+  public com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression getExpression() {
+    return expression;
   }
 
   /**
@@ -94,11 +122,17 @@ public class Pointcut {
    * <p>The returned pointcut overrides {@link #matches(String, String)} to evaluate both pointcuts
    * and return their logical AND.
    *
+   * <p>When combining matchers, if one side uses {@link MethodMatcher.MatchType#ANY}, the composite
+   * inherits the other side's matcher. This preserves specific matchers like {@link
+   * MethodMatcher.MatchType#ARGS} across composition.
+   *
    * @param other the pointcut to AND with this one
    * @return a new composite pointcut
    */
   public Pointcut and(Pointcut other) {
-    return new Pointcut(this.classMatcher, this.methodMatcher) {
+    ClassMatcher combinedClass = combineClassMatcher(this.classMatcher, other.classMatcher);
+    MethodMatcher combinedMethod = combineMethodMatcher(this.methodMatcher, other.methodMatcher);
+    return new Pointcut(combinedClass, combinedMethod) {
       @Override
       public boolean matches(String className, String methodName) {
         return Pointcut.this.matches(className, methodName) && other.matches(className, methodName);
@@ -112,16 +146,33 @@ public class Pointcut {
    * <p>The returned pointcut overrides {@link #matches(String, String)} to evaluate both pointcuts
    * and return their logical OR.
    *
+   * <p>When combining matchers, if one side uses {@link MethodMatcher.MatchType#ANY}, the composite
+   * inherits the other side's matcher.
+   *
    * @param other the pointcut to OR with this one
    * @return a new composite pointcut
    */
   public Pointcut or(Pointcut other) {
-    return new Pointcut(this.classMatcher, this.methodMatcher) {
+    ClassMatcher combinedClass = combineClassMatcher(this.classMatcher, other.classMatcher);
+    MethodMatcher combinedMethod = combineMethodMatcher(this.methodMatcher, other.methodMatcher);
+    return new Pointcut(combinedClass, combinedMethod) {
       @Override
       public boolean matches(String className, String methodName) {
         return Pointcut.this.matches(className, methodName) || other.matches(className, methodName);
       }
     };
+  }
+
+  private static ClassMatcher combineClassMatcher(ClassMatcher a, ClassMatcher b) {
+    if (a.getMatchType() == ClassMatcher.MatchType.ANY) return b;
+    if (b.getMatchType() == ClassMatcher.MatchType.ANY) return a;
+    return a;
+  }
+
+  private static MethodMatcher combineMethodMatcher(MethodMatcher a, MethodMatcher b) {
+    if (a.getMatchType() == MethodMatcher.MatchType.ANY) return b;
+    if (b.getMatchType() == MethodMatcher.MatchType.ANY) return a;
+    return a;
   }
 
   /**

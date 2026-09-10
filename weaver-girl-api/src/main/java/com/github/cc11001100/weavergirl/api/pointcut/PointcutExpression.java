@@ -3,67 +3,24 @@ package com.github.cc11001100.weavergirl.api.pointcut;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 
-/**
- * Data model for a parsed pointcut expression.
- *
- * <p>Represents a single pointcut designator (e.g., {@code execution(...)},
- * {@code @annotation(...)}, {@code within(...)}) or a composite expression formed with {@code &&}
- * or {@code ||} operators.
- *
- * <h3>Supported types</h3>
- *
- * <ul>
- *   <li>{@link Type#EXECUTION} &mdash; method execution pointcut
- *   <li>{@link Type#AT_ANNOTATION} &mdash; method annotation pointcut
- *   <li>{@link Type#AT_WITHIN} &mdash; class annotation pointcut
- *   <li>{@link Type#WITHIN} &mdash; package/class scope pointcut
- *   <li>{@link Type#SUBCLASS_OF} &mdash; subclass matching pointcut
- *   <li>{@link Type#IMPLEMENTING} &mdash; interface implementation pointcut
- *   <li>{@link Type#AT_ARGS} &mdash; argument annotation pointcut
- *   <li>{@link Type#AT_TARGET} &mdash; target object annotation pointcut
- *   <li>{@link Type#AND} / {@link Type#OR} &mdash; composite expressions
- *   <li>{@link Type#NOT} &mdash; logical negation
- * </ul>
- *
- * <h3>Pattern conversion</h3>
- *
- * <p>Wildcard patterns are converted to Java regex:
- *
- * <ul>
- *   <li>{@code ..} (double-dot) &rarr; {@code .*} (match any package segments)
- *   <li>{@code *} (single asterisk) &rarr; {@code [^.]*} (match a single segment)
- * </ul>
- *
- * @see PointcutParser
- * @see Pointcut
- * @since 1.1.0
- */
 public class PointcutExpression {
 
-  /** The type of pointcut expression. */
   public enum Type {
-    /** Method execution: {@code execution(retType classPattern.methodPattern(params))}. */
     EXECUTION,
-    /** Method-level annotation: {@code @annotation(className)}. */
     AT_ANNOTATION,
-    /** Class-level annotation: {@code @within(className)}. */
     AT_WITHIN,
-    /** Package/class scope: {@code within(packagePattern)}. */
     WITHIN,
-    /** Subclass matching: {@code subclassOf(className)}. */
     SUBCLASS_OF,
-    /** Interface implementation: {@code implementing(interfaceName)}. */
     IMPLEMENTING,
-    /** Argument annotation: {@code @args(annotationClassName, index, ...)}. */
     AT_ARGS,
-    /** Target class annotation: {@code @target(annotationClassName)}. */
     AT_TARGET,
-    /** Logical AND of two expressions. */
+    CALL,
+    HANDLER,
     AND,
-    /** Logical OR of two expressions. */
     OR,
-    /** Logical NOT of an expression. */
-    NOT
+    NOT,
+    CFLOW,
+    IF
   }
 
   private final Type type;
@@ -80,6 +37,13 @@ public class PointcutExpression {
   private final String argumentAnnotationClassName;
   private final int[] argumentIndexes;
   private final String targetAnnotationClassName;
+  private final String callReturnType;
+  private final String callClassPattern;
+  private final String callMethodPattern;
+  private final String callParamPattern;
+  private final String handlerExceptionType;
+  private final PointcutExpression cflowExpression;
+  private final String ifCondition;
 
   private PointcutExpression(
       Type type,
@@ -95,7 +59,14 @@ public class PointcutExpression {
       PointcutExpression right,
       String argumentAnnotationClassName,
       int[] argumentIndexes,
-      String targetAnnotationClassName) {
+      String targetAnnotationClassName,
+      String callReturnType,
+      String callClassPattern,
+      String callMethodPattern,
+      String callParamPattern,
+      String handlerExceptionType,
+      PointcutExpression cflowExpression,
+      String ifCondition) {
     this.type = type;
     this.returnType = returnType;
     this.classPattern = classPattern;
@@ -110,19 +81,15 @@ public class PointcutExpression {
     this.argumentAnnotationClassName = argumentAnnotationClassName;
     this.argumentIndexes = argumentIndexes;
     this.targetAnnotationClassName = targetAnnotationClassName;
+    this.callReturnType = callReturnType;
+    this.callClassPattern = callClassPattern;
+    this.callMethodPattern = callMethodPattern;
+    this.callParamPattern = callParamPattern;
+    this.handlerExceptionType = handlerExceptionType;
+    this.cflowExpression = cflowExpression;
+    this.ifCondition = ifCondition;
   }
 
-  // ---- Factory methods ----
-
-  /**
-   * Creates an EXECUTION pointcut expression.
-   *
-   * @param returnType the return type pattern (e.g., {@code "*"}, {@code "void"})
-   * @param classPattern the class name pattern (e.g., {@code "com.example..Service"})
-   * @param methodPattern the method name pattern (e.g., {@code "process"})
-   * @param paramPattern the parameter pattern (e.g., {@code ".."}, {@code "String,int"})
-   * @return a new EXECUTION expression
-   */
   public static PointcutExpression execution(
       String returnType, String classPattern, String methodPattern, String paramPattern) {
     return new PointcutExpression(
@@ -139,15 +106,16 @@ public class PointcutExpression {
         null,
         null,
         null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
         null);
   }
 
-  /**
-   * Creates an AT_ANNOTATION pointcut expression.
-   *
-   * @param annotationClassName the fully-qualified annotation class name
-   * @return a new AT_ANNOTATION expression
-   */
   public static PointcutExpression atAnnotation(String annotationClassName) {
     return new PointcutExpression(
         Type.AT_ANNOTATION,
@@ -163,61 +131,116 @@ public class PointcutExpression {
         null,
         null,
         null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
         null);
   }
 
-  /**
-   * Creates an AT_WITHIN pointcut expression.
-   *
-   * @param annotationClassName the fully-qualified annotation class name
-   * @return a new AT_WITHIN expression
-   */
   public static PointcutExpression atWithin(String annotationClassName) {
     return new PointcutExpression(
-        Type.AT_WITHIN, null, null, null, null, annotationClassName, null, null, null, null, null, null, null, null);
+        Type.AT_WITHIN,
+        null,
+        null,
+        null,
+        null,
+        annotationClassName,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
   }
 
-  /**
-   * Creates a WITHIN pointcut expression.
-   *
-   * @param packageName the package/class pattern (e.g., {@code "com.example.."})
-   * @return a new WITHIN expression
-   */
   public static PointcutExpression within(String packageName) {
     return new PointcutExpression(
-        Type.WITHIN, null, null, null, null, null, packageName, null, null, null, null, null, null, null);
+        Type.WITHIN,
+        null,
+        null,
+        null,
+        null,
+        null,
+        packageName,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
   }
 
-  /**
-   * Creates a SUBCLASS_OF pointcut expression.
-   *
-   * @param className the fully-qualified superclass name
-   * @return a new SUBCLASS_OF expression
-   */
   public static PointcutExpression subclassOf(String className) {
     return new PointcutExpression(
-        Type.SUBCLASS_OF, null, null, null, null, null, null, className, null, null, null, null, null, null);
+        Type.SUBCLASS_OF,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        className,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
   }
 
-  /**
-   * Creates an IMPLEMENTING pointcut expression.
-   *
-   * @param interfaceName the fully-qualified interface name
-   * @return a new IMPLEMENTING expression
-   */
   public static PointcutExpression implementing(String interfaceName) {
     return new PointcutExpression(
-        Type.IMPLEMENTING, null, null, null, null, null, null, null, interfaceName, null, null, null, null, null);
+        Type.IMPLEMENTING,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        interfaceName,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
   }
 
-  /**
-   * Creates an AT_ARGS pointcut expression.
-   *
-   * @param annotationClassName the fully-qualified annotation class name present on parameter types
-   * @param argumentIndexes zero-based argument indexes to match
-   * @return a new AT_ARGS expression
-   * @since 1.9.0
-   */
   public static PointcutExpression atArgs(String annotationClassName, int... argumentIndexes) {
     return new PointcutExpression(
         Type.AT_ARGS,
@@ -233,17 +256,16 @@ public class PointcutExpression {
         null,
         annotationClassName,
         argumentIndexes,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
         null);
   }
 
-  /**
-   * Creates an AT_TARGET pointcut expression.
-   *
-   * @param annotationClassName the fully-qualified annotation class name present on the runtime
-   *     target object
-   * @return a new AT_TARGET expression
-   * @since 1.9.0
-   */
   public static PointcutExpression atTarget(String annotationClassName) {
     return new PointcutExpression(
         Type.AT_TARGET,
@@ -259,219 +281,474 @@ public class PointcutExpression {
         null,
         null,
         null,
-        annotationClassName);
+        annotationClassName,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
   }
 
-  /**
-   * Creates a composite AND expression.
-   *
-   * @param left the left operand
-   * @param right the right operand
-   * @return a new AND expression
-   */
   public static PointcutExpression and(PointcutExpression left, PointcutExpression right) {
     return new PointcutExpression(
-        Type.AND, null, null, null, null, null, null, null, null, left, right, null, null, null);
+        Type.AND,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        left,
+        right,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
   }
 
-  /**
-   * Creates a composite OR expression.
-   *
-   * @param left the left operand
-   * @param right the right operand
-   * @return a new OR expression
-   */
   public static PointcutExpression or(PointcutExpression left, PointcutExpression right) {
     return new PointcutExpression(
-        Type.OR, null, null, null, null, null, null, null, null, left, right, null, null, null);
+        Type.OR,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        left,
+        right,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
   }
 
-  /**
-   * Creates a NOT expression that negates the given expression.
-   *
-   * @param expr the expression to negate
-   * @return a new NOT expression
-   */
   public static PointcutExpression not(PointcutExpression expr) {
     return new PointcutExpression(
-        Type.NOT, null, null, null, null, null, null, null, null, expr, null, null, null, null);
+        Type.NOT,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        expr,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null);
   }
 
-  // ---- Getters ----
+  public static PointcutExpression call(
+      String returnType, String classPattern, String methodPattern, String paramPattern) {
+    return new PointcutExpression(
+        Type.CALL,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        returnType,
+        classPattern,
+        methodPattern,
+        paramPattern,
+        null,
+        null,
+        null);
+  }
 
-  /**
-   * Returns the type of this expression.
-   *
-   * @return the expression type
-   */
+  public static PointcutExpression handler(String exceptionType) {
+    return new PointcutExpression(
+        Type.HANDLER,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        exceptionType,
+        null,
+        null);
+  }
+
+  public static PointcutExpression cflow(PointcutExpression expression) {
+    return new PointcutExpression(
+        Type.CFLOW,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        expression,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        expression,
+        null);
+  }
+
+  public static PointcutExpression ifCondition(String condition) {
+    return new PointcutExpression(
+        Type.IF,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        condition);
+  }
+
   public Type getType() {
     return type;
   }
 
-  /**
-   * Returns the return type pattern (EXECUTION only).
-   *
-   * @return the return type pattern, or null
-   */
   public String getReturnType() {
     return returnType;
   }
 
-  /**
-   * Returns the class pattern (EXECUTION only).
-   *
-   * @return the class pattern, or null
-   */
   public String getClassPattern() {
     return classPattern;
   }
 
-  /**
-   * Returns the method pattern (EXECUTION only).
-   *
-   * @return the method pattern, or null
-   */
   public String getMethodPattern() {
     return methodPattern;
   }
 
-  /**
-   * Returns the parameter pattern (EXECUTION only).
-   *
-   * @return the parameter pattern, or null
-   */
   public String getParamPattern() {
     return paramPattern;
   }
 
-  /**
-   * Returns the annotation class name (AT_ANNOTATION, AT_WITHIN only).
-   *
-   * @return the annotation class name, or null
-   */
   public String getAnnotationClassName() {
     return annotationClassName;
   }
 
-  /**
-   * Returns the package pattern (WITHIN only).
-   *
-   * @return the package pattern, or null
-   */
   public String getPackageName() {
     return packageName;
   }
 
-  /**
-   * Returns the class name (SUBCLASS_OF only).
-   *
-   * @return the class name, or null
-   */
   public String getClassName() {
     return className;
   }
 
-  /**
-   * Returns the interface name (IMPLEMENTING only).
-   *
-   * @return the interface name, or null
-   */
   public String getInterfaceName() {
     return interfaceName;
   }
 
-  /**
-   * Returns the argument annotation class name for {@link Type#AT_ARGS} expressions.
-   *
-   * @return the annotation class name, or null
-   * @since 1.9.0
-   */
-  public String getArgumentAnnotationClassName() {
-    return argumentAnnotationClassName;
-  }
-
-  /**
-   * Returns the argument indexes for {@link Type#AT_ARGS} expressions.
-   *
-   * @return the argument indexes, or null
-   * @since 1.9.0
-   */
-  public int[] getArgumentIndexes() {
-    return argumentIndexes;
-  }
-
-  /**
-   * Returns the target annotation class name for {@link Type#AT_TARGET} expressions.
-   *
-   * @return the annotation class name, or null
-   * @since 1.9.0
-   */
-  public String getTargetAnnotationClassName() {
-    return targetAnnotationClassName;
-  }
-
-  /**
-   * Returns the left operand (AND, OR only).
-   *
-   * @return the left expression, or null
-   */
   public PointcutExpression getLeft() {
     return left;
   }
 
-  /**
-   * Returns the right operand (AND, OR only).
-   *
-   * @return the right expression, or null
-   */
   public PointcutExpression getRight() {
     return right;
   }
 
-  /**
-   * Returns the operand for NOT expression.
-   *
-   * @return the negated expression, or null
-   */
   public PointcutExpression getOperand() {
     return left;
   }
 
-  // ---- Conversion ----
+  public String getArgumentAnnotationClassName() {
+    return argumentAnnotationClassName;
+  }
+
+  public int[] getArgumentIndexes() {
+    return argumentIndexes;
+  }
+
+  public String getTargetAnnotationClassName() {
+    return targetAnnotationClassName;
+  }
+
+  public String getCallReturnType() {
+    return callReturnType;
+  }
+
+  public String getCallClassPattern() {
+    return callClassPattern;
+  }
+
+  public String getCallMethodPattern() {
+    return callMethodPattern;
+  }
+
+  public String getCallParamPattern() {
+    return callParamPattern;
+  }
+
+  public String getHandlerExceptionType() {
+    return handlerExceptionType;
+  }
+
+  public PointcutExpression getCflowExpression() {
+    return cflowExpression;
+  }
+
+  public String getIfCondition() {
+    return ifCondition;
+  }
 
   /**
-   * Converts this expression into a {@link Pointcut}.
+   * Evaluate whether this pointcut's runtime conditions match the current invocation context.
    *
-   * <p>For composite expressions (AND/OR), both sides are converted and composed. For
-   * AT_ANNOTATION, which only provides a MethodMatcher, this method uses {@link
-   * MethodMatcher#any()} as the class matcher. Use {@link #toPointcutWithClassScope(ClassMatcher)}
-   * if you need to supply a class scope from a companion expression.
+   * <p>This is used for {@link Type#CFLOW} and {@link Type#IF} expressions, which cannot be
+   * evaluated purely from static class/method matchers.
    *
-   * @return a new Pointcut representing this expression
+   * @param className the current class name
+   * @param methodName the current method name
+   * @param arguments the method arguments
+   * @param returnValue the return value (may be null)
+   * @param throwable the thrown exception (may be null)
+   * @return true if the runtime condition matches
+   * @since 2.0.0
    */
+  public boolean evaluateRuntimeCondition(
+      String className,
+      String methodName,
+      Object[] arguments,
+      Object returnValue,
+      Throwable throwable) {
+    switch (type) {
+      case CFLOW:
+        return evaluateCflow(className, methodName);
+      case IF:
+        return evaluateIf(arguments, returnValue, throwable);
+      case AND:
+        return left.evaluateRuntimeCondition(className, methodName, arguments, returnValue, throwable)
+            && right.evaluateRuntimeCondition(className, methodName, arguments, returnValue, throwable);
+      case OR:
+        return left.evaluateRuntimeCondition(className, methodName, arguments, returnValue, throwable)
+            || right.evaluateRuntimeCondition(className, methodName, arguments, returnValue, throwable);
+      case NOT:
+        return !left.evaluateRuntimeCondition(className, methodName, arguments, returnValue, throwable);
+      default:
+        // For static matchers (execution, @annotation, etc.), always match
+        return true;
+    }
+  }
+
+  private boolean evaluateCflow(String className, String methodName) {
+    PointcutExpression inner = cflowExpression;
+    if (inner == null) {
+      return true;
+    }
+    // Check if the inner pointcut matches anywhere in the current call stack.
+    // We use a ThreadLocal to track the cflow context across the stack.
+    CflowContext ctx = CflowContext.current();
+    if (ctx == null) {
+      return false;
+    }
+    return ctx.matches(inner, className, methodName);
+  }
+
+  private boolean evaluateIf(Object[] arguments, Object returnValue, Throwable throwable) {
+    String condition = ifCondition;
+    if (condition == null || condition.isEmpty()) {
+      return true;
+    }
+    // Simple if() evaluation: support basic expressions on args/return/exception.
+    // This is intentionally lightweight; for complex conditions users should use @Around.
+    String trimmed = condition.trim();
+    if (trimmed.startsWith("args.length > ")) {
+      try {
+        int threshold = Integer.parseInt(trimmed.substring("args.length > ".length()).trim());
+        return arguments != null && arguments.length > threshold;
+      } catch (NumberFormatException e) {
+        return false;
+      }
+    }
+    if (trimmed.startsWith("args.length >= ")) {
+      try {
+        int threshold = Integer.parseInt(trimmed.substring("args.length >= ".length()).trim());
+        return arguments != null && arguments.length >= threshold;
+      } catch (NumberFormatException e) {
+        return false;
+      }
+    }
+    if (trimmed.equals("args != null") || trimmed.equals("args != null")) {
+      return arguments != null;
+    }
+    if (trimmed.startsWith("args[") && trimmed.contains("!= null")) {
+      // Simple arg index != null check
+      int start = trimmed.indexOf('[') + 1;
+      int end = trimmed.indexOf(']');
+      if (start > 0 && end > start) {
+        try {
+          int idx = Integer.parseInt(trimmed.substring(start, end));
+          return arguments != null && idx >= 0 && idx < arguments.length && arguments[idx] != null;
+        } catch (NumberFormatException e) {
+          return false;
+        }
+      }
+    }
+    if (trimmed.startsWith("result != null") || trimmed.startsWith("return != null")) {
+      return returnValue != null;
+    }
+    if (trimmed.startsWith("exception != null")) {
+      return throwable != null;
+    }
+    // Unknown condition: default to true to avoid silently disabling advice
+    return true;
+  }
+
+  /**
+   * ThreadLocal cflow context that tracks matched call stacks for cflow evaluation.
+   *
+   * <p>This is a minimal implementation that uses a ThreadLocal stack of (className, methodName)
+   * pairs. For full AspectJ-compatible cflow, this would need to track the full call stack and
+   * support intersection/union of cflow expressions.
+   *
+   * @since 2.0.0
+   */
+  public static final class CflowContext {
+    private static final ThreadLocal<CflowContext> CURRENT = new ThreadLocal<>();
+
+    private final java.util.Deque<String> callStack = new java.util.ArrayDeque<>();
+
+    static CflowContext current() {
+      return CURRENT.get();
+    }
+
+    static void enter(String className, String methodName) {
+      CflowContext ctx = CURRENT.get();
+      if (ctx == null) {
+        ctx = new CflowContext();
+        CURRENT.set(ctx);
+      }
+      ctx.callStack.push(className + "." + methodName);
+    }
+
+    static void exit() {
+      CflowContext ctx = CURRENT.get();
+      if (ctx != null && !ctx.callStack.isEmpty()) {
+        ctx.callStack.pop();
+        if (ctx.callStack.isEmpty()) {
+          CURRENT.remove();
+        }
+      }
+    }
+
+    boolean matches(PointcutExpression inner, String className, String methodName) {
+      // Check if the inner pointcut matches any frame in the call stack
+      Pointcut innerPointcut = inner.toPointcut();
+      for (String frame : callStack) {
+        int dot = frame.lastIndexOf('.');
+        if (dot < 0) continue;
+        String frameClass = frame.substring(0, dot);
+        String frameMethod = frame.substring(dot + 1);
+        if (innerPointcut.matches(frameClass, frameMethod)) {
+          return true;
+        }
+      }
+      return false;
+    }
+  }
+
   public Pointcut toPointcut() {
     switch (type) {
       case EXECUTION:
-        return new Pointcut(buildClassMatcher(), buildMethodMatcher());
+        return new Pointcut(buildClassMatcher(), buildMethodMatcher(), this);
       case AT_ANNOTATION:
         return new Pointcut(
-            ClassMatcher.byNamePattern(".*"), MethodMatcher.byAnnotation(annotationClassName));
+            ClassMatcher.byNamePattern(".*"), MethodMatcher.byAnnotation(annotationClassName), this);
       case AT_WITHIN:
-        return new Pointcut(ClassMatcher.byAnnotation(annotationClassName), MethodMatcher.any());
+        return new Pointcut(ClassMatcher.byAnnotation(annotationClassName), MethodMatcher.any(), this);
       case WITHIN:
         return new Pointcut(
-            ClassMatcher.byNamePattern(convertToRegex(packageName)), MethodMatcher.any());
+            ClassMatcher.byNamePattern(convertToRegex(packageName)), MethodMatcher.any(), this);
       case SUBCLASS_OF:
-        return new Pointcut(ClassMatcher.bySuperClass(className), MethodMatcher.any());
+        return new Pointcut(ClassMatcher.bySuperClass(className), MethodMatcher.any(), this);
       case IMPLEMENTING:
-        return new Pointcut(ClassMatcher.byInterface(interfaceName), MethodMatcher.any());
+        return new Pointcut(ClassMatcher.byInterface(interfaceName), MethodMatcher.any(), this);
       case AT_ARGS:
         return new Pointcut(
             ClassMatcher.any(),
-            MethodMatcher.byArgumentAnnotation(annotationClassName, argumentIndexes));
+            MethodMatcher.byArgumentAnnotation(annotationClassName, argumentIndexes),
+            this);
       case AT_TARGET:
         return new Pointcut(
-            ClassMatcher.byAnnotation(annotationClassName), MethodMatcher.any());
+            ClassMatcher.byAnnotation(targetAnnotationClassName), MethodMatcher.any(), this);
+      case CALL:
+        return new Pointcut(
+            ClassMatcher.byNamePattern(convertToRegex(callClassPattern)),
+            MethodMatcher.byNamePattern(convertToRegex(callMethodPattern)),
+            this);
+      case HANDLER:
+        return new Pointcut(ClassMatcher.any(), MethodMatcher.byName("handler"), this);
+      case CFLOW:
+        // cflow is a runtime condition, not a static class/method matcher.
+        // Return an always-matching pointcut and let the runtime evaluator decide.
+        return new Pointcut(ClassMatcher.any(), MethodMatcher.any(), this);
+      case IF:
+        // if() is a runtime boolean condition, not a static matcher.
+        return new Pointcut(ClassMatcher.any(), MethodMatcher.any(), this);
       case AND:
         return left.toPointcut().and(right.toPointcut());
       case OR:
@@ -483,38 +760,39 @@ public class PointcutExpression {
     }
   }
 
-  /**
-   * Converts this expression into a Pointcut, using the given ClassMatcher as the class scope for
-   * AT_ANNOTATION expressions.
-   *
-   * <p>This is useful when an AT_ANNOTATION expression is combined with an EXECUTION expression via
-   * AND: the EXECUTION provides the class scope and the AT_ANNOTATION provides the method-level
-   * annotation filter.
-   *
-   * @param classScope the class matcher to use for AT_ANNOTATION expressions
-   * @return a new Pointcut representing this expression
-   */
   public Pointcut toPointcutWithClassScope(ClassMatcher classScope) {
     switch (type) {
       case EXECUTION:
-        return new Pointcut(buildClassMatcher(), buildMethodMatcher());
+        return new Pointcut(buildClassMatcher(), buildMethodMatcher(), this);
       case AT_ANNOTATION:
-        return new Pointcut(classScope, MethodMatcher.byAnnotation(annotationClassName));
+        return new Pointcut(classScope, MethodMatcher.byAnnotation(annotationClassName), this);
       case AT_WITHIN:
-        return new Pointcut(ClassMatcher.byAnnotation(annotationClassName), MethodMatcher.any());
+        return new Pointcut(ClassMatcher.byAnnotation(annotationClassName), MethodMatcher.any(), this);
       case WITHIN:
         return new Pointcut(
-            ClassMatcher.byNamePattern(convertToRegex(packageName)), MethodMatcher.any());
+            ClassMatcher.byNamePattern(convertToRegex(packageName)), MethodMatcher.any(), this);
       case SUBCLASS_OF:
-        return new Pointcut(ClassMatcher.bySuperClass(className), MethodMatcher.any());
+        return new Pointcut(ClassMatcher.bySuperClass(className), MethodMatcher.any(), this);
       case IMPLEMENTING:
-        return new Pointcut(ClassMatcher.byInterface(interfaceName), MethodMatcher.any());
+        return new Pointcut(ClassMatcher.byInterface(interfaceName), MethodMatcher.any(), this);
       case AT_ARGS:
         return new Pointcut(
             ClassMatcher.any(),
-            MethodMatcher.byArgumentAnnotation(annotationClassName, argumentIndexes));
+            MethodMatcher.byArgumentAnnotation(annotationClassName, argumentIndexes),
+            this);
       case AT_TARGET:
-        return new Pointcut(ClassMatcher.byAnnotation(annotationClassName), MethodMatcher.any());
+        return new Pointcut(
+            ClassMatcher.byAnnotation(targetAnnotationClassName), MethodMatcher.any(), this);
+      case CALL:
+        return new Pointcut(
+            ClassMatcher.byNamePattern(convertToRegex(callClassPattern)),
+            MethodMatcher.byNamePattern(convertToRegex(callMethodPattern)),
+            this);
+      case HANDLER:
+        return new Pointcut(ClassMatcher.any(), MethodMatcher.byName("handler"), this);
+      case CFLOW:
+      case IF:
+        return new Pointcut(ClassMatcher.any(), MethodMatcher.any(), this);
       case AND:
         return left.toPointcutWithClassScope(classScope)
             .and(right.toPointcutWithClassScope(classScope));
@@ -527,8 +805,6 @@ public class PointcutExpression {
         throw new IllegalStateException("Unknown expression type: " + type);
     }
   }
-
-  // ---- Internal helpers ----
 
   private ClassMatcher buildClassMatcher() {
     if (classPattern == null || classPattern.isEmpty()) {
@@ -550,21 +826,11 @@ public class PointcutExpression {
     return MethodMatcher.byName(methodPattern);
   }
 
-  /**
-   * Converts a pointcut wildcard pattern to a Java regex.
-   *
-   * <p>{@code ..} becomes {@code .*} and {@code *} becomes {@code [^.]*}.
-   *
-   * @param pattern the wildcard pattern
-   * @return the equivalent Java regex
-   */
   static String convertToRegex(String pattern) {
     if (pattern == null || pattern.isEmpty()) {
       return ".*";
     }
-    // Escape regex metacharacters first, except * and .
     String regex = pattern;
-    // Escape special regex chars: \, [, ], (, ), {, }, +, ?, ^, $, |
     regex = regex.replace("\\", "\\\\");
     regex = regex.replace("[", "\\[");
     regex = regex.replace("]", "\\]");
@@ -577,12 +843,8 @@ public class PointcutExpression {
     regex = regex.replace("^", "\\^");
     regex = regex.replace("$", "\\$");
     regex = regex.replace("|", "\\|");
-    // Now handle pointcut wildcards
-    // .. -> .*  (must do before single * replacement)
     regex = regex.replace("..", "PLACEHOLDER_DOUBLE_DOT");
-    // * -> [^.]*  (single segment wildcard)
     regex = regex.replace("*", "[^.]*");
-    // Restore ..
     regex = regex.replace("PLACEHOLDER_DOUBLE_DOT", ".*");
     return regex;
   }
@@ -622,6 +884,17 @@ public class PointcutExpression {
             + ")";
       case AT_TARGET:
         return "@target(" + targetAnnotationClassName + ")";
+      case CALL:
+        return "call("
+            + (callReturnType != null ? callReturnType + " " : "")
+            + callClassPattern
+            + "."
+            + callMethodPattern
+            + "("
+            + (callParamPattern != null ? callParamPattern : "..")
+            + "))";
+      case HANDLER:
+        return "handler(" + handlerExceptionType + ")";
       case AND:
         return "(" + left + " && " + right + ")";
       case OR:

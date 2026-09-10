@@ -6,6 +6,7 @@ import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.api.security.SecurityPolicy;
 import com.github.cc11001100.weavergirl.api.security.SecurityAuditLog;
+import com.github.cc11001100.weavergirl.annotation.DeclarePrecedence;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -29,6 +30,7 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
   private volatile long generation = 0;
   private final CopyOnWriteArrayList<Runnable> reloadHooks = new CopyOnWriteArrayList<>();
   private volatile SecurityPolicy securityPolicy;
+  private final Map<String, Integer> precedenceMap = new ConcurrentHashMap<>();
 
   /** Return the current generation counter, incremented on every mutation. */
   public long getGeneration() {
@@ -71,6 +73,38 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
     }
   }
 
+  /**
+   * Refresh the precedence map by scanning all registered aspect classes for {@link DeclarePrecedence}
+   * annotations. The precedence map assigns each aspect class a stable precedence index based on its
+   * position in its own declaration.
+   */
+  private void refreshPrecedence() {
+    Map<String, Integer> newMap = new LinkedHashMap<>();
+    for (InterceptorDefinition def : definitions) {
+      String aspectName = def.getAspectClassName();
+      if (aspectName == null || aspectName.isEmpty()) {
+        continue;
+      }
+      try {
+        Class<?> aspectClass = Class.forName(aspectName, false, Thread.currentThread().getContextClassLoader());
+        DeclarePrecedence declarePrecedence = aspectClass.getAnnotation(DeclarePrecedence.class);
+        if (declarePrecedence != null) {
+          String[] ordered = declarePrecedence.value().split(",");
+          for (int i = 0; i < ordered.length; i++) {
+            String name = ordered[i].trim();
+            if (!name.isEmpty() && !newMap.containsKey(name)) {
+              newMap.put(name, i);
+            }
+          }
+        }
+      } catch (Throwable t) {
+        log.debug("Failed to load aspect class {} for precedence resolution: {}", aspectName, t.getMessage());
+      }
+    }
+    precedenceMap.clear();
+    precedenceMap.putAll(newMap);
+  }
+
   @Override
   public void register(InterceptorDefinition definition) {
     if (definition == null) {
@@ -97,6 +131,8 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
       indexDirty = true;
       bumpGeneration();
       fireReloadHooks();
+      // Refresh precedence ordering after each successful registration
+      refreshPrecedence();
       // Invoke lifecycle hook
       boolean initOk = true;
       try {
@@ -150,8 +186,19 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
       }
     }
 
-    // Sort by priority
+    // Sort by priority first, then apply @DeclarePrecedence ordering
     result.sort(Comparator.comparingInt(InterceptorDefinition::getPriority));
+    if (!precedenceMap.isEmpty()) {
+      result.sort((a, b) -> {
+        Integer pA = precedenceMap.get(a.getAspectClassName());
+        Integer pB = precedenceMap.get(b.getAspectClassName());
+        int cmp = Integer.compare(pA != null ? pA : Integer.MAX_VALUE, pB != null ? pB : Integer.MAX_VALUE);
+        if (cmp != 0) {
+          return cmp;
+        }
+        return Integer.compare(a.getPriority(), b.getPriority());
+      });
+    }
     return result;
   }
 
@@ -176,6 +223,7 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
       indexDirty = true;
       bumpGeneration();
       fireReloadHooks();
+      refreshPrecedence();
       log.info("Unregistered interceptor: {}", name);
       boolean destroyOk = true;
       if (toRemove != null) {
@@ -207,6 +255,7 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
       bumpGeneration();
       fireReloadHooks();
     }
+    precedenceMap.clear();
     for (InterceptorDefinition def : clearedDefinitions) {
       boolean destroyOk = true;
       try {
@@ -228,8 +277,7 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
   /**
    * Reflective runtime check for match types that {@link ClassMatcher#matches(String)} cannot
    * decide (INTERFACE, SUPER_CLASS, ANNOTATION). Used by {@link #getInterceptorsForClass(String)}
-   * so that dynamic-attach retransformation can select already-loaded
-   * implementors/subtypes/annotated classes.
+   * so that dynamic-attach retransformation can select already-loaded implementors/subtypes/annotated classes.
    *
    * <p>Loads the candidate class via {@code Class.forName} (no initialization). Since this is only
    * consulted for classes reported by {@code Instrumentation.getAllLoadedClasses()} during
@@ -315,9 +363,20 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
       String pattern = def.getPointcut().getClassMatcher().getPattern();
       newIndex.computeIfAbsent(pattern, k -> new CopyOnWriteArrayList<>()).add(def);
     }
-    // Sort each list by priority
+    // Sort each list by priority first, then apply @DeclarePrecedence ordering
     for (List<InterceptorDefinition> list : newIndex.values()) {
       list.sort(Comparator.comparingInt(InterceptorDefinition::getPriority));
+      if (!precedenceMap.isEmpty()) {
+        list.sort((a, b) -> {
+          Integer pA = precedenceMap.get(a.getAspectClassName());
+          Integer pB = precedenceMap.get(b.getAspectClassName());
+          int cmp = Integer.compare(pA != null ? pA : Integer.MAX_VALUE, pB != null ? pB : Integer.MAX_VALUE);
+          if (cmp != 0) {
+            return cmp;
+          }
+          return Integer.compare(a.getPriority(), b.getPriority());
+        });
+      }
     }
     classIndex = newIndex; // atomic swap
     indexDirty = false;

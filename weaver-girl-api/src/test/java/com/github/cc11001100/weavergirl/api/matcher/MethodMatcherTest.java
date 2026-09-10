@@ -199,4 +199,24 @@ class MethodMatcherTest {
     assertFalse(matcher.matches("process",
         new Class<?>[] {String.class, SecureParam.class, SecureParam.class}));
   }
+
+  @Test
+  void byFieldGet_matchesSyntheticAccessors() {
+    MethodMatcher matcher = MethodMatcher.byFieldGet("value");
+    assertEquals(MethodMatcher.MatchType.CFIELD_GET, matcher.getMatchType());
+    assertEquals("value", matcher.getPattern());
+    assertTrue(matcher.matches("access$get$value$000"));
+    assertTrue(matcher.matches("get$value"));
+    assertFalse(matcher.matches("getName"));
+  }
+
+  @Test
+  void byFieldSet_matchesSyntheticAccessors() {
+    MethodMatcher matcher = MethodMatcher.byFieldSet("value");
+    assertEquals(MethodMatcher.MatchType.CFIELD_SET, matcher.getMatchType());
+    assertEquals("value", matcher.getPattern());
+    assertTrue(matcher.matches("access$set$value$000"));
+    assertTrue(matcher.matches("set$value"));
+    assertFalse(matcher.matches("setName"));
+  }
 }
