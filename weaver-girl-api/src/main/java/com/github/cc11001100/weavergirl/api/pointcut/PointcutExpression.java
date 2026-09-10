@@ -632,8 +632,11 @@ public class PointcutExpression {
         return false;
       }
     }
-    if (trimmed.equals("args != null") || trimmed.equals("args != null")) {
+    if ("args != null".equals(trimmed)) {
       return arguments != null;
+    }
+    if ("args == null".equals(trimmed)) {
+      return arguments == null;
     }
     if (trimmed.startsWith("args[") && trimmed.contains("!= null")) {
       // Simple arg index != null check
