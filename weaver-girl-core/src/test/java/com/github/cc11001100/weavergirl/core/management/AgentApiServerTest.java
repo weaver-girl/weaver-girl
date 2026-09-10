@@ -119,6 +119,59 @@ class AgentApiServerTest {
     assertTrue(response.contains("\"count\""));
   }
 
+  @Test
+  void endToEnd_allEndpointsReturnPopulatedData() throws Exception {
+    com.github.cc11001100.weavergirl.api.metrics.MetricRegistry.record(
+        "api.latency", java.util.Collections.singletonMap("zone", "east"), 12.5);
+    com.github.cc11001100.weavergirl.api.alert.AlertRule rule =
+        com.github.cc11001100.weavergirl.api.alert.AlertRule.builder()
+            .name("e2e-alert")
+            .metric("api.latency")
+            .operator("gt")
+            .threshold(10)
+            .severity("warn")
+            .message("latency high")
+            .build();
+    com.github.cc11001100.weavergirl.api.alert.AlertEngine.addRule(rule);
+    com.github.cc11001100.weavergirl.api.alert.AlertEngine.evaluate("api.latency", 20);
+    com.github.cc11001100.weavergirl.api.topology.TopologyGraph.addNode(
+        new com.github.cc11001100.weavergirl.api.topology.ServiceNode(
+            "svc-a", "service", java.util.Collections.emptyMap()));
+    com.github.cc11001100.weavergirl.api.topology.TopologyGraph.recordCall(
+        "svc-a", "svc-b", "http", 5, false);
+
+    String status = get("/status");
+    assertTrue(status.contains("\"status\":\"UP\""));
+    assertTrue(status.contains("\"interceptorCount\""));
+
+    String plugins = get("/plugins");
+    assertTrue(plugins.contains("\"plugins\""));
+    assertTrue(plugins.contains("activeCount"));
+
+    String topology = get("/topology");
+    assertTrue(topology.contains("\"nodes\""));
+    assertTrue(topology.contains("\"edges\""));
+    assertTrue(topology.contains("svc-a"));
+
+    String alerts = get("/alerts");
+    assertTrue(alerts.contains("\"alerts\""));
+    assertTrue(alerts.contains("e2e-alert"));
+
+    String metrics = get("/metrics");
+    assertTrue(metrics.contains("\"metrics\""));
+    assertTrue(metrics.contains("api.latency"));
+
+    String diagnostics = get("/diagnostics");
+    assertTrue(diagnostics.contains("Diagnostics Report"));
+
+    String traces = get("/traces");
+    assertTrue(traces.contains("\"threadContext\"") || traces.contains("\"hasSpan\""));
+
+    String propagators = get("/context/propagators");
+    assertTrue(propagators.contains("\"propagators\""));
+    assertTrue(propagators.contains("\"count\""));
+  }
+
   // ===== Helper =====
 
   private String get(String path) throws Exception {
