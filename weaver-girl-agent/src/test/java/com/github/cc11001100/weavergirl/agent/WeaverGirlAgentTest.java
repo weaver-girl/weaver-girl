@@ -78,4 +78,16 @@ class WeaverGirlAgentTest {
     assertEquals("/path/weaver.yml", result.get("config"));
     assertEquals("true", result.get("watch"));
   }
+
+  @Test
+  void parseHealthPort() throws Exception {
+    Map<String, String> result = invokeParseAgentArgs("healthPort=9401");
+    assertEquals("9401", result.get("healthPort"));
+  }
+
+  @Test
+  void parseMetricsPort() throws Exception {
+    Map<String, String> result = invokeParseAgentArgs("metricsPort=9403");
+    assertEquals("9403", result.get("metricsPort"));
+  }
 }

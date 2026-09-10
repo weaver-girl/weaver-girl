@@ -72,6 +72,30 @@ class HealthEndpointTest {
       assertTrue(readyBody.contains("\"status\":\"READY\""));
       assertTrue(readyBody.contains("\"interceptorCount\":1"));
       conn2.disconnect();
+
+      // Test /stats endpoint returns instrumentation counters
+      URL statsUrl = new URL("http://localhost:" + port + "/stats");
+      HttpURLConnection conn3 = (HttpURLConnection) statsUrl.openConnection();
+      conn3.setConnectTimeout(2000);
+      conn3.setReadTimeout(2000);
+      assertEquals(200, conn3.getResponseCode());
+      String statsBody = readBody(conn3);
+      assertTrue(statsBody.contains("\"status\":\"UP\""));
+      assertTrue(statsBody.contains("\"transformationCount\""));
+      assertTrue(statsBody.contains("\"interceptorInvocationCount\""));
+      conn3.disconnect();
+
+      // Test /metrics endpoint returns Prometheus-formatted text
+      URL metricsUrl = new URL("http://localhost:" + port + "/metrics");
+      HttpURLConnection conn4 = (HttpURLConnection) metricsUrl.openConnection();
+      conn4.setConnectTimeout(2000);
+      conn4.setReadTimeout(2000);
+      assertEquals(200, conn4.getResponseCode());
+      String metricsBody = readBody(conn4);
+      assertTrue(metricsBody.contains("weavergirl_uptime_seconds"));
+      assertTrue(metricsBody.contains("weavergirl_transformations_total"));
+      assertTrue(metricsBody.contains("weavergirl_interceptor_invocations_total"));
+      conn4.disconnect();
     } finally {
       // Clean up
       java.lang.reflect.Field healthField = WeaverGirlAgent.class.getDeclaredField("healthServer");

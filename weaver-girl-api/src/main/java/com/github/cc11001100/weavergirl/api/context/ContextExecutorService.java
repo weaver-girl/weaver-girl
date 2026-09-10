@@ -68,12 +68,14 @@ public class ContextExecutorService extends ContextExecutor implements ExecutorS
 
   @Override
   public <T> Future<T> submit(Runnable task, T result) {
-    return delegate.submit(ContextPropagators.wrap(task), result);
+    Runnable wrapped = (task instanceof ContextRunnable) ? task : ContextPropagators.wrap(task);
+    return delegate.submit(wrapped, result);
   }
 
   @Override
   public Future<?> submit(Runnable task) {
-    return delegate.submit(ContextPropagators.wrap(task));
+    Runnable wrapped = (task instanceof ContextRunnable) ? task : ContextPropagators.wrap(task);
+    return delegate.submit(wrapped);
   }
 
   @Override
