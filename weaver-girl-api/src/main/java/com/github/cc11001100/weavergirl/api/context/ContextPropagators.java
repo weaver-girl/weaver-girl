@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -217,6 +219,104 @@ public final class ContextPropagators {
     public void accept(T t) {
       try (ContextScope ignored = ContextScope.activate(snapshot)) {
         delegate.accept(t);
+      }
+    }
+  }
+
+  /**
+   * Wrap a BiFunction with the current context.
+   *
+   * @param function delegate bi-function
+   * @param <T> first input type
+   * @param <U> second input type
+   * @param <R> result type
+   * @return context-propagating bi-function
+   * @since 1.9.0
+   */
+  public static <T, U, R> BiFunction<T, U, R> wrap(BiFunction<T, U, R> function) {
+    return wrap(function, capture());
+  }
+
+  /**
+   * Wrap a BiFunction with an explicit context snapshot.
+   *
+   * @param function delegate bi-function
+   * @param snapshot snapshot to activate while running
+   * @param <T> first input type
+   * @param <U> second input type
+   * @param <R> result type
+   * @return context-propagating bi-function
+   * @since 1.9.0
+   */
+  public static <T, U, R> BiFunction<T, U, R> wrap(BiFunction<T, U, R> function, ContextSnapshot snapshot) {
+    if (function instanceof ContextPropagatingBiFunction) {
+      return function;
+    }
+    return new ContextPropagatingBiFunction<>(function, snapshot);
+  }
+
+  /**
+   * Wrap a BiConsumer with the current context.
+   *
+   * @param consumer delegate bi-consumer
+   * @param <T> first input type
+   * @param <U> second input type
+   * @return context-propagating bi-consumer
+   * @since 1.9.0
+   */
+  public static <T, U> BiConsumer<T, U> wrap(BiConsumer<T, U> consumer) {
+    return wrap(consumer, capture());
+  }
+
+  /**
+   * Wrap a BiConsumer with an explicit context snapshot.
+   *
+   * @param consumer delegate bi-consumer
+   * @param snapshot snapshot to activate while running
+   * @param <T> first input type
+   * @param <U> second input type
+   * @return context-propagating bi-consumer
+   * @since 1.9.0
+   */
+  public static <T, U> BiConsumer<T, U> wrap(BiConsumer<T, U> consumer, ContextSnapshot snapshot) {
+    if (consumer instanceof ContextPropagatingBiConsumer) {
+      return consumer;
+    }
+    return new ContextPropagatingBiConsumer<>(consumer, snapshot);
+  }
+
+  /** BiFunction wrapper that activates a captured context snapshot before delegating. */
+  private static final class ContextPropagatingBiFunction<T, U, R> implements BiFunction<T, U, R> {
+    private final BiFunction<T, U, R> delegate;
+    private final ContextSnapshot snapshot;
+
+    ContextPropagatingBiFunction(BiFunction<T, U, R> delegate, ContextSnapshot snapshot) {
+      this.delegate = delegate;
+      this.snapshot = snapshot;
+    }
+
+    @Override
+    public R apply(T t, U u) {
+      try (ContextScope ignored = ContextScope.activate(snapshot)) {
+        return delegate.apply(t, u);
+      }
+    }
+  }
+
+  /** BiConsumer wrapper that activates a captured context snapshot before delegating. */
+  private static final class ContextPropagatingBiConsumer<T, U> implements BiConsumer<T, U> {
+    private final BiConsumer<T, U> delegate;
+    private final ContextSnapshot snapshot;
+
+    ContextPropagatingBiConsumer(BiConsumer<T, U> delegate, ContextSnapshot snapshot) {
+      this.delegate = delegate;
+      this.snapshot = snapshot;
+    }
+
+    @Override
+    public void accept(T t, U u) {
+      try (ContextScope ignored = ContextScope.activate(snapshot)) {
+        delegate.accept(t, u);
       }
     }
   }

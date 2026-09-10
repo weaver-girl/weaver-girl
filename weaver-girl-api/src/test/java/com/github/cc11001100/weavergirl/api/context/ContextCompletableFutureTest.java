@@ -9,11 +9,14 @@ import com.github.cc11001100.weavergirl.api.tenant.TenantContext;
 import com.github.cc11001100.weavergirl.api.tracing.Tracer;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -249,6 +252,76 @@ class ContextCompletableFutureTest {
           "tenant-123",
           workerTenantId.get(),
           "TenantContext should be propagated to the worker thread");
+    } finally {
+      delegate.shutdownNow();
+    }
+  }
+
+  @Test
+  void exceptionallyAsync_propagatesContextOnRecovery() throws Exception {
+    ThreadContext.put("traceId", "cf-api-exception");
+    ExecutorService delegate = Executors.newSingleThreadExecutor();
+    try {
+      String result =
+          ContextCompletableFuture.<String>supplyAsync(() -> {
+            throw new IllegalStateException("boom");
+          }, delegate)
+              .exceptionallyAsync(
+                  ex -> ThreadContext.<String>get("traceId"),
+                  ContextCompletableFuture.wrapExecutor(delegate))
+              .get(5, TimeUnit.SECONDS);
+
+      assertEquals(
+          "cf-api-exception",
+          result,
+          "ThreadContext should be propagated through exceptionallyAsync recovery");
+    } finally {
+      delegate.shutdownNow();
+    }
+  }
+
+  @Test
+  void handleAsync_propagatesContextOnHandler() throws Exception {
+    ThreadContext.put("traceId", "cf-api-handle");
+    ExecutorService delegate = Executors.newSingleThreadExecutor();
+    try {
+      String result =
+          ContextCompletableFuture.<String>supplyAsync(() -> {
+            throw new IllegalStateException("boom");
+          }, delegate)
+              .handleAsync(
+                  (value, ex) -> value != null ? value : ThreadContext.<String>get("traceId"),
+                  ContextCompletableFuture.wrapExecutor(delegate))
+              .get(5, TimeUnit.SECONDS);
+
+      assertEquals(
+          "cf-api-handle",
+          result,
+          "ThreadContext should be propagated through handleAsync handler");
+    } finally {
+      delegate.shutdownNow();
+    }
+  }
+
+  @Test
+  void whenCompleteAsync_propagatesContextOnCompletion() throws Exception {
+    ThreadContext.put("traceId", "cf-api-when");
+    ExecutorService delegate = Executors.newSingleThreadExecutor();
+    try {
+      AtomicReference<String> captured = new AtomicReference<>();
+      CompletableFuture<String> source =
+          ContextCompletableFuture.supplyAsync(() -> ThreadContext.<String>get("traceId"), delegate);
+
+      ContextCompletableFuture.whenCompleteAsync(
+              source,
+              (value, ex) -> captured.set(ThreadContext.get("traceId")),
+              ContextCompletableFuture.wrapExecutor(delegate))
+          .get(5, TimeUnit.SECONDS);
+
+      assertEquals(
+          "cf-api-when",
+          captured.get(),
+          "ThreadContext should be propagated through whenCompleteAsync");
     } finally {
       delegate.shutdownNow();
     }

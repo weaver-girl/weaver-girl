@@ -251,4 +251,74 @@ public final class ContextCompletableFuture {
     Objects.requireNonNull(function, "function");
     return future.thenComposeAsync(ContextPropagators.wrap(function), wrapExecutor(executor));
   }
+
+  /**
+   * Handle exceptions from this future asynchronously, propagating context through the async
+   * recovery stage.
+   *
+   * <p>Use this in place of {@code exceptionallyAsync} when you want the recovery function to run
+   * with the caller's context propagated to the provided executor.
+   *
+   * @param <T> result type
+   * @param future the source future
+   * @param function function to apply if the future completed exceptionally
+   * @param executor executor for the async stage; null uses {@link ForkJoinPool#commonPool()}
+   * @return a new future completing with the function's result
+   * @since 1.9.0
+   */
+  public static <T> CompletableFuture<T> exceptionallyAsync(
+      CompletableFuture<T> future,
+      java.util.function.Function<Throwable, ? extends T> function,
+      Executor executor) {
+    Objects.requireNonNull(future, "future");
+    Objects.requireNonNull(function, "function");
+    return future.exceptionallyAsync(ContextPropagators.wrap(function), wrapExecutor(executor));
+  }
+
+  /**
+   * Handle either result or exception from this future asynchronously, propagating context through
+   * the async handler stage.
+   *
+   * <p>Use this in place of {@code handleAsync} when you want the handler function to run with the
+   * caller's context propagated to the provided executor.
+   *
+   * @param <T> result type
+   * @param <U> handler result type
+   * @param future the source future
+   * @param function function to apply with the result or exception
+   * @param executor executor for the async stage; null uses {@link ForkJoinPool#commonPool()}
+   * @return a new future completing with the function's result
+   * @since 1.9.0
+   */
+  public static <T, U> CompletableFuture<U> handleAsync(
+      CompletableFuture<T> future,
+      java.util.function.BiFunction<? super T, Throwable, ? extends U> function,
+      Executor executor) {
+    Objects.requireNonNull(future, "future");
+    Objects.requireNonNull(function, "function");
+    return future.handleAsync(ContextPropagators.wrap(function), wrapExecutor(executor));
+  }
+
+  /**
+   * Run a callback when this future completes, asynchronously propagating context through the
+   * handler stage.
+   *
+   * <p>Use this in place of {@code whenCompleteAsync} when you want the action to run with the
+   * caller's context propagated to the provided executor.
+   *
+   * @param <T> result type
+   * @param future the source future
+   * @param action action to run with the result or exception
+   * @param executor executor for the async stage; null uses {@link ForkJoinPool#commonPool()}
+   * @return a new future completing with the same result or exception
+   * @since 1.9.0
+   */
+  public static <T> CompletableFuture<T> whenCompleteAsync(
+      CompletableFuture<T> future,
+      java.util.function.BiConsumer<? super T, ? super Throwable> action,
+      Executor executor) {
+    Objects.requireNonNull(future, "future");
+    Objects.requireNonNull(action, "action");
+    return future.whenCompleteAsync(ContextPropagators.wrap(action), wrapExecutor(executor));
+  }
 }
