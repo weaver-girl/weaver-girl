@@ -4,7 +4,7 @@ import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
-import com.github.cc11001100.weavergirl.core.event.LifecycleEvents;
+import com.github.cc11001100.weavergirl.api.event.LifecycleEvents;
 import com.github.cc11001100.weavergirl.core.WeaverGirl;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import java.util.ArrayList;

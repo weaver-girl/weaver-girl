@@ -3,7 +3,7 @@ package com.github.cc11001100.weavergirl.core.graceful;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
 import com.github.cc11001100.weavergirl.core.switches.GlobalInterceptionSwitch;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
-import com.github.cc11001100.weavergirl.core.event.LifecycleEvents;
+import com.github.cc11001100.weavergirl.api.event.LifecycleEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

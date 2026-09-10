@@ -7,6 +7,8 @@ import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
 import com.github.cc11001100.weavergirl.api.plugin.PluginManager;
+import com.github.cc11001100.weavergirl.api.security.SecurityAuditLog;
+import com.github.cc11001100.weavergirl.api.security.SecurityPolicy;
 import com.github.cc11001100.weavergirl.api.tracing.Tracer;
 import com.github.cc11001100.weavergirl.core.alert.DefaultAlertEngine;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
@@ -37,6 +39,7 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code GET /events} — recent interceptor event history
  *   <li>{@code GET /audit} — security audit log records
  *   <li>{@code GET /lifecycle} — recent lifecycle event history
+ *   <li>{@code GET /security/policy} — current security policy summary
  * </ul>
  *
  * @since 1.2.0
@@ -74,6 +77,7 @@ public class AgentApiServer {
     server.createContext("/events", this::handleEvents);
     server.createContext("/audit", this::handleAudit);
     server.createContext("/lifecycle", this::handleLifecycle);
+    server.createContext("/security/policy", this::handleSecurityPolicy);
 
     server.setExecutor(null); // default executor
     server.start();
@@ -360,6 +364,30 @@ public class AgentApiServer {
     json.append("],\"count\":").append(lifecycleEvents.size());
     json.append(",\"registryCount\":").append(registryCount);
     json.append(",\"pluginCount\":").append(pluginCount);
+    json.append("}");
+    sendJson(exchange, json.toString());
+  }
+
+  private void handleSecurityPolicy(HttpExchange exchange) throws IOException {
+    SecurityPolicy policy = SecurityAuditLog.getPolicy();
+    StringBuilder json = new StringBuilder();
+    json.append("{");
+    json.append("\"defaultAllow\":").append(policy.isClassAllowed("*")).append(",");
+    json.append("\"auditAllInterceptions\":").append(policy.shouldAuditAll()).append(",");
+    json.append("\"allowPatterns\":[");
+    List<String> allow = policy.getAllowPatterns();
+    for (int i = 0; i < allow.size(); i++) {
+      if (i > 0) json.append(",");
+      json.append("\"").append(esc(allow.get(i))).append("\"");
+    }
+    json.append("],");
+    json.append("\"denyPatterns\":[");
+    List<String> deny = policy.getDenyPatterns();
+    for (int i = 0; i < deny.size(); i++) {
+      if (i > 0) json.append(",");
+      json.append("\"").append(esc(deny.get(i))).append("\"");
+    }
+    json.append("]");
     json.append("}");
     sendJson(exchange, json.toString());
   }

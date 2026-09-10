@@ -10,7 +10,7 @@ import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
-import com.github.cc11001100.weavergirl.core.event.LifecycleEvents;
+import com.github.cc11001100.weavergirl.api.event.LifecycleEvents;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;

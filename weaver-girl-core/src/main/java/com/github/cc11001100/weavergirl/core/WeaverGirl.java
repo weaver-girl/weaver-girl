@@ -36,7 +36,7 @@ import com.github.cc11001100.weavergirl.core.trace.TracerSpanExporterBridge;
 import com.github.cc11001100.weavergirl.core.transformer.WeaverTransformer;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
-import com.github.cc11001100.weavergirl.core.event.LifecycleEvents;
+import com.github.cc11001100.weavergirl.api.event.LifecycleEvents;
 import java.lang.instrument.Instrumentation;
 import java.util.Collections;
 import java.util.List;

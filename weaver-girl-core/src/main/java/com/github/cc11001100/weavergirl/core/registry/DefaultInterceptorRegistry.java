@@ -12,7 +12,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
-import com.github.cc11001100.weavergirl.core.event.LifecycleEvents;
+import com.github.cc11001100.weavergirl.api.event.LifecycleEvents;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

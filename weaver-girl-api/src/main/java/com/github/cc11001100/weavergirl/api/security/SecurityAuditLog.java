@@ -1,5 +1,8 @@
 package com.github.cc11001100.weavergirl.api.security;
 
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
+import com.github.cc11001100.weavergirl.api.event.LifecycleEvents;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -26,6 +29,17 @@ public final class SecurityAuditLog {
       records.add(record);
       while (records.size() > MAX_RECORDS) {
         records.remove(0);
+      }
+      try {
+        InterceptorEventPublisher.getInstance()
+            .publish(
+                LifecycleEvents.registry(
+                    "audit",
+                    record.getOperation(),
+                    true,
+                    record.getTarget() + "|result=" + record.getResult()));
+      } catch (Throwable t) {
+        // never break audit recording because of listener failures
       }
     }
   }

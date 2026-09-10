@@ -8,7 +8,7 @@ import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
 import com.github.cc11001100.weavergirl.api.security.SecurityAuditLog;
-import com.github.cc11001100.weavergirl.core.event.LifecycleEvents;
+import com.github.cc11001100.weavergirl.api.event.LifecycleEvents;
 import java.util.Map;
 import java.io.*;
 import java.net.*;
@@ -178,6 +178,15 @@ class AgentApiServerTest {
     assertTrue(response.contains("\"phase\":\"register\""));
     assertTrue(response.contains("\"phase\":\"enable\""));
     assertTrue(response.contains("\"success\":\"true\""));
+  }
+
+  @Test
+  void securityPolicyEndpoint_returnsCurrentPolicy() throws Exception {
+    String response = get("/security/policy");
+    assertTrue(response.contains("\"defaultAllow\""));
+    assertTrue(response.contains("\"auditAllInterceptions\""));
+    assertTrue(response.contains("\"allowPatterns\""));
+    assertTrue(response.contains("\"denyPatterns\""));
   }
 
   @Test

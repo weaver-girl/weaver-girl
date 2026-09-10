@@ -1,4 +1,4 @@
-package com.github.cc11001100.weavergirl.core.event;
+package com.github.cc11001100.weavergirl.api.event;
 
 import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 
