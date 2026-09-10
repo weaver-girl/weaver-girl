@@ -7,6 +7,7 @@ import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
 import com.github.cc11001100.weavergirl.api.plugin.PluginManager;
 import com.github.cc11001100.weavergirl.api.tracing.Tracer;
 import com.github.cc11001100.weavergirl.core.alert.DefaultAlertEngine;
+import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.*;
@@ -28,6 +29,7 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code GET /alerts} — alert history
  *   <li>{@code GET /metrics} — metric snapshots
  *   <li>{@code GET /diagnostics} — full diagnostics report
+ *   <li>{@code GET /errors} — transformation and interceptor error counters
  *   <li>{@code GET /traces} — current/live span and thread context snapshot
  *   <li>{@code GET /context/propagators} — registered cross-thread propagators
  *   <li>{@code GET /events} — recent interceptor event history
@@ -63,6 +65,7 @@ public class AgentApiServer {
     server.createContext("/alerts", this::handleAlerts);
     server.createContext("/metrics", this::handleMetrics);
     server.createContext("/diagnostics", this::handleDiagnostics);
+    server.createContext("/errors", this::handleErrors);
     server.createContext("/traces", this::handleTraces);
     server.createContext("/context/propagators", this::handleContextPropagators);
     server.createContext("/events", this::handleEvents);
@@ -194,6 +197,19 @@ public class AgentApiServer {
   private void handleDiagnostics(HttpExchange exchange) throws IOException {
     String report = AgentDiagnostics.getInstance().generateReport();
     sendText(exchange, report);
+  }
+
+  private void handleErrors(HttpExchange exchange) throws IOException {
+    AgentStatus status = AgentStatus.getInstance();
+    StringBuilder json = new StringBuilder();
+    json.append("{");
+    json.append("\"transformationErrorCount\":")
+        .append(status.getTransformationErrorCount())
+        .append(",");
+    json.append("\"interceptorErrorCount\":")
+        .append(status.getInterceptorErrorCount());
+    json.append("}");
+    sendJson(exchange, json.toString());
   }
 
   private void handleTraces(HttpExchange exchange) throws IOException {

@@ -159,6 +159,13 @@ class AgentApiServerTest {
   }
 
   @Test
+  void errorsEndpoint_returnsCounters() throws Exception {
+    String response = get("/errors");
+    assertTrue(response.contains("\"transformationErrorCount\""));
+    assertTrue(response.contains("\"interceptorErrorCount\""));
+  }
+
+  @Test
   void endToEnd_allEndpointsReturnPopulatedData() throws Exception {
     com.github.cc11001100.weavergirl.api.metrics.MetricRegistry.record(
         "api.latency", java.util.Collections.singletonMap("zone", "east"), 12.5);
