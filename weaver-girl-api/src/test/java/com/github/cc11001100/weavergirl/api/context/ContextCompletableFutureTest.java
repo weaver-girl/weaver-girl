@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.github.cc11001100.weavergirl.api.tenant.TenantContext;
 import com.github.cc11001100.weavergirl.api.tracing.Tracer;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -171,6 +172,57 @@ class ContextCompletableFutureTest {
     } finally {
       delegate.shutdownNow();
     }
+  }
+
+  @Test
+  void thenApplyAsync_propagatesThreadContext() throws Exception {
+    ThreadContext.put("traceId", "cf-api-then-apply");
+    CompletableFuture<String> source = ContextCompletableFuture.supplyAsync(() -> ThreadContext.<String>get("traceId"));
+    String result =
+        ContextCompletableFuture.thenApplyAsync(
+            source,
+            traceId -> traceId + "-applied",
+            ContextCompletableFuture.wrapExecutor(null))
+            .get(5, TimeUnit.SECONDS);
+
+    assertEquals(
+        "cf-api-then-apply-applied",
+        result,
+        "ThreadContext should propagate through thenApplyAsync using the built-in stage helper");
+  }
+
+  @Test
+  void thenComposeAsync_propagatesThreadContext() throws Exception {
+    ThreadContext.put("traceId", "cf-api-then-compose");
+    CompletableFuture<String> source = ContextCompletableFuture.supplyAsync(() -> ThreadContext.<String>get("traceId"));
+    String result =
+        ContextCompletableFuture.thenComposeAsync(
+            source,
+            traceId -> CompletableFuture.completedFuture(traceId + "-composed"),
+            ContextCompletableFuture.wrapExecutor(null))
+            .get(5, TimeUnit.SECONDS);
+
+    assertEquals(
+        "cf-api-then-compose-composed",
+        result,
+        "ThreadContext should propagate through thenComposeAsync using the built-in stage helper");
+  }
+
+  @Test
+  void thenRunAsync_propagatesThreadContext() throws Exception {
+    ThreadContext.put("traceId", "cf-api-then-run");
+    ConcurrentLinkedQueue<String> captured = new ConcurrentLinkedQueue<>();
+    CompletableFuture<String> source = ContextCompletableFuture.supplyAsync(() -> ThreadContext.<String>get("traceId"));
+    ContextCompletableFuture.thenRunAsync(
+            source,
+            () -> captured.add(ThreadContext.get("traceId")),
+            ContextCompletableFuture.wrapExecutor(null))
+        .get(5, TimeUnit.SECONDS);
+
+    assertEquals(
+        "cf-api-then-run",
+        captured.poll(),
+        "ThreadContext should propagate through thenRunAsync using the built-in stage helper");
   }
 
   @Test

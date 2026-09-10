@@ -59,12 +59,36 @@ public class ContextExecutor implements Executor {
     if (delegate instanceof ContextExecutor) {
       return (ContextExecutor) delegate;
     }
-    if (delegate instanceof ScheduledExecutorService) {
-      return ContextScheduledExecutorService.wrap((ScheduledExecutorService) delegate);
+    if (delegate instanceof java.util.concurrent.ScheduledExecutorService) {
+      return ContextScheduledExecutorService.wrap((java.util.concurrent.ScheduledExecutorService) delegate);
     }
-    if (delegate instanceof ExecutorService) {
-      return ContextExecutorService.wrap((ExecutorService) delegate);
+    if (delegate instanceof java.util.concurrent.ExecutorService) {
+      return ContextExecutorService.wrap((java.util.concurrent.ExecutorService) delegate);
     }
     return new ContextExecutor(delegate);
+  }
+
+  /**
+   * Start a virtual thread with the caller's current context propagated.
+   *
+   * <p>This is a no-op on JVMs that do not support virtual threads (pre-Java 21); it falls back to
+   * a platform thread wrapped with context propagation.
+   *
+   * @param task task to run; must not be null
+   * @since 1.9.0
+   */
+  public static void startVirtualThread(Runnable task) {
+    Objects.requireNonNull(task, "task");
+    Runnable wrapped = ContextPropagators.wrap(task);
+    try {
+      java.lang.reflect.Method startVirtualThread =
+          Thread.class.getMethod("startVirtualThread", Runnable.class);
+      startVirtualThread.invoke(null, wrapped);
+    } catch (NoSuchMethodException e) {
+      // Pre-Java 21: fall back to a platform thread with propagated context.
+      new Thread(wrapped).start();
+    } catch (Throwable t) {
+      throw new RuntimeException("Failed to start virtual thread with context propagation", t);
+    }
   }
 }

@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Utilities for capturing, activating, and wrapping in-process context.
@@ -123,5 +125,99 @@ public final class ContextPropagators {
       wrapped.add(wrap(callable, snapshot));
     }
     return wrapped;
+  }
+
+  /**
+   * Wrap a Function with the current context.
+   *
+   * @param function delegate function
+   * @param <T> input type
+   * @param <R> result type
+   * @return context-propagating function
+   * @since 1.9.0
+   */
+  public static <T, R> Function<T, R> wrap(Function<T, R> function) {
+    return wrap(function, capture());
+  }
+
+  /**
+   * Wrap a Function with an explicit context snapshot.
+   *
+   * @param function delegate function
+   * @param snapshot snapshot to activate while running
+   * @param <T> input type
+   * @param <R> result type
+   * @return context-propagating function
+   * @since 1.9.0
+   */
+  public static <T, R> Function<T, R> wrap(Function<T, R> function, ContextSnapshot snapshot) {
+    if (function instanceof ContextPropagatingFunction) {
+      return function;
+    }
+    return new ContextPropagatingFunction<>(function, snapshot);
+  }
+
+  /**
+   * Wrap a Consumer with the current context.
+   *
+   * @param consumer delegate consumer
+   * @param <T> input type
+   * @return context-propagating consumer
+   * @since 1.9.0
+   */
+  public static <T> Consumer<T> wrap(Consumer<T> consumer) {
+    return wrap(consumer, capture());
+  }
+
+  /**
+   * Wrap a Consumer with an explicit context snapshot.
+   *
+   * @param consumer delegate consumer
+   * @param snapshot snapshot to activate while running
+   * @param <T> input type
+   * @return context-propagating consumer
+   * @since 1.9.0
+   */
+  public static <T> Consumer<T> wrap(Consumer<T> consumer, ContextSnapshot snapshot) {
+    if (consumer instanceof ContextPropagatingConsumer) {
+      return consumer;
+    }
+    return new ContextPropagatingConsumer<>(consumer, snapshot);
+  }
+
+  /** Function wrapper that activates a captured context snapshot before delegating. */
+  private static final class ContextPropagatingFunction<T, R> implements Function<T, R> {
+    private final Function<T, R> delegate;
+    private final ContextSnapshot snapshot;
+
+    ContextPropagatingFunction(Function<T, R> delegate, ContextSnapshot snapshot) {
+      this.delegate = delegate;
+      this.snapshot = snapshot;
+    }
+
+    @Override
+    public R apply(T t) {
+      try (ContextScope ignored = ContextScope.activate(snapshot)) {
+        return delegate.apply(t);
+      }
+    }
+  }
+
+  /** Consumer wrapper that activates a captured context snapshot before delegating. */
+  private static final class ContextPropagatingConsumer<T> implements Consumer<T> {
+    private final Consumer<T> delegate;
+    private final ContextSnapshot snapshot;
+
+    ContextPropagatingConsumer(Consumer<T> delegate, ContextSnapshot snapshot) {
+      this.delegate = delegate;
+      this.snapshot = snapshot;
+    }
+
+    @Override
+    public void accept(T t) {
+      try (ContextScope ignored = ContextScope.activate(snapshot)) {
+        delegate.accept(t);
+      }
+    }
   }
 }
