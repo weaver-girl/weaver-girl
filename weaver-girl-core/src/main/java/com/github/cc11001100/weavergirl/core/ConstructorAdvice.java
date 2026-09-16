@@ -194,6 +194,11 @@ public class ConstructorAdvice {
         }
       }
 
+      // cflow tracking: pop current constructor from the cflow stack on exit
+      // (pushed in onMethodEnter). Without this, every constructor invocation
+      // permanently leaks a frame onto the ThreadLocal cflow stack.
+      PointcutExpression.exitCflow(className, methodName);
+
       MethodInvocationPool.release(context);
     } catch (Throwable e) {
       // Never let any error crash the target application

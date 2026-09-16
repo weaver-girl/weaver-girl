@@ -147,4 +147,135 @@ class PointcutParserTest {
     PointcutParser parser = PointcutParser.getInstance();
     assertThrows(IllegalArgumentException.class, () -> parser.parse("@target()"));
   }
+
+  @Test
+  void parsesCallExpressionWithReturnType() {
+    PointcutParser parser = PointcutParser.getInstance();
+    PointcutExpression expression = parser.parse("call(* com.example.Service.process(..))");
+    assertEquals(PointcutExpression.Type.CALL, expression.getType());
+    assertEquals("*", expression.getCallReturnType());
+    assertEquals("com.example.Service", expression.getCallClassPattern());
+    assertEquals("process", expression.getCallMethodPattern());
+    assertEquals("..", expression.getCallParamPattern());
+  }
+
+  @Test
+  void parsesCallExpressionWithoutReturnType() {
+    PointcutParser parser = PointcutParser.getInstance();
+    PointcutExpression expression = parser.parse("call(com.example.Service.process(..))");
+    assertEquals(PointcutExpression.Type.CALL, expression.getType());
+    assertNull(expression.getCallReturnType());
+    assertEquals("com.example.Service", expression.getCallClassPattern());
+    assertEquals("process", expression.getCallMethodPattern());
+  }
+
+  @Test
+  void rejectsMalformedCallExpression() {
+    PointcutParser parser = PointcutParser.getInstance();
+    assertThrows(IllegalArgumentException.class, () -> parser.parse("call(bad)"));
+    assertThrows(IllegalArgumentException.class, () -> parser.parse("call(NoDotHere(..))"));
+  }
+
+  @Test
+  void parsesHandlerExpression() {
+    PointcutParser parser = PointcutParser.getInstance();
+    PointcutExpression expression = parser.parse("handler(java.io.IOException)");
+    assertEquals(PointcutExpression.Type.HANDLER, expression.getType());
+    assertEquals("java.io.IOException", expression.getHandlerExceptionType());
+  }
+
+  @Test
+  void parsesCflowExpression() {
+    PointcutParser parser = PointcutParser.getInstance();
+    PointcutExpression expression =
+        parser.parse("cflow(execution(* com.example.Caller.call(..)))");
+    assertEquals(PointcutExpression.Type.CFLOW, expression.getType());
+    PointcutExpression inner = expression.getCflowExpression();
+    assertEquals(PointcutExpression.Type.EXECUTION, inner.getType());
+    assertEquals("com.example.Caller", inner.getClassPattern());
+    assertEquals("call", inner.getMethodPattern());
+
+    // cflow() is a runtime condition — statically it always matches.
+    assertTrue(expression.toPointcut().matches("anything.At.All", "anyMethod"));
+  }
+
+  @Test
+  void parsesIfExpression() {
+    PointcutParser parser = PointcutParser.getInstance();
+    PointcutExpression expression = parser.parse("if(args.length > 0)");
+    assertEquals(PointcutExpression.Type.IF, expression.getType());
+    assertEquals("args.length > 0", expression.getIfCondition());
+    assertTrue(expression.toPointcut().matches("anything.At.All", "anyMethod"));
+  }
+
+  @Test
+  void parsesIfWithEmptyCondition() {
+    PointcutParser parser = PointcutParser.getInstance();
+    PointcutExpression expression = parser.parse("if()");
+    assertEquals(PointcutExpression.Type.IF, expression.getType());
+    assertEquals("", expression.getIfCondition());
+    // An empty if() condition defaults to true so it doesn't silently disable advice.
+    assertTrue(expression.evaluateRuntimeCondition("c", "m", null, null, null));
+  }
+
+  @Test
+  void parsesCflowAndIfCombinedWithLogicalOperators() {
+    PointcutParser parser = PointcutParser.getInstance();
+
+    PointcutExpression andExpr =
+        parser.parse("cflow(execution(* com.example.A.b(..))) && @annotation(com.example.Trace)");
+    assertEquals(PointcutExpression.Type.AND, andExpr.getType());
+    assertEquals(PointcutExpression.Type.CFLOW, andExpr.getLeft().getType());
+    assertEquals(PointcutExpression.Type.AT_ANNOTATION, andExpr.getRight().getType());
+
+    PointcutExpression orExpr = parser.parse("if(args.length > 1) || within(com.example..)");
+    assertEquals(PointcutExpression.Type.OR, orExpr.getType());
+    assertEquals(PointcutExpression.Type.IF, orExpr.getLeft().getType());
+    assertEquals(PointcutExpression.Type.WITHIN, orExpr.getRight().getType());
+  }
+
+  @Test
+  void parsesNestedCflowWithCompositeInnerExpression() {
+    PointcutParser parser = PointcutParser.getInstance();
+    PointcutExpression expression =
+        parser.parse("cflow(execution(* com.example.A.b(..)) && @annotation(com.example.Trace))");
+    assertEquals(PointcutExpression.Type.CFLOW, expression.getType());
+    PointcutExpression inner = expression.getCflowExpression();
+    assertEquals(PointcutExpression.Type.AND, inner.getType());
+    assertEquals(PointcutExpression.Type.EXECUTION, inner.getLeft().getType());
+    assertEquals(PointcutExpression.Type.AT_ANNOTATION, inner.getRight().getType());
+  }
+
+  @Test
+  void rejectsMalformedCflowAndIfExpressions() {
+    PointcutParser parser = PointcutParser.getInstance();
+    assertThrows(IllegalArgumentException.class, () -> parser.parse("cflow(unbalanced"));
+    assertThrows(IllegalArgumentException.class, () -> parser.parse("cflow(unknownAtom(x))"));
+    assertThrows(IllegalArgumentException.class, () -> parser.parse("if("));
+  }
+
+  @Test
+  void roundTripCflowEvaluatesAgainstLiveCallStack() {
+    PointcutParser parser = PointcutParser.getInstance();
+    PointcutExpression expression =
+        parser.parse("cflow(execution(* com.example.Caller.call(..)))");
+
+    // Outside any call stack, the cflow condition is not satisfied.
+    assertFalse(
+        expression.evaluateRuntimeCondition("com.example.Target", "target", null, null, null));
+
+    PointcutExpression.enterCflow("com.example.Caller", "call");
+    PointcutExpression.enterCflow("com.example.Target", "target");
+    try {
+      assertTrue(
+          expression.evaluateRuntimeCondition("com.example.Target", "target", null, null, null));
+    } finally {
+      PointcutExpression.exitCflow("com.example.Target", "target");
+      PointcutExpression.exitCflow("com.example.Caller", "call");
+    }
+
+    // Fully unwound — the condition is no longer satisfied.
+    assertFalse(
+        expression.evaluateRuntimeCondition("com.example.Target", "target", null, null, null));
+  }
 }
