@@ -18,6 +18,11 @@ class GracefulDegradationManagerTest {
     Field toggleCountField = GlobalInterceptionSwitch.class.getDeclaredField("toggleCount");
     toggleCountField.setAccessible(true);
     ((java.util.concurrent.atomic.AtomicLong) toggleCountField.get(null)).set(0);
+    com.github.cc11001100.weavergirl.core.sampling.SamplingController controller =
+        com.github.cc11001100.weavergirl.core.sampling.SamplingController.getInstance();
+    controller.setSamplingRate(1);
+    controller.setMaxRate(100);
+    controller.resetCounter();
   }
 
   @Test

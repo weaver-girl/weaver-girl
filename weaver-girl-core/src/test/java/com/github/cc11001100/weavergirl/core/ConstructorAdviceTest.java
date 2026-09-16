@@ -35,6 +35,7 @@ class ConstructorAdviceTest {
   void tearDown() {
     InterceptorHolder.setRegistry(null);
     InterceptorHolder.setInterceptionEnabled(true, "test");
+    SamplingController.getInstance().setSamplingRate(1);
   }
 
   @Test

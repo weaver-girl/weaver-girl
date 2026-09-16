@@ -363,10 +363,8 @@ class AgentIntegrationTest {
 
   private void installTransformer() {
     WeaverTransformer transformer = new WeaverTransformer(registry);
-    // In test environment, we need to instrument test target classes which
-    // are under com.github.cc11001100.weavergirl.* package. Disable the
-    // default agent-class ignore so test helpers can be intercepted.
     transformer.setIgnoreAgentClasses(false);
     transformer.install(instrumentation);
+    transformer.retransformLoadedClasses();
   }
 }

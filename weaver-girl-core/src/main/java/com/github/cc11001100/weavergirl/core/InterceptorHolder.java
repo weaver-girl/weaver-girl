@@ -78,7 +78,6 @@ public class InterceptorHolder {
       return java.util.Collections.emptyList();
     }
     if (!(reg instanceof DefaultInterceptorRegistry)) {
-      // Fall back to the raw registry call for non-default implementations
       return reg.getInterceptorsForClass(className);
     }
     DefaultInterceptorRegistry dir = (DefaultInterceptorRegistry) reg;
@@ -88,8 +87,6 @@ public class InterceptorHolder {
       synchronized (snapshotLock) {
         snap = cachedSnapshot;
         if (snap == null || snap.generation != currentGeneration) {
-          // Build a stable snapshot: EXACT_NAME results from the atomic classIndex,
-          // plus a snapshot of non-EXACT_NAME definitions.
           java.util.Map<String, java.util.List<InterceptorDefinition>> exactCache =
               new java.util.HashMap<>(dir.getAllDefinitions().stream()
                   .filter(d -> d.getPointcut().getClassMatcher().getMatchType()
