@@ -78,8 +78,8 @@ public class IntroductionAdvice {
         return null;
       }
 
-      // Return a DelegateInvocation that carries both the delegate and the method
-      return new DelegateInvocation(delegate, delegateMethod);
+      // Return a DelegateInvocation that carries the delegate, method, and call arguments
+      return new DelegateInvocation(delegate, delegateMethod, arguments);
     } catch (Throwable e) {
       log.warn("Introduction advice failed for {}#{}: {}", targetClass.getName(), method.getName(), e.getMessage());
       return null;
