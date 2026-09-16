@@ -4,6 +4,7 @@ import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression;
+import com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.interceptor.MethodInvocationPool;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
@@ -67,6 +68,10 @@ public class ConstructorAdvice {
       // Delegated to InterceptorHolder to keep the advice class free of
       // stack-walking code (ByteBuddy validates the entire advice class).
       InterceptorHolder.captureCaller(invocation);
+
+      // cflow tracking: push current constructor onto the cflow stack before evaluating
+      // runtime conditions. Pop on exit.
+      PointcutExpression.enterCflow(className, methodName);
 
       List<InterceptorDefinition> defs = InterceptorHolder.getInterceptorsForClassSnapshot(className);
       for (InterceptorDefinition def : defs) {

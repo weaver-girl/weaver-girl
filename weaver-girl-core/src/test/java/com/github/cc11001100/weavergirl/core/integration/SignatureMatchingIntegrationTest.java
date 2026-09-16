@@ -279,5 +279,6 @@ class SignatureMatchingIntegrationTest {
     WeaverTransformer transformer = new WeaverTransformer(registry);
     transformer.setIgnoreAgentClasses(false);
     transformer.install(instrumentation);
+    transformer.retransformLoadedClasses();
   }
 }

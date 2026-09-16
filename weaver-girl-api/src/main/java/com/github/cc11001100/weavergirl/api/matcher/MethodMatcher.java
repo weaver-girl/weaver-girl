@@ -318,8 +318,28 @@ public class MethodMatcher {
         // the method has already been selected by ByteBuddy's annotation matcher.
         return true;
       case CFIELD_GET:
-      case CFIELD_SET:
-        return methodName.contains(pattern);
+      case CFIELD_SET: {
+        String base = pattern;
+        if (base == null || base.isEmpty()) {
+          return false;
+        }
+        if (methodName == null || methodName.isEmpty()) {
+          return false;
+        }
+        if (methodName.equals(base)) {
+          return true;
+        }
+        if (matchType == MatchType.CFIELD_GET) {
+          if (("get" + base).equals(methodName) || ("access$" + base).equals(methodName)) {
+            return true;
+          }
+        } else {
+          if (("set" + base).equals(methodName) || ("access$set" + base).equals(methodName)) {
+            return true;
+          }
+        }
+        return false;
+      }
       default:
         return false;
     }

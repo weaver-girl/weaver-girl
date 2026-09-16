@@ -110,7 +110,12 @@ public class CatchPointcut {
     if (caughtExceptionType == null) {
       return false;
     }
-    return exceptionTypeName.equals(caughtExceptionType.getName());
+    for (Class<?> c = caughtExceptionType; c != null; c = c.getSuperclass()) {
+      if (exceptionTypeName.equals(c.getName())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @Override

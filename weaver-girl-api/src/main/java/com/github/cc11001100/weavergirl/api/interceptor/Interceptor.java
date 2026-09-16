@@ -139,4 +139,16 @@ public interface Interceptor {
    * @since 1.7.0
    */
   default void destroy() {}
+
+  /**
+   * Finally advice: always called on method exit, regardless of normal/exception/skip outcome.
+   *
+   * <p>This runs after {@link #after(MethodInvocation)} / {@link #onException(MethodInvocation)}
+   * and after any return-value override or exception suppression. Use it for cleanup that must
+   * happen no matter what.
+   *
+   * @param invocation context object containing the final return value or exception state
+   * @since 1.8.0
+   */
+  default void afterFinally(MethodInvocation invocation) {}
 }

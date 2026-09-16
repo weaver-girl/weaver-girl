@@ -98,6 +98,10 @@ public class MethodInvocation {
   private boolean conditionMatched = true;
   private boolean conditionEvaluated = false;
 
+  // pertarget/perthis instance-bound state
+  private Object perInstance;
+  private boolean perInstanceInitialized;
+
   /**
    * Constructs a new MethodInvocation.
    *
@@ -130,6 +134,8 @@ public class MethodInvocation {
     this.isSkipped = false;
     this.conditionMatched = true;
     this.conditionEvaluated = false;
+    this.perInstance = null;
+    this.perInstanceInitialized = false;
   }
 
   /**
@@ -595,7 +601,6 @@ public class MethodInvocation {
     }
     proceedDepth++;
     proceedCalled = true;
-    proceedable = false;
   }
 
   // --- CallSite tracking API ---
@@ -717,4 +722,39 @@ public class MethodInvocation {
   public boolean isConditionEvaluated() {
     return conditionEvaluated;
   }
+
+  // --- pertarget / perthis instance support ---
+
+  /**
+   * Set the per-instance context object for pertarget/perthis advice.
+   *
+   * <p>This is an internal framework method; interceptors should not call this directly.</p>
+   *
+   * @param perInstance the instance-bound state object
+   * @since 2.0.0
+   */
+  public void setPerInstance(Object perInstance) {
+    this.perInstance = perInstance;
+  }
+
+  /**
+   * Returns the per-instance context object for pertarget/perthis advice.
+   *
+   * @return the instance-bound state object, or null if none
+   * @since 2.0.0
+   */
+  public Object getPerInstance() {
+    return perInstance;
+  }
+
+  /**
+   * Returns whether the per-instance context has been initialized for this invocation.
+   *
+   * @return true if per-instance state is present
+   * @since 2.0.0
+   */
+  public boolean hasPerInstance() {
+    return perInstance != null;
+  }
+
 }

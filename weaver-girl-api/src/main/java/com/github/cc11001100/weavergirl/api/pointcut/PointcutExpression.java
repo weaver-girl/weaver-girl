@@ -599,13 +599,16 @@ public class PointcutExpression {
     if (inner == null) {
       return true;
     }
-    // Check if the inner pointcut matches anywhere in the current call stack.
-    // We use a ThreadLocal to track the cflow context across the stack.
+    // Check if the inner pointcut matches any frame in the current call stack,
+    // excluding the topmost frame (the current method being evaluated).
+    // This implements AspectJ-compatible cflow semantics: cflow(expr) matches
+    // join points that are executed WITHIN the control flow of expr, meaning
+    // expr matches some CALLER of the current join point, not the join point itself.
     CflowContext ctx = CflowContext.current();
     if (ctx == null) {
       return false;
     }
-    return ctx.matches(inner, className, methodName);
+    return ctx.matchesExcludingTop(inner, className, methodName);
   }
 
   private boolean evaluateIf(Object[] arguments, Object returnValue, Throwable throwable) {
@@ -711,6 +714,50 @@ public class PointcutExpression {
         }
       }
       return false;
+    }
+
+    boolean matchesExcludingTop(PointcutExpression inner, String currentClass, String currentMethod) {
+      // AspectJ cflow semantics: the inner pointcut should match some CALLER of the current
+      // join point, not the current join point itself.
+      // The top of the call stack (most recent frame) is the current method being evaluated,
+      // so we skip it and check only the caller frames below it.
+      Pointcut innerPointcut = inner.toPointcut();
+      java.util.Iterator<String> it = callStack.iterator();
+      // Skip the first frame (the current method's own frame)
+      if (it.hasNext()) {
+        it.next();
+      }
+      while (it.hasNext()) {
+        String frame = it.next();
+        int dot = frame.lastIndexOf('.');
+        if (dot < 0) continue;
+        String frameClass = frame.substring(0, dot);
+        String frameMethod = frame.substring(dot + 1);
+        if (innerPointcut.matches(frameClass, frameMethod)) {
+          return true;
+        }
+      }
+      return false;
+    }
+  }
+
+  public static boolean enterCflow(String className, String methodName) {
+    PointcutExpression.CflowContext ctx = PointcutExpression.CflowContext.current();
+    if (ctx == null) {
+      ctx = new PointcutExpression.CflowContext();
+      PointcutExpression.CflowContext.CURRENT.set(ctx);
+    }
+    ctx.callStack.push(className + "." + methodName);
+    return true;
+  }
+
+  public static void exitCflow(String className, String methodName) {
+    PointcutExpression.CflowContext ctx = PointcutExpression.CflowContext.current();
+    if (ctx != null && !ctx.callStack.isEmpty()) {
+      ctx.callStack.pop();
+      if (ctx.callStack.isEmpty()) {
+        PointcutExpression.CflowContext.CURRENT.remove();
+      }
     }
   }
 

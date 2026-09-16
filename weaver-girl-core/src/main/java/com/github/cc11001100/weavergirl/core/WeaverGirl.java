@@ -20,7 +20,12 @@ import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
 import com.github.cc11001100.weavergirl.core.exporter.OtlpHttpExporter;
 import com.github.cc11001100.weavergirl.core.exporter.SpanExporter;
 import com.github.cc11001100.weavergirl.core.exporter.SpanFormatter;
+import com.github.cc11001100.weavergirl.core.introduction.IntroductionStore;
 import com.github.cc11001100.weavergirl.core.management.AgentMonitor;
+import com.github.cc11001100.weavergirl.api.introduction.IntroductionDefinition;
+import com.github.cc11001100.weavergirl.api.introduction.IntroductionRegistry;
+import com.github.cc11001100.weavergirl.api.introduction.IntroductionDefinition;
+import com.github.cc11001100.weavergirl.api.introduction.IntroductionRegistry;
 import com.github.cc11001100.weavergirl.core.plugin.DefaultPluginManager;
 import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
 import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
@@ -61,6 +66,7 @@ public class WeaverGirl {
 
   private final InterceptorRegistry registry;
   private final PluginLoader pluginLoader;
+  private final IntroductionRegistry introductionRegistry;
   private Instrumentation instrumentation;
   private WeaverTransformer transformer;
   private SamplingMonitor samplingMonitor;
@@ -80,11 +86,13 @@ public class WeaverGirl {
   private UpdateChecker updateChecker;
   private volatile long dynamicRefreshIntervalSeconds = 0;
   private java.util.concurrent.ScheduledExecutorService refreshScheduler;
+  private com.github.cc11001100.weavergirl.core.management.AgentApiServer agentApiServer;
 
   private WeaverGirl() {
     this.registry = new DefaultInterceptorRegistry();
     this.pluginLoader = new PluginLoader();
     this.dynamicConfigManager = new DefaultDynamicConfigManager();
+    this.introductionRegistry = new IntroductionRegistry();
   }
 
   // P99 lazy component initialization -------------------------------------------
@@ -231,6 +239,10 @@ public class WeaverGirl {
       com.github.cc11001100.weavergirl.core.management.StartupMetrics.recordPhase(
           "transformerInstall", System.nanoTime() - transformerStart);
 
+      // Wire introduction registry into advice so introductions are resolved at runtime
+      com.github.cc11001100.weavergirl.core.introduction.IntroductionAdvice.setIntroductionRegistry(
+          weaverGirl.introductionRegistry);
+
       // Apply configuration to core components
       applyCoreConfig(pluginConfig);
 
@@ -261,6 +273,19 @@ public class WeaverGirl {
       // when these are not needed immediately.
       com.github.cc11001100.weavergirl.core.management.StartupMetrics.recordPhase(
           "managementInit", System.nanoTime() - mgmtStart);
+
+      // P103: optional REST API server for observability/managing endpoints
+      String apiPortStr = pluginConfig.getOrDefault("apiPort", "0");
+      if (!"0".equals(apiPortStr) && !apiPortStr.isEmpty()) {
+        try {
+          int apiPort = Integer.parseInt(apiPortStr);
+          weaverGirl.agentApiServer = new com.github.cc11001100.weavergirl.core.management.AgentApiServer(apiPort);
+          weaverGirl.agentApiServer.start();
+          log.info("Agent API server started on port {}", apiPort);
+        } catch (Exception e) {
+          log.warn("Failed to start AgentApiServer on port {}: {}", apiPortStr, e.getMessage());
+        }
+      }
 
       log.info(
           "WeaverGirl agent started with {} interceptor definitions",
@@ -355,6 +380,10 @@ public class WeaverGirl {
     AgentMonitor.getInstance().unregister();
     JmxRegistrar.unregister();
     InterceptorHolder.setRegistry(null);
+    com.github.cc11001100.weavergirl.core.management.AgentApiServer localApiServer = this.agentApiServer;
+    if (localApiServer != null) {
+      localApiServer.stop();
+    }
     try {
       InterceptorEventPublisher.getInstance()
           .publish(LifecycleEvents.registry(LifecycleEvents.PHASE_SHUTDOWN, "shutdown", true, null));
@@ -449,6 +478,39 @@ public class WeaverGirl {
   }
 
   /**
+   * Register an introduction (mixin) that adds an interface implementation to matching classes.
+   *
+   * <p>Example: introduce("com.example.Loggable", Loggable.class, loggableDelegate)
+   *
+   * @param classPattern a Java regex pattern for target class names
+   * @param introductionType the interface type to add
+   * @param delegate the delegate instance that will handle the introduced methods
+   * @return the unique name assigned to this introduction
+   * @since 2.0.0
+   */
+  public String introduce(String classPattern, Class<?> introductionType, Object delegate) {
+    ValidationUtils.requireNonEmpty(classPattern, "classPattern");
+    if (introductionType == null) {
+      throw new IllegalArgumentException("Introduction type must not be null");
+    }
+    if (delegate == null) {
+      throw new IllegalArgumentException("Delegate must not be null");
+    }
+    if (!introductionType.isInterface()) {
+      throw new IllegalArgumentException("Introduction type must be an interface: " + introductionType.getName());
+    }
+    String name = "intro-" + classPattern + "-" + introductionType.getSimpleName();
+    IntroductionDefinition def = new IntroductionDefinition(
+        name,
+        ClassMatcher.byNamePattern(classPattern),
+        introductionType,
+        delegate
+    );
+    introductionRegistry.register(def);
+    return name;
+  }
+
+  /**
    * Start a fluent interceptor definition using a pointcut expression.
    *
    * @since 1.1.0
@@ -460,6 +522,16 @@ public class WeaverGirl {
 
   public InterceptorRegistry getRegistry() {
     return registry;
+  }
+
+  /**
+   * Get the IntroductionRegistry for runtime introduction/mixin registration.
+   *
+   * @return the introduction registry instance
+   * @since 2.0.0
+   */
+  public com.github.cc11001100.weavergirl.api.introduction.IntroductionRegistry getIntroductionRegistry() {
+    return introductionRegistry;
   }
 
   /**
@@ -921,6 +993,38 @@ public class WeaverGirl {
             public void onException(MethodInvocation invocation) {
               callback.accept(invocation);
             }
+
+            @Override
+            public void afterFinally(MethodInvocation invocation) {
+              if (existing != null) existing.afterFinally(invocation);
+            }
+          };
+      return this;
+    }
+
+    public InterceptBuilder finallyCallback(final Consumer<MethodInvocation> callback) {
+      Interceptor existing = this.interceptor;
+      this.interceptor =
+          new Interceptor() {
+            @Override
+            public void before(MethodInvocation invocation) {
+              if (existing != null) existing.before(invocation);
+            }
+
+            @Override
+            public void after(MethodInvocation invocation) {
+              if (existing != null) existing.after(invocation);
+            }
+
+            @Override
+            public void onException(MethodInvocation invocation) {
+              if (existing != null) existing.onException(invocation);
+            }
+
+            @Override
+            public void afterFinally(MethodInvocation invocation) {
+              callback.accept(invocation);
+            }
           };
       return this;
     }
@@ -980,6 +1084,11 @@ public class WeaverGirl {
             public void onException(MethodInvocation invocation) {
               if (existing != null) existing.onException(invocation);
             }
+
+            @Override
+            public void afterFinally(MethodInvocation invocation) {
+              if (existing != null) existing.afterFinally(invocation);
+            }
           };
       return this;
     }
@@ -1002,6 +1111,11 @@ public class WeaverGirl {
             public void onException(MethodInvocation invocation) {
               if (existing != null) existing.onException(invocation);
             }
+
+            @Override
+            public void afterFinally(MethodInvocation invocation) {
+              if (existing != null) existing.afterFinally(invocation);
+            }
           };
       return this;
     }
@@ -1022,6 +1136,38 @@ public class WeaverGirl {
 
             @Override
             public void onException(MethodInvocation invocation) {
+              callback.accept(invocation);
+            }
+
+            @Override
+            public void afterFinally(MethodInvocation invocation) {
+              if (existing != null) existing.afterFinally(invocation);
+            }
+          };
+      return this;
+    }
+
+    public ExpressionInterceptBuilder afterFinally(final Consumer<MethodInvocation> callback) {
+      Interceptor existing = this.interceptor;
+      this.interceptor =
+          new Interceptor() {
+            @Override
+            public void before(MethodInvocation invocation) {
+              if (existing != null) existing.before(invocation);
+            }
+
+            @Override
+            public void after(MethodInvocation invocation) {
+              if (existing != null) existing.after(invocation);
+            }
+
+            @Override
+            public void onException(MethodInvocation invocation) {
+              if (existing != null) existing.onException(invocation);
+            }
+
+            @Override
+            public void afterFinally(MethodInvocation invocation) {
               callback.accept(invocation);
             }
           };

@@ -7,37 +7,62 @@ import org.junit.jupiter.api.Test;
 class ClassMatcherTest {
 
   @Test
-  void byName_exactMatch_returnsTrue() {
-    ClassMatcher matcher = ClassMatcher.byName("com.example.TargetService");
-    assertTrue(matcher.matches("com.example.TargetService"));
+  void byName_exactMatch() {
+    ClassMatcher m = ClassMatcher.byName("com.example.Service");
+    assertTrue(m.matches("com.example.Service"));
+    assertFalse(m.matches("com.example.Other"));
+    assertFalse(m.matches("com.example.service"));
   }
 
   @Test
-  void byName_noMatch_returnsFalse() {
-    ClassMatcher matcher = ClassMatcher.byName("com.example.TargetService");
-    assertFalse(matcher.matches("com.example.OtherService"));
+  void byNamePattern_regexMatch() {
+    ClassMatcher m = ClassMatcher.byNamePattern("com\\.example\\..*Service");
+    assertTrue(m.matches("com.example.UserService"));
+    assertTrue(m.matches("com.example.sub.OrderService"));
+    assertFalse(m.matches("org.example.Service"));
   }
 
   @Test
-  void byNamePattern_matchingPattern_returnsTrue() {
-    ClassMatcher matcher = ClassMatcher.byNamePattern("com\\.example\\..*Service");
-    assertTrue(matcher.matches("com.example.UserService"));
-    assertTrue(matcher.matches("com.example.OrderService"));
+  void byAnnotation_matchesAnnotationClassItself() {
+    ClassMatcher m = ClassMatcher.byAnnotation("com.example.Trace");
+    assertTrue(m.matches("com.example.Trace"));
+    assertFalse(m.matches("com.example.Service"));
   }
 
   @Test
-  void byNamePattern_nonMatchingPattern_returnsFalse() {
-    ClassMatcher matcher = ClassMatcher.byNamePattern("com\\.example\\..*Service");
-    assertFalse(matcher.matches("com.example.Util"));
+  void bySuperClass_neverMatchesFromStringOnly() {
+    ClassMatcher m = ClassMatcher.bySuperClass("com.example.BaseService");
+    assertFalse(m.matches("com.example.Service"));
   }
 
   @Test
-  void matchType_preservedCorrectly() {
-    assertEquals(ClassMatcher.MatchType.EXACT_NAME, ClassMatcher.byName("x").getMatchType());
-    assertEquals(
-        ClassMatcher.MatchType.NAME_PATTERN, ClassMatcher.byNamePattern("x").getMatchType());
-    assertEquals(ClassMatcher.MatchType.ANNOTATION, ClassMatcher.byAnnotation("x").getMatchType());
-    assertEquals(ClassMatcher.MatchType.SUPER_CLASS, ClassMatcher.bySuperClass("x").getMatchType());
-    assertEquals(ClassMatcher.MatchType.INTERFACE, ClassMatcher.byInterface("x").getMatchType());
+  void byInterface_neverMatchesFromStringOnly() {
+    ClassMatcher m = ClassMatcher.byInterface("java.io.Serializable");
+    assertFalse(m.matches("java.io.Serializable"));
+  }
+
+  @Test
+  void any_matchesAll() {
+    ClassMatcher m = ClassMatcher.any();
+    assertTrue(m.matches("anything"));
+    assertTrue(m.matches(""));
+  }
+
+  @Test
+  void equalsAndHashCode() {
+    ClassMatcher a = ClassMatcher.byName("com.example.Service");
+    ClassMatcher b = ClassMatcher.byName("com.example.Service");
+    assertEquals(a, b);
+    assertEquals(a.hashCode(), b.hashCode());
+
+    ClassMatcher c = ClassMatcher.byName("com.example.Other");
+    assertNotEquals(a, c);
+  }
+
+  @Test
+  void toString_containsTypeAndPattern() {
+    ClassMatcher m = ClassMatcher.byNamePattern("com\\.example\\..*");
+    assertTrue(m.toString().contains("NAME_PATTERN"));
+    assertTrue(m.toString().contains("com\\.example\\..*"));
   }
 }

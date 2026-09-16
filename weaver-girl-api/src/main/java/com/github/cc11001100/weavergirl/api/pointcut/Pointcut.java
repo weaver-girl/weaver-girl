@@ -45,6 +45,7 @@ public class Pointcut {
   private final ClassMatcher classMatcher;
   private final MethodMatcher methodMatcher;
   private final com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression expression;
+  private final boolean instanceBound;
 
   /**
    * Creates a new pointcut with the given class and method matchers.
@@ -53,7 +54,7 @@ public class Pointcut {
    * @param methodMatcher matcher for selecting target methods within matched classes
    */
   public Pointcut(ClassMatcher classMatcher, MethodMatcher methodMatcher) {
-    this(classMatcher, methodMatcher, null);
+    this(classMatcher, methodMatcher, null, false);
   }
 
   /**
@@ -69,9 +70,27 @@ public class Pointcut {
       ClassMatcher classMatcher,
       MethodMatcher methodMatcher,
       com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression expression) {
+    this(classMatcher, methodMatcher, expression, false);
+  }
+
+  /**
+   * Creates a new pointcut with all fields specified, including instance-binding for pertarget/perthis.
+   *
+   * @param classMatcher matcher for selecting target classes
+   * @param methodMatcher matcher for selecting target methods within matched classes
+   * @param expression the optional runtime expression, may be null
+   * @param instanceBound true if this pointcut is bound to a specific instance (pertarget/perthis)
+   * @since 2.0.0
+   */
+  public Pointcut(
+      ClassMatcher classMatcher,
+      MethodMatcher methodMatcher,
+      com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression expression,
+      boolean instanceBound) {
     this.classMatcher = classMatcher;
     this.methodMatcher = methodMatcher;
     this.expression = expression;
+    this.instanceBound = instanceBound;
   }
 
   /**
@@ -82,6 +101,16 @@ public class Pointcut {
    */
   public com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression getExpression() {
     return expression;
+  }
+
+  /**
+   * Returns whether this pointcut is instance-bound for pertarget/perthis advice.
+   *
+   * @return true if this pointcut is bound to a specific instance
+   * @since 2.0.0
+   */
+  public boolean isInstanceBound() {
+    return instanceBound;
   }
 
   /**
@@ -189,18 +218,41 @@ public class Pointcut {
     };
   }
 
+  // --- pertarget / perthis instance binding ---
+
+  /**
+   * Bind this pointcut to the target instance of the intercepted method.
+   *
+   * @return this pointcut, marked as instance-bound
+   * @since 2.0.0
+   */
+  public Pointcut pertarget() {
+    return new Pointcut(this.classMatcher, this.methodMatcher, this.expression, true);
+  }
+
+  /**
+   * Bind this pointcut to the proxy instance of the intercepted method.
+   *
+   * @return this pointcut, marked as instance-bound
+   * @since 2.0.0
+   */
+  public Pointcut perthis() {
+    return new Pointcut(this.classMatcher, this.methodMatcher, this.expression, true);
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
     if (!(o instanceof Pointcut)) return false;
     Pointcut that = (Pointcut) o;
     return Objects.equals(classMatcher, that.classMatcher)
-        && Objects.equals(methodMatcher, that.methodMatcher);
+        && Objects.equals(methodMatcher, that.methodMatcher)
+        && instanceBound == that.instanceBound;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(classMatcher, methodMatcher);
+    return Objects.hash(classMatcher, methodMatcher, instanceBound);
   }
 
   @Override

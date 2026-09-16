@@ -37,7 +37,7 @@ import net.bytebuddy.implementation.bytecode.assign.Assigner;
  */
 public class InterceptAdvice {
 
-  private static final ThreadLocal<MdcInjector.MdcSnapshot> MDC_SNAPSHOT =
+  public static final ThreadLocal<MdcInjector.MdcSnapshot> MDC_SNAPSHOT =
       new ThreadLocal<>();
 
   @Advice.OnMethodEnter(skipOn = MethodInvocation.class)
@@ -79,6 +79,11 @@ public class InterceptAdvice {
       // during inlining and rejects methods that reference getStackTrace).
       InterceptorHolder.captureCaller(invocation);
 
+      // cflow tracking: push current method onto the cflow stack before evaluating
+      // runtime conditions, so nested cflow expressions can see this method in their
+      // caller chain. Pop on exit.
+      PointcutExpression.enterCflow(className, methodName);
+
       List<InterceptorDefinition> defs = InterceptorHolder.getInterceptorsForClassSnapshot(className);
       List<InterceptorDefinition> aroundDefs = new ArrayList<>();
       for (InterceptorDefinition def : defs) {
@@ -98,7 +103,28 @@ public class InterceptAdvice {
           }
           if (def.getInterceptor().hasAround()) {
             aroundDefs.add(def);
+          } else {
+            // Invoke @Before / non-around callbacks before any @Around advice.
+            long hookStart = System.nanoTime();
+            try {
+              def.getInterceptor().before(invocation);
+              long hookNanos = System.nanoTime() - hookStart;
+              InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
+              AgentStatus.getInstance()
+                  .recordInterceptorInvocation(def.getName(), true, hookNanos);
+            } catch (Throwable e) {
+              long hookNanos = System.nanoTime() - hookStart;
+              InterceptorHolder.logInterceptorError(def.getName(), "before", e);
+              InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
+              AgentStatus.getInstance()
+                  .recordInterceptorInvocation(def.getName(), false, hookNanos);
+            }
           }
+        }
+
+        if (def.getPointcut().isInstanceBound() && !invocation.hasPerInstance()) {
+          Object perInstance = PerInstanceStore.getOrCreate(target);
+          invocation.setPerInstance(perInstance);
         }
       }
 
@@ -114,6 +140,7 @@ public class InterceptAdvice {
           def.getInterceptor().around(invocation);
           if (!invocation.isProceedCalled()) {
             proceedAllowed = false;
+            invocation.setSkipMethod(true);
           }
           long hookNanos = System.nanoTime() - hookStart;
           InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
@@ -124,6 +151,7 @@ public class InterceptAdvice {
           InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
           AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false, hookNanos);
           proceedAllowed = false;
+          invocation.setSkipMethod(true);
         }
       }
 
@@ -225,6 +253,14 @@ public class InterceptAdvice {
             } else {
               interceptor.after(context);
             }
+            try {
+              interceptor.afterFinally(context);
+            } catch (Throwable e) {
+              long hookNanos = System.nanoTime() - hookStart;
+              InterceptorHolder.logInterceptorError(def.getName(), "afterFinally", e);
+              InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
+              AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false, hookNanos);
+            }
             long hookNanos = System.nanoTime() - hookStart;
             InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
             AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true, hookNanos);
@@ -277,6 +313,9 @@ public class InterceptAdvice {
         }
         MDC_SNAPSHOT.remove();
       }
+
+      // cflow tracking: pop current method from the cflow stack on exit
+      PointcutExpression.exitCflow(className, methodName);
 
       // Return the MethodInvocation to the pool for reuse.
       MethodInvocationPool.release(context);

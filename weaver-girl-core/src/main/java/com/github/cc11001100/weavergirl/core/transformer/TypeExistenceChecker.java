@@ -47,12 +47,35 @@ public class TypeExistenceChecker {
       loadedClassNames.add(className);
       return true;
     } catch (ClassNotFoundException e) {
-      return false;
+      // Fallback for test environments where the context classloader
+      // may not see the target class directly.
     } catch (NoClassDefFoundError e) {
       // The class exists but one of its dependencies doesn't
       log.debug("Class {} found but has missing dependency: {}", className, e.getMessage());
-      return false;
+      return true;
     }
+
+    // Second attempt: use this class's classloader as fallback.
+    try {
+      Class.forName(className, false, TypeExistenceChecker.class.getClassLoader());
+      loadedClassNames.add(className);
+      return true;
+    } catch (ClassNotFoundException e) {
+      // Fall through to resource probe
+    } catch (NoClassDefFoundError e) {
+      loadedClassNames.add(className);
+      return true;
+    }
+
+    // Last resort: probe classpath by resource path so classes only
+    // loadable via a different classloader are still treated as existing.
+    String resource = className.replace('.', '/') + ".class";
+    if (TypeExistenceChecker.class.getClassLoader().getResource(resource) != null
+        || ClassLoader.getSystemClassLoader().getResource(resource) != null) {
+      loadedClassNames.add(className);
+      return true;
+    }
+    return false;
   }
 
   /**

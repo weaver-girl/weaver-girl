@@ -6,10 +6,12 @@ import com.github.cc11001100.weavergirl.annotation.*;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
+import com.github.cc11001100.weavergirl.core.InterceptorHolder;
 import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -28,6 +30,12 @@ class AnnotationRichDimensionsTest {
   void setUp() {
     loader = new AnnotationPluginLoader();
     registry = new DefaultInterceptorRegistry();
+    InterceptorHolder.setRegistry(registry);
+  }
+
+  @AfterEach
+  void tearDown() {
+    InterceptorHolder.setRegistry(null);
   }
 
   // ========== MethodInvocation Attachments ==========

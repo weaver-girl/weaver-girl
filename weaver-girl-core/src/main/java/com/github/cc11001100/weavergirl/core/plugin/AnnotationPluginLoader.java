@@ -1,15 +1,19 @@
 package com.github.cc11001100.weavergirl.core.plugin;
 
 import com.github.cc11001100.weavergirl.annotation.*;
+import com.github.cc11001100.weavergirl.api.interceptor.CatchInterceptor;
+import com.github.cc11001100.weavergirl.api.interceptor.CatchInvocation;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
+import com.github.cc11001100.weavergirl.api.pointcut.CatchPointcut;
 import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
 import com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression;
 import com.github.cc11001100.weavergirl.api.pointcut.PointcutParser;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,7 +30,7 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li><b>Lifecycle:</b> @Before, @After, @Around, @OnException, @AfterReturning,
- *       @AfterThrowing, @OnConstructor, @OnFieldGet, @OnFieldSet, @OnStaticInit
+ *       @AfterThrowing, @OnConstructor, @OnFieldGet, @OnFieldSet, @OnStaticInit, @OnCatch
  *   <li><b>Matching:</b> @WeaveClass, @OnMethodPattern, @WhenAnnotated, @Pointcut
  *   <li><b>Ordering:</b> @Order, @DeclarePrecedence
  *   <li><b>Condition:</b> @EnableIf, @SampleRate
@@ -55,6 +59,8 @@ public class AnnotationPluginLoader {
   private static final Map<String, CacheEntry> cacheStore = new ConcurrentHashMap<>();
   // Idempotency store: key = idempotencyKey, value = return value
   private static final Map<String, Object> idempotencyStore = new ConcurrentHashMap<>();
+  // Attachment key used to resolve @Elapsed advice-method parameters
+  private static final String ELAPSED_START_ATTACHMENT = "__weavergirl.elapsed.startNanos";
   // Synchronized locks
   private static final Map<String, Object> lockObjects = new ConcurrentHashMap<>();
 
@@ -148,6 +154,7 @@ public class AnnotationPluginLoader {
     List<Method> fieldGetMethods = new ArrayList<>();
     List<Method> fieldSetMethods = new ArrayList<>();
     List<Method> staticInitMethods = new ArrayList<>();
+    List<Method> catchMethods = new ArrayList<>();
 
     // Collect named @Pointcut definitions: methodName -> PointcutExpression
     Map<String, PointcutExpression> namedPointcuts = new HashMap<>();
@@ -163,37 +170,37 @@ public class AnnotationPluginLoader {
       if (m.isAnnotationPresent(Before.class)) {
         Before ann = m.getAnnotation(Before.class);
         beforeMethods
-            .computeIfAbsent(resolvePointcutKey(ann.value(), namedPointcuts), k -> new ArrayList<>())
+            .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
             .add(m);
       }
       if (m.isAnnotationPresent(After.class)) {
         After ann = m.getAnnotation(After.class);
         afterMethods
-            .computeIfAbsent(resolvePointcutKey(ann.value(), namedPointcuts), k -> new ArrayList<>())
+            .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
             .add(m);
       }
       if (m.isAnnotationPresent(Around.class)) {
         Around ann = m.getAnnotation(Around.class);
         aroundMethods
-            .computeIfAbsent(resolvePointcutKey(ann.value(), namedPointcuts), k -> new ArrayList<>())
+            .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
             .add(m);
       }
       if (m.isAnnotationPresent(OnException.class)) {
         OnException ann = m.getAnnotation(OnException.class);
         onExceptionMethods
-            .computeIfAbsent(resolvePointcutKey(ann.value(), namedPointcuts), k -> new ArrayList<>())
+            .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
             .add(m);
       }
       if (m.isAnnotationPresent(AfterReturning.class)) {
         AfterReturning ann = m.getAnnotation(AfterReturning.class);
         afterReturningMethods
-            .computeIfAbsent(resolvePointcutKey(ann.value(), namedPointcuts), k -> new ArrayList<>())
+            .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
             .add(m);
       }
       if (m.isAnnotationPresent(AfterThrowing.class)) {
         AfterThrowing ann = m.getAnnotation(AfterThrowing.class);
         afterThrowingMethods
-            .computeIfAbsent(resolvePointcutKey(ann.value(), namedPointcuts), k -> new ArrayList<>())
+            .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
             .add(m);
       }
       if (m.isAnnotationPresent(OnConstructor.class)) {
@@ -207,6 +214,9 @@ public class AnnotationPluginLoader {
       }
       if (m.isAnnotationPresent(OnStaticInit.class)) {
         staticInitMethods.add(m);
+      }
+      if (m.isAnnotationPresent(OnCatch.class)) {
+        catchMethods.add(m);
       }
 
       // Matching annotations
@@ -387,6 +397,11 @@ public class AnnotationPluginLoader {
       Pointcut pointcut = new Pointcut(classMatcher, constructorMatcher);
       String defName = "annotation-" + clazz.getSimpleName() + "-<init>";
       registry.register(new InterceptorDefinition(defName, pointcut, interceptor, priority));
+    }
+
+    // --- Register catch-block interceptors ---
+    for (Method m : catchMethods) {
+      registerCatchInterceptor(interceptorInstance, m, classMatcher, clazz, priority, registry);
     }
 
     // --- Register pattern/annotation interceptors ---
@@ -1412,6 +1427,7 @@ public class AnnotationPluginLoader {
       @Override
       public void before(MethodInvocation inv) {
         if (!shouldSample(sampleRate)) return;
+        inv.setAttachment(ELAPSED_START_ATTACHMENT, System.nanoTime());
         if (isTimed) inv.setAttachment("timed.startNanos", System.nanoTime());
         invokeMethods(instance, arounds, inv);
         invokeMethods(instance, befores, inv);
@@ -1524,6 +1540,81 @@ public class AnnotationPluginLoader {
     };
   }
 
+  /**
+   * Registers a single {@code @OnCatch}-annotated method as a {@link CatchInterceptor}. Each
+   * method becomes its own definition (own {@link CatchPointcut}) so that {@link
+   * com.github.cc11001100.weavergirl.core.CatchAdvice} only invokes it once per matched catch
+   * block, not once per sibling {@code @OnCatch} method in the same class.
+   */
+  private void registerCatchInterceptor(
+      Object instance,
+      Method method,
+      ClassMatcher classMatcher,
+      Class<?> clazz,
+      int priority,
+      InterceptorRegistry registry) {
+    OnCatch ann = method.getAnnotation(OnCatch.class);
+    Pointcut anyMethod = new Pointcut(classMatcher, MethodMatcher.any());
+    CatchPointcut[] catchPointcuts = {new CatchPointcut(anyMethod, ann.value())};
+
+    // InterceptorDefinition requires an Interceptor; CatchInterceptor is a separate,
+    // narrower interface, so a small adapter class implements both.
+    Interceptor catchInterceptor =
+        new ReflectiveCatchInterceptor(instance, method, catchPointcuts, priority);
+
+    String defName = "annotation-" + clazz.getSimpleName() + "-onCatch-" + method.getName();
+    registry.register(
+        new InterceptorDefinition(
+            defName,
+            anyMethod,
+            catchInterceptor,
+            priority,
+            InterceptorDefinition.AdviceMode.CATCH,
+            false,
+            null,
+            ann.value()));
+  }
+
+  /**
+   * Adapts a single {@code @OnCatch}-annotated method into both {@link Interceptor} (required by
+   * {@link InterceptorDefinition}) and {@link CatchInterceptor} (consulted by {@link
+   * com.github.cc11001100.weavergirl.core.CatchAdvice}).
+   */
+  private static final class ReflectiveCatchInterceptor implements Interceptor, CatchInterceptor {
+    private final Object instance;
+    private final Method method;
+    private final CatchPointcut[] catchPointcuts;
+    private final int priority;
+
+    ReflectiveCatchInterceptor(
+        Object instance, Method method, CatchPointcut[] catchPointcuts, int priority) {
+      this.instance = instance;
+      this.method = method;
+      this.catchPointcuts = catchPointcuts;
+      this.priority = priority;
+    }
+
+    @Override
+    public void onCatch(CatchInvocation invocation) {
+      try {
+        method.setAccessible(true);
+        method.invoke(instance, invocation);
+      } catch (Exception e) {
+        log.warn("Error invoking @OnCatch method {}: {}", method.getName(), e.getMessage());
+      }
+    }
+
+    @Override
+    public CatchPointcut[] catchPointcuts() {
+      return catchPointcuts;
+    }
+
+    @Override
+    public int getPriority() {
+      return priority;
+    }
+  }
+
   private Interceptor wrapWithRetry(
       Interceptor delegate, List<Method> retryMethods, Object instance) {
     RetryOnException retryAnn = retryMethods.get(0).getAnnotation(RetryOnException.class);
@@ -1585,7 +1676,7 @@ public class AnnotationPluginLoader {
     for (Method m : methods) {
       try {
         m.setAccessible(true);
-        m.invoke(inst, inv);
+        m.invoke(inst, resolveArgs(m, inv));
       } catch (Exception e) {
         log.warn("Error invoking interceptor method {}: {}", m.getName(), e.getMessage());
       }
@@ -1602,7 +1693,7 @@ public class AnnotationPluginLoader {
       }
       try {
         m.setAccessible(true);
-        m.invoke(inst, inv);
+        m.invoke(inst, resolveArgs(m, inv));
       } catch (Exception e) {
         log.warn("Error invoking onException method {}: {}", m.getName(), e.getMessage());
       }
@@ -1619,11 +1710,75 @@ public class AnnotationPluginLoader {
       }
       try {
         m.setAccessible(true);
-        m.invoke(inst, inv);
+        m.invoke(inst, resolveArgs(m, inv));
       } catch (Exception e) {
         log.warn("Error invoking afterThrowing method {}: {}", m.getName(), e.getMessage());
       }
     }
+  }
+
+  /**
+   * Builds the argument array for a reflectively-invoked advice method, honoring the {@code
+   * @Arg}, {@code @Elapsed}, {@code @NotNull}, {@code @Origin}, {@code @Return}, and {@code @This}
+   * parameter-injection annotations. A parameter with none of these annotations falls back to the
+   * legacy behavior of receiving the {@link MethodInvocation} itself.
+   */
+  private Object[] resolveArgs(Method m, MethodInvocation inv) {
+    Class<?>[] paramTypes = m.getParameterTypes();
+    if (paramTypes.length == 0) {
+      return new Object[0];
+    }
+    Annotation[][] paramAnnotations = m.getParameterAnnotations();
+    Object[] args = new Object[paramTypes.length];
+    for (int i = 0; i < paramTypes.length; i++) {
+      args[i] = resolveParamValue(paramAnnotations[i], inv);
+    }
+    return args;
+  }
+
+  private Object resolveParamValue(Annotation[] annotations, MethodInvocation inv) {
+    Arg argAnn = null;
+    NotNull notNullAnn = null;
+    boolean elapsed = false;
+    boolean origin = false;
+    boolean returnValue = false;
+    boolean thisTarget = false;
+    for (Annotation a : annotations) {
+      if (a instanceof Arg) {
+        argAnn = (Arg) a;
+      } else if (a instanceof Elapsed) {
+        elapsed = true;
+      } else if (a instanceof NotNull) {
+        notNullAnn = (NotNull) a;
+      } else if (a instanceof Origin) {
+        origin = true;
+      } else if (a instanceof Return) {
+        returnValue = true;
+      } else if (a instanceof This) {
+        thisTarget = true;
+      }
+    }
+
+    Object value;
+    if (argAnn != null) {
+      value = inv.getArgument(argAnn.value());
+    } else if (elapsed) {
+      Object startNanos = inv.getAttachment(ELAPSED_START_ATTACHMENT);
+      value = startNanos instanceof Long ? System.nanoTime() - (Long) startNanos : 0L;
+    } else if (origin) {
+      value = inv.getMethod();
+    } else if (returnValue) {
+      value = inv.getReturnValue();
+    } else if (thisTarget) {
+      value = inv.getTarget();
+    } else {
+      value = inv;
+    }
+
+    if (notNullAnn != null && value == null) {
+      throw new IllegalArgumentException(notNullAnn.message());
+    }
+    return value;
   }
 
   private String resolvePointcutKey(String rawKey, Map<String, PointcutExpression> namedPointcuts) {
@@ -1634,13 +1789,66 @@ public class AnnotationPluginLoader {
     int parenIdx = rawKey.indexOf('(');
     int closeParenIdx = rawKey.indexOf(')');
     if (parenIdx > 0 && closeParenIdx == rawKey.length() - 1) {
-      String name = rawKey.substring(0, parenIdx);
-      PointcutExpression expr = namedPointcuts.get(name);
-      if (expr != null) {
-        return expr.toString();
+      String inside = rawKey.substring(parenIdx + 1, closeParenIdx);
+      // Only treat as named pointcut reference if parentheses are empty/whitespace-only.
+      // This prevents method signatures like "save(int)" from being misparsed as pointcut refs.
+      if (inside.trim().isEmpty()) {
+        String name = rawKey.substring(0, parenIdx);
+        PointcutExpression expr = namedPointcuts.get(name);
+        if (expr != null) {
+          return expr.toString();
+        }
       }
     }
     return rawKey;
+  }
+
+  private String resolvePointcutKey(Before ann, Map<String, PointcutExpression> namedPointcuts) {
+    String base = resolvePointcutKey(ann.value(), namedPointcuts);
+    if (ann.parameterTypes().length == 0) {
+      return base;
+    }
+    return base + "(" + String.join(",", ann.parameterTypes()) + ")";
+  }
+
+  private String resolvePointcutKey(After ann, Map<String, PointcutExpression> namedPointcuts) {
+    String base = resolvePointcutKey(ann.value(), namedPointcuts);
+    if (ann.parameterTypes().length == 0) {
+      return base;
+    }
+    return base + "(" + String.join(",", ann.parameterTypes()) + ")";
+  }
+
+  private String resolvePointcutKey(AfterReturning ann, Map<String, PointcutExpression> namedPointcuts) {
+    String base = resolvePointcutKey(ann.value(), namedPointcuts);
+    if (ann.parameterTypes().length == 0) {
+      return base;
+    }
+    return base + "(" + String.join(",", ann.parameterTypes()) + ")";
+  }
+
+  private String resolvePointcutKey(AfterThrowing ann, Map<String, PointcutExpression> namedPointcuts) {
+    String base = resolvePointcutKey(ann.value(), namedPointcuts);
+    if (ann.parameterTypes().length == 0) {
+      return base;
+    }
+    return base + "(" + String.join(",", ann.parameterTypes()) + ")";
+  }
+
+  private String resolvePointcutKey(OnException ann, Map<String, PointcutExpression> namedPointcuts) {
+    String base = resolvePointcutKey(ann.value(), namedPointcuts);
+    if (ann.parameterTypes().length == 0) {
+      return base;
+    }
+    return base + "(" + String.join(",", ann.parameterTypes()) + ")";
+  }
+
+  private String resolvePointcutKey(Around ann, Map<String, PointcutExpression> namedPointcuts) {
+    String base = resolvePointcutKey(ann.value(), namedPointcuts);
+    if (ann.parameterTypes().length == 0) {
+      return base;
+    }
+    return base + "(" + String.join(",", ann.parameterTypes()) + ")";
   }
 
   private void recordTiming(MethodInvocation invocation, Timed timedAnnotation) {
