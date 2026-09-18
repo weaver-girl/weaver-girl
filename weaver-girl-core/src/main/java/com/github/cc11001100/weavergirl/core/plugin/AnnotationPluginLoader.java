@@ -30,7 +30,8 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li><b>Lifecycle:</b> @Before, @After, @Around, @OnException, @AfterReturning,
- *       @AfterThrowing, @OnConstructor, @OnFieldGet, @OnFieldSet, @OnStaticInit, @OnCatch
+ *       @AfterThrowing, @AfterFinally, @OnConstructor, @OnFieldGet, @OnFieldSet, @OnStaticInit,
+ *       @OnCatch
  *   <li><b>Matching:</b> @WeaveClass, @OnMethodPattern, @WhenAnnotated, @Pointcut
  *   <li><b>Ordering:</b> @Order, @DeclarePrecedence
  *   <li><b>Condition:</b> @EnableIf, @SampleRate
@@ -126,6 +127,7 @@ public class AnnotationPluginLoader {
     Map<String, List<Method>> onExceptionMethods = new HashMap<>();
     Map<String, List<Method>> afterReturningMethods = new HashMap<>();
     Map<String, List<Method>> afterThrowingMethods = new HashMap<>();
+    Map<String, List<Method>> afterFinallyMethods = new HashMap<>();
     Map<String, List<Method>> retryMethods = new HashMap<>();
     Map<String, List<Method>> traceMethods = new HashMap<>();
     Map<String, List<Method>> tagMethods = new HashMap<>();
@@ -200,6 +202,12 @@ public class AnnotationPluginLoader {
       if (m.isAnnotationPresent(AfterThrowing.class)) {
         AfterThrowing ann = m.getAnnotation(AfterThrowing.class);
         afterThrowingMethods
+            .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
+            .add(m);
+      }
+      if (m.isAnnotationPresent(AfterFinally.class)) {
+        AfterFinally ann = m.getAnnotation(AfterFinally.class);
+        afterFinallyMethods
             .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
             .add(m);
       }
@@ -344,6 +352,7 @@ public class AnnotationPluginLoader {
               flattenAll(onExceptionMethods),
               flattenAll(afterReturningMethods),
               flattenAll(afterThrowingMethods),
+              flattenAll(afterFinallyMethods),
               sampleRate,
               isTimed,
               timedAnnotation);
@@ -430,6 +439,7 @@ public class AnnotationPluginLoader {
     allTargetMethods.addAll(onExceptionMethods.keySet());
     allTargetMethods.addAll(afterReturningMethods.keySet());
     allTargetMethods.addAll(afterThrowingMethods.keySet());
+    allTargetMethods.addAll(afterFinallyMethods.keySet());
     allTargetMethods.addAll(retryMethods.keySet());
     allTargetMethods.addAll(traceMethods.keySet());
     allTargetMethods.addAll(tagMethods.keySet());
@@ -467,6 +477,8 @@ public class AnnotationPluginLoader {
           afterReturningMethods.getOrDefault(targetMethod, Collections.emptyList());
       List<Method> afterThrowings =
           afterThrowingMethods.getOrDefault(targetMethod, Collections.emptyList());
+      List<Method> afterFinallys =
+          afterFinallyMethods.getOrDefault(targetMethod, Collections.emptyList());
       List<Method> retries = retryMethods.getOrDefault(targetMethod, Collections.emptyList());
       List<Method> traces = traceMethods.getOrDefault(targetMethod, Collections.emptyList());
       List<Method> tags = tagMethods.getOrDefault(targetMethod, Collections.emptyList());
@@ -510,6 +522,7 @@ public class AnnotationPluginLoader {
               onExceptions,
               afterReturnings,
               afterThrowings,
+              afterFinallys,
               sampleRate,
               isTimed,
               timedAnnotation);
@@ -1420,6 +1433,7 @@ public class AnnotationPluginLoader {
       List<Method> onExceptions,
       List<Method> afterReturnings,
       List<Method> afterThrowings,
+      List<Method> afterFinallys,
       double sampleRate,
       boolean isTimed,
       Timed timedAnnotation) {
@@ -1439,7 +1453,6 @@ public class AnnotationPluginLoader {
         invokeMethods(instance, arounds, inv);
         invokeMethods(instance, afters, inv);
         invokeMethods(instance, afterReturnings, inv);
-        invokeOnExceptionThrowingFiltered(instance, afterThrowings, inv);
         if (isTimed) recordTiming(inv, timedAnnotation);
       }
 
@@ -1448,7 +1461,14 @@ public class AnnotationPluginLoader {
         if (!shouldSample(sampleRate)) return;
         invokeMethods(instance, arounds, inv);
         invokeOnExceptionFiltered(instance, onExceptions, inv);
+        invokeOnExceptionThrowingFiltered(instance, afterThrowings, inv);
         if (isTimed) recordTiming(inv, timedAnnotation);
+      }
+
+      @Override
+      public void afterFinally(MethodInvocation inv) {
+        if (!shouldSample(sampleRate)) return;
+        invokeMethods(instance, afterFinallys, inv);
       }
 
       private boolean shouldSample(double rate) {
@@ -1844,6 +1864,14 @@ public class AnnotationPluginLoader {
   }
 
   private String resolvePointcutKey(Around ann, Map<String, PointcutExpression> namedPointcuts) {
+    String base = resolvePointcutKey(ann.value(), namedPointcuts);
+    if (ann.parameterTypes().length == 0) {
+      return base;
+    }
+    return base + "(" + String.join(",", ann.parameterTypes()) + ")";
+  }
+
+  private String resolvePointcutKey(AfterFinally ann, Map<String, PointcutExpression> namedPointcuts) {
     String base = resolvePointcutKey(ann.value(), namedPointcuts);
     if (ann.parameterTypes().length == 0) {
       return base;
