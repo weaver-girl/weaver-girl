@@ -450,7 +450,9 @@ public class WeaverTransformer {
             for (int i = 0; i < paramTypes.length; i++) {
               String typeName = paramTypes[i].trim();
               if (!typeName.isEmpty()) {
-                userMatcher = userMatcher.and(takesArgument(i, named(toInternalName(typeName))));
+                // named() matches the dot-separated binary name (same as the SIGNATURE
+                // branch below); toInternalName's slash form never matches here.
+                userMatcher = userMatcher.and(takesArgument(i, named(typeName)));
               }
             }
           }
@@ -482,36 +484,4 @@ public class WeaverTransformer {
         .and(not(isAbstract()));
   }
 
-  /**
-   * Convert a Java language type name to the JVM internal name format used by ByteBuddy's
-   * {@code named(...)} matcher.
-   *
-   * <p>Primitives are mapped to their descriptor letters: {@code int -> I}, {@code boolean -> Z},
-   * etc. Reference types keep their dot-separated form but with package separators converted to
-   * slashes.
-   */
-  private static String toInternalName(String javaTypeName) {
-    switch (javaTypeName) {
-      case "int":
-        return "I";
-      case "long":
-        return "J";
-      case "boolean":
-        return "Z";
-      case "byte":
-        return "B";
-      case "char":
-        return "C";
-      case "short":
-        return "S";
-      case "float":
-        return "F";
-      case "double":
-        return "D";
-      case "void":
-        return "V";
-      default:
-        return javaTypeName.replace('.', '/');
-    }
-  }
 }

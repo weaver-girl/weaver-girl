@@ -87,6 +87,9 @@ public class InterceptAdvice {
       List<InterceptorDefinition> defs = InterceptorHolder.getInterceptorsForClassSnapshot(className);
       List<InterceptorDefinition> aroundDefs = new ArrayList<>();
       for (InterceptorDefinition def : defs) {
+        if (def.getAdviceMode() == InterceptorDefinition.AdviceMode.ARGUMENT_REWRITE) {
+          continue; // before-only mode, dispatched by AsyncArgumentAdvice on entry
+        }
         if (def.getPointcut().getMethodMatcher().matches(methodName)) {
           if (!InterceptorHolder.shouldInvoke(def.getName())) {
             continue; // circuit breaker is open
@@ -230,6 +233,9 @@ public class InterceptAdvice {
 
       List<InterceptorDefinition> defs = InterceptorHolder.getInterceptorsForClassSnapshot(className);
       for (InterceptorDefinition def : defs) {
+        if (def.getAdviceMode() == InterceptorDefinition.AdviceMode.ARGUMENT_REWRITE) {
+          continue; // before-only mode, dispatched by AsyncArgumentAdvice on entry
+        }
         if (def.getPointcut().getMethodMatcher().matches(methodName)) {
           if (!InterceptorHolder.shouldInvoke(def.getName())) {
             continue; // circuit breaker is open

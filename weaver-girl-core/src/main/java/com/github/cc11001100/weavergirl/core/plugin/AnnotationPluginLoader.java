@@ -30,8 +30,8 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li><b>Lifecycle:</b> @Before, @After, @Around, @OnException, @AfterReturning,
- *       @AfterThrowing, @AfterFinally, @OnConstructor, @OnFieldGet, @OnFieldSet, @OnStaticInit,
- *       @OnCatch
+ *       @AfterThrowing, @AfterFinally, @RewriteArg, @OnConstructor, @OnFieldGet, @OnFieldSet,
+ *       @OnStaticInit, @OnCatch
  *   <li><b>Matching:</b> @WeaveClass, @OnMethodPattern, @WhenAnnotated, @Pointcut
  *   <li><b>Ordering:</b> @Order, @DeclarePrecedence
  *   <li><b>Condition:</b> @EnableIf, @SampleRate
@@ -128,6 +128,7 @@ public class AnnotationPluginLoader {
     Map<String, List<Method>> afterReturningMethods = new HashMap<>();
     Map<String, List<Method>> afterThrowingMethods = new HashMap<>();
     Map<String, List<Method>> afterFinallyMethods = new HashMap<>();
+    Map<String, List<Method>> rewriteArgMethods = new HashMap<>();
     Map<String, List<Method>> retryMethods = new HashMap<>();
     Map<String, List<Method>> traceMethods = new HashMap<>();
     Map<String, List<Method>> tagMethods = new HashMap<>();
@@ -208,6 +209,12 @@ public class AnnotationPluginLoader {
       if (m.isAnnotationPresent(AfterFinally.class)) {
         AfterFinally ann = m.getAnnotation(AfterFinally.class);
         afterFinallyMethods
+            .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
+            .add(m);
+      }
+      if (m.isAnnotationPresent(RewriteArg.class)) {
+        RewriteArg ann = m.getAnnotation(RewriteArg.class);
+        rewriteArgMethods
             .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
             .add(m);
       }
@@ -341,6 +348,15 @@ public class AnnotationPluginLoader {
     // --- PointcutExpression mode ---
     boolean usePointcutExpression = !weaveClass.pointcut().isEmpty();
     if (usePointcutExpression) {
+      if (!rewriteArgMethods.isEmpty()
+          || !constructorMethods.isEmpty()
+          || !fieldGetMethods.isEmpty()
+          || !fieldSetMethods.isEmpty()) {
+        log.warn(
+            "Interceptor {} uses @WeaveClass(pointcut=...): @RewriteArg/@OnConstructor/@OnFieldGet/@OnFieldSet"
+                + " are only supported with explicit target matching and will be ignored",
+            clazz.getSimpleName());
+      }
       PointcutExpression expression = PointcutParser.getInstance().parse(weaveClass.pointcut());
       Pointcut pointcut = expression.toPointcut();
       Interceptor interceptor =
@@ -399,18 +415,59 @@ public class AnnotationPluginLoader {
     }
 
     // --- Register constructor interceptor ---
+    // @OnConstructor(parameterTypes=...) selects a specific overload; methods with an empty
+    // parameterTypes match all constructors. Each distinct signature gets its own definition so
+    // the CONSTRUCTOR matcher filters overloads at transform time.
     if (!constructorMethods.isEmpty()) {
-      MethodMatcher constructorMatcher = MethodMatcher.byName("<init>");
-      Interceptor interceptor =
-          createConstructorInterceptor(interceptorInstance, constructorMethods, sampleRate);
-      Pointcut pointcut = new Pointcut(classMatcher, constructorMatcher);
-      String defName = "annotation-" + clazz.getSimpleName() + "-<init>";
-      registry.register(new InterceptorDefinition(defName, pointcut, interceptor, priority));
+      Map<String, List<Method>> ctorBySignature = new HashMap<>();
+      for (Method m : constructorMethods) {
+        OnConstructor ann = m.getAnnotation(OnConstructor.class);
+        String[] parameterTypes = ann != null ? ann.parameterTypes() : new String[0];
+        String key =
+            parameterTypes.length == 0 ? "<init>" : "<init>(" + String.join(",", parameterTypes) + ")";
+        ctorBySignature.computeIfAbsent(key, k -> new ArrayList<>()).add(m);
+      }
+      for (Map.Entry<String, List<Method>> entry : ctorBySignature.entrySet()) {
+        // Must use CONSTRUCTOR matchers (not byName/bySignature): WeaverTransformer only
+        // routes CONSTRUCTOR-typed definitions to ConstructorAdvice. A byName("<init>")
+        // definition would be inlined with InterceptAdvice, whose @Advice.Origin Method
+        // cannot bind to a constructor, so the transformation would fail.
+        String key = entry.getKey();
+        int parenIdx = key.indexOf('(');
+        MethodMatcher constructorMatcher =
+            parenIdx < 0
+                ? MethodMatcher.byConstructor()
+                : MethodMatcher.byConstructor(key.substring(parenIdx + 1, key.length() - 1));
+        Interceptor interceptor =
+            createConstructorInterceptor(interceptorInstance, entry.getValue(), sampleRate);
+        Pointcut pointcut = new Pointcut(classMatcher, constructorMatcher);
+        String defName = "annotation-" + clazz.getSimpleName() + "-" + entry.getKey();
+        registry.register(new InterceptorDefinition(defName, pointcut, interceptor, priority));
+      }
     }
 
     // --- Register catch-block interceptors ---
     for (Method m : catchMethods) {
       registerCatchInterceptor(interceptorInstance, m, classMatcher, clazz, priority, registry);
+    }
+
+    // --- Register argument-rewrite interceptors ---
+    // Each @RewriteArg method group becomes an ARGUMENT_REWRITE definition so the transformer
+    // weaves AsyncArgumentAdvice (writable @Advice.Argument slots): setArgument(i, ...) reaches
+    // the method body. Uses the same interceptor shape as the async-context-propagation plugin.
+    for (Map.Entry<String, List<Method>> entry : rewriteArgMethods.entrySet()) {
+      MethodMatcher methodMatcher = buildMethodMatcher(entry.getKey());
+      Interceptor interceptor =
+          createArgumentRewriteInterceptor(interceptorInstance, entry.getValue(), sampleRate);
+      Pointcut pointcut = new Pointcut(classMatcher, methodMatcher);
+      String defName = "annotation-" + clazz.getSimpleName() + "-rewrite-" + entry.getKey();
+      registry.register(
+          new InterceptorDefinition(
+              defName,
+              pointcut,
+              interceptor,
+              priority,
+              InterceptorDefinition.AdviceMode.ARGUMENT_REWRITE));
     }
 
     // --- Register pattern/annotation interceptors ---
@@ -1507,6 +1564,21 @@ public class AnnotationPluginLoader {
     };
   }
 
+  private Interceptor createArgumentRewriteInterceptor(
+      Object instance, List<Method> methods, double sampleRate) {
+    return new Interceptor() {
+      @Override
+      public void before(MethodInvocation inv) {
+        if (!shouldSample(sampleRate)) return;
+        invokeMethods(instance, methods, inv);
+      }
+
+      private boolean shouldSample(double rate) {
+        return rate >= 1.0 || ThreadLocalRandom.current().nextDouble() < rate;
+      }
+    };
+  }
+
   private Interceptor createFieldGetInterceptor(Object instance, Method method, double sampleRate) {
     return new Interceptor() {
       @Override
@@ -1872,6 +1944,14 @@ public class AnnotationPluginLoader {
   }
 
   private String resolvePointcutKey(AfterFinally ann, Map<String, PointcutExpression> namedPointcuts) {
+    String base = resolvePointcutKey(ann.value(), namedPointcuts);
+    if (ann.parameterTypes().length == 0) {
+      return base;
+    }
+    return base + "(" + String.join(",", ann.parameterTypes()) + ")";
+  }
+
+  private String resolvePointcutKey(RewriteArg ann, Map<String, PointcutExpression> namedPointcuts) {
     String base = resolvePointcutKey(ann.value(), namedPointcuts);
     if (ann.parameterTypes().length == 0) {
       return base;
