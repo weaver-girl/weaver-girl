@@ -16,7 +16,6 @@ import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
-import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -72,7 +71,7 @@ class AdviceParameterInjectionTest {
   @BeforeEach
   void setUp() {
     loader = new AnnotationPluginLoader();
-    registry = new DefaultInterceptorRegistry();
+    registry = new TestInterceptorRegistry();
     ParamInjectionInterceptor.captured.clear();
   }
 

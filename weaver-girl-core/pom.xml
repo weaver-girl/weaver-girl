@@ -54,6 +54,16 @@
             <artifactId>weaver-girl-api</artifactId>
         </dependency>
 
+        <!-- Annotation runtime (loader/scanner live here now): needed by core tests
+             (loader unit tests + weaving integration tests). Test scope only — core
+             main engine never calls the loader, so no main-scope edge (avoids any
+             core<->runtime cycle; runtime main depends only on api/annotation). -->
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-annotation-runtime</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- Testing -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>

@@ -8,7 +8,7 @@ import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
-import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
+import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import java.util.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,12 +16,12 @@ import org.junit.jupiter.api.Test;
 class AnnotationPluginLoaderTest {
 
   private AnnotationPluginLoader loader;
-  private DefaultInterceptorRegistry registry;
+  private InterceptorRegistry registry;
 
   @BeforeEach
   void setUp() {
     loader = new AnnotationPluginLoader();
-    registry = new DefaultInterceptorRegistry();
+    registry = new TestInterceptorRegistry();
   }
 
   // ---------------------------------------------------------------

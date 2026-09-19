@@ -10,7 +10,6 @@ import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
-import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -82,7 +81,7 @@ class RewriteArgAnnotationTest {
   @BeforeEach
   void setUp() {
     loader = new AnnotationPluginLoader();
-    registry = new DefaultInterceptorRegistry();
+    registry = new TestInterceptorRegistry();
     RewriteInterceptor.calls.clear();
     GroupedConstructorInterceptor.anyCalled = false;
     GroupedConstructorInterceptor.stringCalled = false;

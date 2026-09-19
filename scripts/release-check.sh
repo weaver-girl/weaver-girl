@@ -13,7 +13,7 @@ echo "== clean quality-gated build =="
 ./mvnw -B -Pquality-gate clean verify
 
 echo "== required publication artifacts =="
-for module in weaver-girl-annotation weaver-girl-api weaver-girl-core weaver-girl-plugins weaver-girl-agent; do
+for module in weaver-girl-annotation weaver-girl-annotation-runtime weaver-girl-api weaver-girl-core weaver-girl-plugins weaver-girl-agent; do
   version="$(sed -n 's:.*<version>\([^<]*\)</version>.*:\1:p' "$module/pom.xml" | head -1)"
   [[ -n "$version" ]] || { echo "FAIL: cannot determine version for $module" >&2; exit 1; }
   for suffix in jar sources.jar javadoc.jar; do

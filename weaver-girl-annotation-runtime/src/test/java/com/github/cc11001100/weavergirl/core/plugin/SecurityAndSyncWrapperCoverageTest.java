@@ -10,7 +10,6 @@ import com.github.cc11001100.weavergirl.annotation.WeaveClass;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
-import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -83,7 +82,7 @@ class SecurityAndSyncWrapperCoverageTest {
   @BeforeEach
   void setUp() {
     loader = new AnnotationPluginLoader();
-    registry = new DefaultInterceptorRegistry();
+    registry = new TestInterceptorRegistry();
     SecuritySyncInterceptor.calls.clear();
   }
 

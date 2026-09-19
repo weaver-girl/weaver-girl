@@ -6,12 +6,10 @@ import com.github.cc11001100.weavergirl.annotation.*;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
-import com.github.cc11001100.weavergirl.core.InterceptorHolder;
-import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
+import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -24,18 +22,12 @@ import org.junit.jupiter.api.Test;
 class AnnotationRichDimensionsTest {
 
   private AnnotationPluginLoader loader;
-  private DefaultInterceptorRegistry registry;
+  private InterceptorRegistry registry;
 
   @BeforeEach
   void setUp() {
     loader = new AnnotationPluginLoader();
-    registry = new DefaultInterceptorRegistry();
-    InterceptorHolder.setRegistry(registry);
-  }
-
-  @AfterEach
-  void tearDown() {
-    InterceptorHolder.setRegistry(null);
+    registry = new TestInterceptorRegistry();
   }
 
   // ========== MethodInvocation Attachments ==========
@@ -320,7 +312,7 @@ class AnnotationRichDimensionsTest {
     System.setProperty("test.enabled", "true");
 
     try {
-      DefaultInterceptorRegistry reg = new DefaultInterceptorRegistry();
+      InterceptorRegistry reg = new TestInterceptorRegistry();
       Set<Class<?>> classes = new HashSet<>();
       classes.add(DisabledInterceptor.class);
       loader.loadAnnotatedInterceptors(classes, reg);

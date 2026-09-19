@@ -23,7 +23,6 @@ import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
-import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -48,7 +47,7 @@ class StructuralAndMiscCoverageTest {
   @BeforeEach
   void setUp() {
     loader = new AnnotationPluginLoader();
-    registry = new DefaultInterceptorRegistry();
+    registry = new TestInterceptorRegistry();
   }
 
   @AfterEach

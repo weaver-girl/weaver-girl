@@ -9,7 +9,6 @@ import com.github.cc11001100.weavergirl.annotation.WeaveClass;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
-import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import java.util.HashSet;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -94,7 +93,7 @@ class CachingAndIdempotentWrapperCoverageTest {
   @BeforeEach
   void setUp() {
     loader = new AnnotationPluginLoader();
-    registry = new DefaultInterceptorRegistry();
+    registry = new TestInterceptorRegistry();
     Set<Class<?>> classes = new HashSet<>();
     classes.add(CachingAndIdempotentInterceptor.class);
     loader.loadAnnotatedInterceptors(classes, registry);

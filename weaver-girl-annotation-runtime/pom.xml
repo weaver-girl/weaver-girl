@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.github.cc11001100</groupId>
+        <artifactId>weaver-girl</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>weaver-girl-annotation-runtime</artifactId>
+    <packaging>jar</packaging>
+
+    <name>Weaver Girl - Annotation Runtime</name>
+    <description>Annotation scanning and reflective interceptor wiring: AnnotationPluginLoader + AnnotatedClassScanner. Depends only on annotation + api (+ slf4j), never on core engine.</description>
+
+    <dependencies>
+        <!-- Internal — runtime wires annotations into api definitions -->
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-annotation</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-api</artifactId>
+        </dependency>
+
+        <!-- SLF4J -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <!-- Testing: only JUnit — loader/scanner tests use the in-package
+             TestInterceptorRegistry fake, so the runtime never depends on the
+             core engine (not even in test scope): no core<->runtime cycle. -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+</project>

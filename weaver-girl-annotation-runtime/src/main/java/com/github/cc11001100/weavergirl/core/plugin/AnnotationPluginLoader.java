@@ -26,7 +26,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Scans classes for weaver-girl annotations and registers them as interceptor definitions.
  *
- * <p>Supports 40+ annotations across 12 dimensions:
+ * <p>Supports 50 annotations across 12 dimensions:
  *
  * <ul>
  *   <li><b>Lifecycle:</b> @Before, @After, @Around, @OnException, @AfterReturning,

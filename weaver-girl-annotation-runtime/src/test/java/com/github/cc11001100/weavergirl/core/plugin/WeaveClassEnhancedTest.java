@@ -10,7 +10,6 @@ import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
-import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -58,7 +57,7 @@ class WeaveClassEnhancedTest {
 
   @Test
   void weaveClass_targetAnnotation_createsAnnotationClassMatcher() {
-    InterceptorRegistry registry = new DefaultInterceptorRegistry();
+    InterceptorRegistry registry = new TestInterceptorRegistry();
     AnnotationPluginLoader loader = new AnnotationPluginLoader();
     Set<Class<?>> classes = new HashSet<>();
     classes.add(AnnotationMatchInterceptor.class);
@@ -74,7 +73,7 @@ class WeaveClassEnhancedTest {
 
   @Test
   void weaveClass_targetSuperClass_createsSuperClassMatcher() {
-    InterceptorRegistry registry = new DefaultInterceptorRegistry();
+    InterceptorRegistry registry = new TestInterceptorRegistry();
     AnnotationPluginLoader loader = new AnnotationPluginLoader();
     Set<Class<?>> classes = new HashSet<>();
     classes.add(SuperClassMatchInterceptor.class);
@@ -91,7 +90,7 @@ class WeaveClassEnhancedTest {
 
   @Test
   void weaveClass_targetInterface_createsInterfaceMatcher() {
-    InterceptorRegistry registry = new DefaultInterceptorRegistry();
+    InterceptorRegistry registry = new TestInterceptorRegistry();
     AnnotationPluginLoader loader = new AnnotationPluginLoader();
     Set<Class<?>> classes = new HashSet<>();
     classes.add(InterfaceMatchInterceptor.class);
@@ -107,7 +106,7 @@ class WeaveClassEnhancedTest {
 
   @Test
   void weaveClass_pointcut_usesPointcutExpression() {
-    InterceptorRegistry registry = new DefaultInterceptorRegistry();
+    InterceptorRegistry registry = new TestInterceptorRegistry();
     AnnotationPluginLoader loader = new AnnotationPluginLoader();
     Set<Class<?>> classes = new HashSet<>();
     classes.add(PointcutExpressionInterceptor.class);
@@ -124,7 +123,7 @@ class WeaveClassEnhancedTest {
 
   @Test
   void weaveClass_legacyTarget_stillWorksBackwardCompatible() {
-    InterceptorRegistry registry = new DefaultInterceptorRegistry();
+    InterceptorRegistry registry = new TestInterceptorRegistry();
     AnnotationPluginLoader loader = new AnnotationPluginLoader();
     Set<Class<?>> classes = new HashSet<>();
     classes.add(LegacyExactMatchInterceptor.class);
@@ -145,7 +144,7 @@ class WeaveClassEnhancedTest {
 
   @Test
   void weaveClass_targetPattern_createsPatternMatcher() {
-    InterceptorRegistry registry = new DefaultInterceptorRegistry();
+    InterceptorRegistry registry = new TestInterceptorRegistry();
     AnnotationPluginLoader loader = new AnnotationPluginLoader();
     Set<Class<?>> classes = new HashSet<>();
     classes.add(PatternMatchInterceptor.class);

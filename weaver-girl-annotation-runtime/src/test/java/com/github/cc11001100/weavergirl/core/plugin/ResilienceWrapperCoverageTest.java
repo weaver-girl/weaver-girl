@@ -12,7 +12,6 @@ import com.github.cc11001100.weavergirl.annotation.WeaveClass;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
-import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -161,7 +160,7 @@ class ResilienceWrapperCoverageTest {
   @BeforeEach
   void setUp() {
     loader = new AnnotationPluginLoader();
-    registry = new DefaultInterceptorRegistry();
+    registry = new TestInterceptorRegistry();
     ResilienceInterceptors.guardCalls.clear();
     Set<Class<?>> classes = new HashSet<>();
     classes.add(ResilienceInterceptors.class);
