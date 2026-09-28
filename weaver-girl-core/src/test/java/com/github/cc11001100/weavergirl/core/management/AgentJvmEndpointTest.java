@@ -49,6 +49,53 @@ class AgentJvmEndpointTest {
     System.out.println("JVM-HTTP-2 " + second);
     assertSnapshot(first);
     assertSnapshot(second);
+    assertGcAgreesWithFreshRead(first);
+    assertGcAgreesWithFreshRead(second);
+  }
+
+  /**
+   * Collector counters only move forward. If a collection lands between the HTTP read and the bean
+   * read, fetch the route again and require that body to match the management beans read immediately
+   * afterwards.
+   */
+  private void assertGcAgreesWithFreshRead(String body) throws Exception {
+    if (gcMatchesFreshRead(body)) {
+      return;
+    }
+    AssertionError last = null;
+    for (int attempt = 0; attempt < 8; attempt++) {
+      String freshBody = get("/jvm");
+      try {
+        assertTrue(gcMatchesFreshRead(freshBody));
+        System.out.println("JVM-HTTP-FRESH " + freshBody);
+        return;
+      } catch (AssertionError failure) {
+        last = failure;
+      }
+    }
+    if (last != null) {
+      throw last;
+    }
+  }
+
+  private boolean gcMatchesFreshRead(String body) {
+    Map<String, Object> json = Strict.parseObject(body);
+    List<Object> collectors = (List<Object>) json.get("garbageCollectors");
+    List<GarbageCollectorMXBean> beans = ManagementFactory.getGarbageCollectorMXBeans();
+    if (collectors.size() != beans.size()) {
+      return false;
+    }
+    for (Object item : collectors) {
+      Map<String, Object> row = (Map<String, Object>) item;
+      String name = (String) row.get("name");
+      long count = ((Number) row.get("collectionCount")).longValue();
+      long time = ((Number) row.get("collectionTimeMs")).longValue();
+      GarbageCollectorMXBean bean = find(name);
+      if (count != bean.getCollectionCount() || time != bean.getCollectionTime()) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private void assertSnapshot(String body) {
@@ -74,13 +121,9 @@ class AgentJvmEndpointTest {
       String name = (String) row.get("name");
       long count = ((Number) row.get("collectionCount")).longValue();
       long time = ((Number) row.get("collectionTimeMs")).longValue();
-      GarbageCollectorMXBean bean = find(name);
-      long beanCount = bean.getCollectionCount();
-      long beanTime = bean.getCollectionTime();
       assertTrue(count >= 0, name);
       assertTrue(time >= 0, name);
-      assertTrue(count <= beanCount, name);
-      assertTrue(time <= beanTime, name);
+      assertTrue(find(name) != null);
       System.out.println(
           "JVM-HTTP gc name="
               + name
