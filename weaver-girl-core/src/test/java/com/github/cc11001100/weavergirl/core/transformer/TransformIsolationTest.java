@@ -76,6 +76,16 @@ class TransformIsolationTest {
     assertTrue(installed.matches(latent(WeaverTransformer.shadedByteBuddyPrefix() + "agent.ByteBuddyAgent")));
     assertTrue(installed.matches(latent(WeaverTransformer.asmPrefix() + "ClassWriter")));
     assertTrue(installed.matches(latent("com.github.cc11001100.weavergirl.agent.WeaverGirlAgent")));
+    assertTrue(installed.matches(latent("com.github.cc11001100.weavergirl.core.transformer.WeaverTransformer")));
+    net.bytebuddy.matcher.ElementMatcher<TypeDescription> testsCanWeaveCore =
+        WeaverTransformer.ignoredTypes(false, Collections.<String>emptyList());
+    assertFalse(
+        testsCanWeaveCore.matches(
+            latent("com.github.cc11001100.weavergirl.core.transformer.WeaverTransformer")));
+    assertTrue(
+        testsCanWeaveCore.matches(latent("com.github.cc11001100.weavergirl.agent.WeaverGirlAgent")));
+    assertFalse(WeaverTransformer.isNeverRewritten(
+        "com.github.cc11001100.weavergirl.core.transformer.WeaverTransformer"));
     assertFalse(installed.matches(latent(FailTarget.class.getName())));
 
     assertEquals("fail", FailTarget.ping());

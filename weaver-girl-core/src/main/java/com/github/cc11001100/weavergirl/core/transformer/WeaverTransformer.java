@@ -81,7 +81,11 @@ public class WeaverTransformer {
     return new StringBuilder("org.").append("objectweb.").append("asm.").toString();
   }
 
-  /** Agent, shade, Byte Buddy, and ASM types are never rewritten. */
+  /**
+   * Byte Buddy, ASM, the agent entry, and the shade prefix are never rewritten. Classes under
+   * {@code weavergirl.core} stay eligible when {@link #setIgnoreAgentClasses(boolean)} is false,
+   * because tests and application types live in that tree.
+   */
   static boolean isNeverRewritten(String className) {
     if (className == null) {
       return false;
@@ -90,8 +94,7 @@ public class WeaverTransformer {
         || className.startsWith(shadedByteBuddyPrefix())
         || className.startsWith(asmPrefix())
         || className.startsWith("com.github.cc11001100.weavergirl.shade.")
-        || className.startsWith("com.github.cc11001100.weavergirl.agent.")
-        || className.startsWith("com.github.cc11001100.weavergirl.core.");
+        || className.startsWith("com.github.cc11001100.weavergirl.agent.");
   }
 
   /** Matcher installed by {@link #install(Instrumentation, boolean)}. */
@@ -422,7 +425,10 @@ public class WeaverTransformer {
 
     for (Class<?> clazz : allLoaded) {
       String className = clazz.getName();
-      if (isNeverRewritten(className) || registry.getInterceptorsForClass(className).isEmpty()) {
+      if (isNeverRewritten(className)
+          || (ignoreAgentClasses
+              && className.startsWith("com.github.cc11001100.weavergirl."))
+          || registry.getInterceptorsForClass(className).isEmpty()) {
         continue;
       }
       // Skip array types and primitive types
