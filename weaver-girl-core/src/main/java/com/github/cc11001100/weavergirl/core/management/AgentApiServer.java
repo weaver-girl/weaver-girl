@@ -15,6 +15,10 @@ import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.*;
+import java.lang.management.GarbageCollectorMXBean;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
+import java.lang.management.ThreadMXBean;
 import java.net.InetSocketAddress;
 import java.util.*;
 import org.slf4j.Logger;
@@ -34,6 +38,7 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code GET /metrics} — metric snapshots
  *   <li>{@code GET /diagnostics} — full diagnostics report
  *   <li>{@code GET /diagnostics/faults} — recent hook faults as JSON
+ *   <li>{@code GET /jvm} — heap, non-heap, garbage collectors, and live threads
  *   <li>{@code GET /errors} — transformation and interceptor error counters
  *   <li>{@code GET /traces} — current/live span and thread context snapshot
  *   <li>{@code GET /context/propagators} — registered cross-thread propagators
@@ -73,6 +78,7 @@ public class AgentApiServer {
     server.createContext("/metrics", this::handleMetrics);
     server.createContext("/diagnostics", this::handleDiagnostics);
     server.createContext("/diagnostics/faults", this::handleFaults);
+    server.createContext("/jvm", this::handleJvm);
     server.createContext("/errors", this::handleErrors);
     server.createContext("/traces", this::handleTraces);
     server.createContext("/context/propagators", this::handleContextPropagators);
@@ -201,6 +207,34 @@ public class AgentApiServer {
       json.append("}");
     }
     json.append("}}");
+    sendJson(exchange, json.toString());
+  }
+
+  /**
+   * JVM snapshot at request time: heap used, non-heap used, each collector's count and time, and
+   * the live thread count. Adapted from the bean set SkyWalking's JVM service reports, without
+   * copying that class.
+   */
+  private void handleJvm(HttpExchange exchange) throws IOException {
+    MemoryMXBean memory = ManagementFactory.getMemoryMXBean();
+    ThreadMXBean threads = ManagementFactory.getThreadMXBean();
+    List<GarbageCollectorMXBean> collectors = ManagementFactory.getGarbageCollectorMXBeans();
+    StringBuilder json = new StringBuilder();
+    json.append("{\"heapUsed\":").append(memory.getHeapMemoryUsage().getUsed());
+    json.append(",\"nonHeapUsed\":").append(memory.getNonHeapMemoryUsage().getUsed());
+    json.append(",\"threadCount\":").append(threads.getThreadCount());
+    json.append(",\"garbageCollectors\":[");
+    for (int i = 0; i < collectors.size(); i++) {
+      if (i > 0) {
+        json.append(",");
+      }
+      GarbageCollectorMXBean collector = collectors.get(i);
+      json.append("{\"name\":\"").append(esc(collector.getName())).append("\"");
+      json.append(",\"collectionCount\":").append(collector.getCollectionCount());
+      json.append(",\"collectionTimeMs\":").append(collector.getCollectionTime());
+      json.append("}");
+    }
+    json.append("]}");
     sendJson(exchange, json.toString());
   }
 
