@@ -34,50 +34,85 @@ public class JsonEventListener implements InterceptorEventListener {
   }
 
   /**
-   * Convert event to a simple JSON string. Does not depend on any JSON library — uses manual string
-   * building for zero-dependency operation.
+   * JSON text for one already-published event. The agent {@code /events} route uses this same
+   * method so operators and log pipelines see one document.
    */
-  String toJson(InterceptorEvent event) {
-    StringBuilder sb = new StringBuilder("{");
-    appendJsonKey(sb, "type", event.getType());
-    appendJsonKey(sb, "plugin", event.getPlugin());
-    appendJsonKey(sb, "class", event.getClassName());
-    appendJsonKey(sb, "method", event.getMethodName());
-    sb.append("\"timestamp\":").append(event.getTimestamp()).append(",");
-    sb.append("\"durationMs\":").append(event.getDurationMs());
+  public String toJson(InterceptorEvent event) {
+    return render(event);
+  }
 
+  /** Shared renderer for the logger and the recent-event listing. */
+  public static String render(InterceptorEvent event) {
+    StringBuilder sb = new StringBuilder();
+    sb.append("{");
+    appendField(sb, "type", event.getType());
+    sb.append(",");
+    appendField(sb, "plugin", event.getPlugin());
+    sb.append(",");
+    appendField(sb, "class", event.getClassName());
+    sb.append(",");
+    appendField(sb, "method", event.getMethodName());
+    sb.append(",");
+    sb.append("\"timestamp\":").append(event.getTimestamp());
+    sb.append(",\"durationMs\":").append(event.getDurationMs());
     Map<String, String> attrs = event.getAttributes();
-    if (!attrs.isEmpty()) {
+    if (attrs != null && !attrs.isEmpty()) {
       sb.append(",\"attributes\":{");
       boolean first = true;
       for (Map.Entry<String, String> entry : attrs.entrySet()) {
-        if (!first) sb.append(",");
-        appendJsonKey(sb, entry.getKey(), entry.getValue());
+        if (!first) {
+          sb.append(",");
+        }
         first = false;
+        appendField(sb, entry.getKey(), entry.getValue());
       }
       sb.append("}");
     }
-
     sb.append("}");
     return sb.toString();
   }
 
-  private void appendJsonKey(StringBuilder sb, String key, String value) {
+  private static void appendField(StringBuilder sb, String key, String value) {
     sb.append("\"").append(escapeJson(key)).append("\":");
     if (value == null) {
       sb.append("null");
     } else {
       sb.append("\"").append(escapeJson(value)).append("\"");
     }
-    sb.append(",");
   }
 
-  private String escapeJson(String s) {
-    if (s == null) return null;
-    return s.replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\t", "\\t");
+  private static String escapeJson(String s) {
+    if (s == null) {
+      return null;
+    }
+    StringBuilder out = new StringBuilder(s.length() + 8);
+    for (int i = 0; i < s.length(); i++) {
+      char c = s.charAt(i);
+      switch (c) {
+        case '\\':
+          out.append("\\\\");
+          break;
+        case '"':
+          out.append("\\\"");
+          break;
+        case '\n':
+          out.append("\\n");
+          break;
+        case '\r':
+          out.append("\\r");
+          break;
+        case '\t':
+          out.append("\\t");
+          break;
+        default:
+          if (c < 0x20) {
+            out.append(String.format("\\u%04x", Integer.valueOf(c)));
+          } else {
+            out.append(c);
+          }
+          break;
+      }
+    }
+    return out.toString();
   }
 }

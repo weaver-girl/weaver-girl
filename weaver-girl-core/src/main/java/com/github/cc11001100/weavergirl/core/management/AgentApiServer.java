@@ -33,6 +33,7 @@ import org.slf4j.LoggerFactory;
  *   <li>{@code GET /alerts} — alert history
  *   <li>{@code GET /metrics} — metric snapshots
  *   <li>{@code GET /diagnostics} — full diagnostics report
+ *   <li>{@code GET /diagnostics/faults} — recent hook faults as JSON
  *   <li>{@code GET /errors} — transformation and interceptor error counters
  *   <li>{@code GET /traces} — current/live span and thread context snapshot
  *   <li>{@code GET /context/propagators} — registered cross-thread propagators
@@ -71,6 +72,7 @@ public class AgentApiServer {
     server.createContext("/alerts", this::handleAlerts);
     server.createContext("/metrics", this::handleMetrics);
     server.createContext("/diagnostics", this::handleDiagnostics);
+    server.createContext("/diagnostics/faults", this::handleFaults);
     server.createContext("/errors", this::handleErrors);
     server.createContext("/traces", this::handleTraces);
     server.createContext("/context/propagators", this::handleContextPropagators);
@@ -202,6 +204,21 @@ public class AgentApiServer {
     sendJson(exchange, json.toString());
   }
 
+  private void handleFaults(HttpExchange exchange) throws IOException {
+    List<AgentDiagnostics.FaultRecord> faults = AgentDiagnostics.getInstance().getFaults();
+    StringBuilder json = new StringBuilder("{\"faults\":[");
+    for (int i = 0; i < faults.size(); i++) {
+      if (i > 0) {
+        json.append(",");
+      }
+      AgentDiagnostics.FaultRecord fault = faults.get(i);
+      json.append("{\"type\":\"").append(esc(fault.type)).append("\",");
+      json.append("\"message\":\"").append(esc(fault.message)).append("\"}");
+    }
+    json.append("],\"count\":").append(faults.size()).append("}");
+    sendJson(exchange, json.toString());
+  }
+
   private void handleDiagnostics(HttpExchange exchange) throws IOException {
     String report = AgentDiagnostics.getInstance().generateReport();
     sendText(exchange, report);
@@ -284,15 +301,8 @@ public class AgentApiServer {
     StringBuilder json = new StringBuilder("{\"events\":[");
     for (int i = 0; i < events.size(); i++) {
       if (i > 0) json.append(",");
-      com.github.cc11001100.weavergirl.api.event.InterceptorEvent e = events.get(i);
-      json.append("{");
-      json.append("\"type\":\"").append(esc(e.getType())).append("\",");
-      json.append("\"plugin\":\"").append(esc(e.getPlugin())).append("\",");
-      json.append("\"className\":\"").append(esc(e.getClassName())).append("\",");
-      json.append("\"methodName\":\"").append(esc(e.getMethodName())).append("\",");
-      json.append("\"timestamp\":").append(e.getTimestamp()).append(",");
-      json.append("\"durationMs\":").append(e.getDurationMs());
-      json.append("}");
+      json.append(
+          com.github.cc11001100.weavergirl.core.event.JsonEventListener.render(events.get(i)));
     }
     json.append("],\"count\":").append(events.size());
     json.append("}");

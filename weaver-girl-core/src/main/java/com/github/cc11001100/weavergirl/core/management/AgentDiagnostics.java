@@ -170,6 +170,13 @@ public class AgentDiagnostics {
     }
   }
 
+  /** Drop recorded faults. Tests use this so an empty HTTP list is observable. */
+  public void clearFaults() {
+    synchronized (faultLog) {
+      faultLog.clear();
+    }
+  }
+
   /** Check if any faults have been recorded. */
   public boolean hasFaults() {
     synchronized (faultLog) {
