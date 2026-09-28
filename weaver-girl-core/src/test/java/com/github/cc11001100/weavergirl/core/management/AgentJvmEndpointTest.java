@@ -49,53 +49,44 @@ class AgentJvmEndpointTest {
     System.out.println("JVM-HTTP-2 " + second);
     assertSnapshot(first);
     assertSnapshot(second);
-    assertGcAgreesWithFreshRead(first);
-    assertGcAgreesWithFreshRead(second);
+    assertGcEqualsFreshRead();
   }
 
   /**
-   * Collector counters only move forward. If a collection lands between the HTTP read and the bean
-   * read, fetch the route again and require that body to match the management beans read immediately
-   * afterwards.
+   * Names, collection counts, and collection times must equal a ManagementFactory read taken after
+   * the response. A collection between those two reads fails the comparison, so the route is fetched
+   * again until one body matches the beans read immediately afterwards.
    */
-  private void assertGcAgreesWithFreshRead(String body) throws Exception {
-    if (gcMatchesFreshRead(body)) {
-      return;
-    }
+  private void assertGcEqualsFreshRead() throws Exception {
     AssertionError last = null;
     for (int attempt = 0; attempt < 8; attempt++) {
-      String freshBody = get("/jvm");
+      String body = get("/jvm");
       try {
-        assertTrue(gcMatchesFreshRead(freshBody));
-        System.out.println("JVM-HTTP-FRESH " + freshBody);
+        assertGcEqualsBeans(body);
+        System.out.println("JVM-HTTP-AGREED " + body);
         return;
       } catch (AssertionError failure) {
         last = failure;
       }
     }
-    if (last != null) {
-      throw last;
-    }
+    throw last;
   }
 
-  private boolean gcMatchesFreshRead(String body) {
+  private void assertGcEqualsBeans(String body) {
     Map<String, Object> json = Strict.parseObject(body);
     List<Object> collectors = (List<Object>) json.get("garbageCollectors");
     List<GarbageCollectorMXBean> beans = ManagementFactory.getGarbageCollectorMXBeans();
-    if (collectors.size() != beans.size()) {
-      return false;
-    }
+    assertEquals(beans.size(), collectors.size());
     for (Object item : collectors) {
       Map<String, Object> row = (Map<String, Object>) item;
       String name = (String) row.get("name");
       long count = ((Number) row.get("collectionCount")).longValue();
       long time = ((Number) row.get("collectionTimeMs")).longValue();
       GarbageCollectorMXBean bean = find(name);
-      if (count != bean.getCollectionCount() || time != bean.getCollectionTime()) {
-        return false;
-      }
+      assertEquals(bean.getName(), name);
+      assertEquals(bean.getCollectionCount(), count, name);
+      assertEquals(bean.getCollectionTime(), time, name);
     }
-    return true;
   }
 
   private void assertSnapshot(String body) {
@@ -123,7 +114,7 @@ class AgentJvmEndpointTest {
       long time = ((Number) row.get("collectionTimeMs")).longValue();
       assertTrue(count >= 0, name);
       assertTrue(time >= 0, name);
-      assertTrue(find(name) != null);
+      assertEquals(name, find(name).getName());
       System.out.println(
           "JVM-HTTP gc name="
               + name
