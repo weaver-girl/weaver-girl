@@ -64,16 +64,62 @@ public class WeaverTransformer {
     FORCED_FAILURES.clear();
   }
 
+  /**
+   * Prefixes are concatenated so the shade relocation of {@code net.bytebuddy} cannot rewrite the
+   * host-class check into the agent's shaded package.
+   */
+  static String byteBuddyPrefix() {
+    // Not a compile-time constant, so shade cannot rewrite the host package name.
+    return new StringBuilder("net.").append("bytebuddy.").toString();
+  }
+
+  static String shadedByteBuddyPrefix() {
+    return new StringBuilder("shaded.").append(byteBuddyPrefix()).toString();
+  }
+
+  static String asmPrefix() {
+    return new StringBuilder("org.").append("objectweb.").append("asm.").toString();
+  }
+
   /** Agent, shade, Byte Buddy, and ASM types are never rewritten. */
   static boolean isNeverRewritten(String className) {
     if (className == null) {
       return false;
     }
-    return className.startsWith("net.bytebuddy.")
-        || className.startsWith("org.objectweb.asm.")
+    return className.startsWith(byteBuddyPrefix())
+        || className.startsWith(shadedByteBuddyPrefix())
+        || className.startsWith(asmPrefix())
         || className.startsWith("com.github.cc11001100.weavergirl.shade.")
         || className.startsWith("com.github.cc11001100.weavergirl.agent.")
         || className.startsWith("com.github.cc11001100.weavergirl.core.");
+  }
+
+  /** Matcher installed by {@link #install(Instrumentation, boolean)}. */
+  static net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> ignoredTypes(
+      boolean ignoreAgentClasses, List<String> excludedClassPatterns) {
+    net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> excludeMatcher =
+        nameStartsWith("sun.")
+            .or(nameStartsWith("jdk.internal."))
+            .or(nameStartsWith("com.sun."))
+            .or(
+                new net.bytebuddy.matcher.ElementMatcher.Junction.AbstractBase<TypeDescription>() {
+                  @Override
+                  public boolean matches(TypeDescription target) {
+                    return isNeverRewritten(target == null ? null : target.getName());
+                  }
+                });
+    if (ignoreAgentClasses) {
+      excludeMatcher =
+          excludeMatcher
+              .or(nameStartsWith("com.github.cc11001100.weavergirl."))
+              .or(nameStartsWith("com.github.cc11001100.weavergirl.shade."));
+    }
+    if (excludedClassPatterns != null) {
+      for (String pattern : excludedClassPatterns) {
+        excludeMatcher = excludeMatcher.or(nameMatches(pattern));
+      }
+    }
+    return excludeMatcher;
   }
 
   private static final Logger log = LoggerFactory.getLogger(WeaverTransformer.class);
@@ -167,25 +213,7 @@ public class WeaverTransformer {
     // javax.servlet.http.HttpServlet, java.sql.Statement), and servlet/jdbc
     // interception depends on that. Excluding them silently breaks interception.
     net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> excludeMatcher =
-        nameStartsWith("sun.")
-            .or(nameStartsWith("jdk.internal."))
-            .or(nameStartsWith("com.sun."))
-            .or(nameStartsWith("net.bytebuddy."))
-            .or(nameStartsWith("org.objectweb.asm."))
-            .or(nameStartsWith("com.github.cc11001100.weavergirl.shade."))
-            .or(nameStartsWith("com.github.cc11001100.weavergirl.agent."))
-            .or(nameStartsWith("com.github.cc11001100.weavergirl.core."));
-
-    if (ignoreAgentClasses) {
-      excludeMatcher =
-          excludeMatcher
-              .or(nameStartsWith("com.github.cc11001100.weavergirl."))
-              .or(nameStartsWith("com.github.cc11001100.weavergirl.shade."));
-    }
-
-    for (String pattern : excludedClassPatterns) {
-      excludeMatcher = excludeMatcher.or(nameMatches(pattern));
-    }
+        ignoredTypes(ignoreAgentClasses, excludedClassPatterns);
 
     AgentBuilder agentBuilder =
         new AgentBuilder.Default()
@@ -244,15 +272,17 @@ public class WeaverTransformer {
     // The transformer must be retransform-capable so agentmain can revisit classes loaded
     // before attach. The eager scan of every loaded class stays opt-in; otherwise discovery
     // is empty and retransformLoadedClasses() drives the batch one class at a time.
+    AgentBuilder.RedefinitionListenable.WithImplicitDiscoveryStrategy redefinable =
+        agentBuilder
+            .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
+            .with(AgentBuilder.RedefinitionStrategy.BatchAllocator.ForFixedSize.ofSize(1));
     if (eagerRetransform) {
-      agentBuilder = agentBuilder.with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION);
+      agentBuilder = redefinable;
     } else {
       agentBuilder =
-          agentBuilder
-              .with(AgentBuilder.RedefinitionStrategy.RETRANSFORMATION)
-              .with(
-                  new AgentBuilder.RedefinitionStrategy.DiscoveryStrategy.Explicit(
-                      java.util.Collections.<Class<?>>emptySet()));
+          redefinable.with(
+              new AgentBuilder.RedefinitionStrategy.DiscoveryStrategy.Explicit(
+                  java.util.Collections.<Class<?>>emptySet()));
     }
 
     // If onlyInterceptPackages is specified, only match classes in those packages
@@ -328,20 +358,17 @@ public class WeaverTransformer {
                 .type(typeMatcher)
                 .transform(
                     (builder, typeDescription, classLoader, module, protectionDomain) -> {
-                      try {
-                        Throwable forced = FORCED_FAILURES.get(typeDescription.getName());
-                        if (forced instanceof Error) {
-                          throw (Error) forced;
-                        }
-                        if (forced instanceof RuntimeException) {
-                          throw (RuntimeException) forced;
-                        }
-                        if (forced != null) {
-                          throw new RuntimeException(forced);
-                        }
-                      } catch (Throwable failure) {
-                        noteTransformFailure(typeDescription.getName(), failure);
-                        return builder;
+                      // Let the failure leave this callback. Byte Buddy then calls onError and does
+                      // not make() or install a new class file for this type.
+                      Throwable forced = FORCED_FAILURES.get(typeDescription.getName());
+                      if (forced instanceof Error) {
+                        throw (Error) forced;
+                      }
+                      if (forced instanceof RuntimeException) {
+                        throw (RuntimeException) forced;
+                      }
+                      if (forced != null) {
+                        throw new RuntimeException(forced);
                       }
                       if (mode
                               == com.github.cc11001100.weavergirl.api.interceptor
@@ -395,7 +422,7 @@ public class WeaverTransformer {
 
     for (Class<?> clazz : allLoaded) {
       String className = clazz.getName();
-      if (registry.getInterceptorsForClass(className).isEmpty()) {
+      if (isNeverRewritten(className) || registry.getInterceptorsForClass(className).isEmpty()) {
         continue;
       }
       // Skip array types and primitive types
@@ -410,17 +437,34 @@ public class WeaverTransformer {
 
     int retransformed = 0;
     for (Class<?> clazz : toRetransform) {
+      int recordedBefore = timesRecorded(clazz.getName());
       try {
         instrumentation.retransformClasses(clazz);
-        retransformed++;
       } catch (Throwable failure) {
-        noteTransformFailure(clazz.getName(), failure);
+        // onError already stored the fault when the transform callback threw. Swallowing here
+        // keeps the rest of the batch running and does not submit this class's new bytes.
+        log.warn("Retransform left {} unchanged: {}", clazz.getName(), failure.getMessage());
+      }
+      // The JVM may swallow a transformer exception. Count only a class whose transform listener
+      // actually recorded new bytes.
+      if (timesRecorded(clazz.getName()) > recordedBefore) {
+        retransformed++;
       }
     }
     if (retransformed > 0) {
       log.info("Retransformed {} already-loaded classes", retransformed);
     }
     return retransformed;
+  }
+
+  private static int timesRecorded(String className) {
+    int seen = 0;
+    for (String recorded : AgentStatus.getInstance().getTransformedClasses()) {
+      if (className.equals(recorded)) {
+        seen++;
+      }
+    }
+    return seen;
   }
 
   /** Leave the class unchanged and keep the fault on the existing diagnostics log. */

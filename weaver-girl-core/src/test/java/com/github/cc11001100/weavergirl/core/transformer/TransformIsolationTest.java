@@ -15,13 +15,17 @@ import com.github.cc11001100.weavergirl.core.management.AgentApiServer;
 import com.github.cc11001100.weavergirl.core.management.AgentDiagnostics;
 import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.lang.instrument.Instrumentation;
 import java.net.HttpURLConnection;
 import java.net.ServerSocket;
 import java.net.URL;
+import java.util.Collections;
 import net.bytebuddy.agent.ByteBuddyAgent;
+import net.bytebuddy.description.type.TypeDescription;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
@@ -65,16 +69,14 @@ class TransformIsolationTest {
 
   @Test
   void installLeavesFailedClassAndEnhancesSibling() throws Exception {
-    assertTrue(WeaverTransformer.isNeverRewritten("net.bytebuddy.agent.ByteBuddyAgent"));
-    assertTrue(WeaverTransformer.isNeverRewritten("org.objectweb.asm.ClassWriter"));
-    assertTrue(
-        WeaverTransformer.isNeverRewritten(
-            "com.github.cc11001100.weavergirl.shade.org.slf4j.Logger"));
-    assertTrue(
-        WeaverTransformer.isNeverRewritten(
-            "com.github.cc11001100.weavergirl.agent.WeaverGirlAgent"));
-    assertTrue(WeaverTransformer.isNeverRewritten("com.github.cc11001100.weavergirl.core.WeaverGirl"));
-    assertFalse(WeaverTransformer.isNeverRewritten(FailTarget.class.getName()));
+    assertIgnoredPrefixesSurviveShade();
+    net.bytebuddy.matcher.ElementMatcher<TypeDescription> installed =
+        WeaverTransformer.ignoredTypes(true, Collections.<String>emptyList());
+    assertTrue(installed.matches(latent(WeaverTransformer.byteBuddyPrefix() + "agent.ByteBuddyAgent")));
+    assertTrue(installed.matches(latent(WeaverTransformer.shadedByteBuddyPrefix() + "agent.ByteBuddyAgent")));
+    assertTrue(installed.matches(latent(WeaverTransformer.asmPrefix() + "ClassWriter")));
+    assertTrue(installed.matches(latent("com.github.cc11001100.weavergirl.agent.WeaverGirlAgent")));
+    assertFalse(installed.matches(latent(FailTarget.class.getName())));
 
     assertEquals("fail", FailTarget.ping());
     assertEquals("ok", OkTarget.ping());
@@ -105,6 +107,12 @@ class TransformIsolationTest {
     assertEquals("fail", FailTarget.ping());
     assertEquals("ok", OkTarget.ping());
     assertTrue(OkTarget.seen, "healthy class must still be enhanced");
+    assertFalse(
+        AgentStatus.getInstance().getTransformedClasses().contains(FailTarget.class.getName()),
+        "failed class must not be installed as a new class file");
+    assertFalse(
+        AgentStatus.getInstance().getTransformedClasses().toString().contains("net.bytebuddy."),
+        "Byte Buddy types must stay unenhanced");
     assertTrue(AgentStatus.getInstance().getTransformationErrorCount() > before);
 
     String faults = get("/diagnostics/faults");
@@ -157,11 +165,13 @@ class TransformIsolationTest {
     AgentDiagnostics.getInstance().clearFaults();
     long before = AgentStatus.getInstance().getTransformationErrorCount();
     int changed = transformer.retransformLoadedClasses();
-    assertTrue(changed >= 1, "sibling class must be retransformed");
+    assertEquals(1, changed, "only the sibling is counted; the failed class keeps its old bytes");
 
     assertEquals("fail-loaded", FailLoaded.ping());
     assertEquals("ok-loaded", OkLoaded.ping());
     assertTrue(OkLoaded.seen, "sibling in the same batch must be retransformed");
+    assertFalse(
+        AgentStatus.getInstance().getTransformedClasses().contains(FailLoaded.class.getName()));
     assertTrue(AgentStatus.getInstance().getTransformationErrorCount() > before);
 
     String faults = get("/diagnostics/faults");
@@ -170,6 +180,28 @@ class TransformIsolationTest {
     assertTrue(faults.contains("ClassFormatError"));
     assertFalse(faults.contains(",}"));
     assertFalse(faults.contains(",]"));
+  }
+
+  private static void assertIgnoredPrefixesSurviveShade() throws Exception {
+    InputStream in = WeaverTransformer.class.getResourceAsStream("WeaverTransformer.class");
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    byte[] buf = new byte[4096];
+    int n;
+    while ((n = in.read(buf)) != -1) {
+      out.write(buf, 0, n);
+    }
+    in.close();
+    String pool = out.toString("ISO-8859-1");
+    assertFalse(pool.contains("net." + "bytebuddy."), "shade must not see a contiguous host prefix");
+    assertTrue(pool.contains("bytebuddy."));
+    assertTrue(WeaverTransformer.isNeverRewritten(WeaverTransformer.byteBuddyPrefix() + "ByteBuddy"));
+    assertTrue(
+        WeaverTransformer.isNeverRewritten(WeaverTransformer.shadedByteBuddyPrefix() + "ByteBuddy"));
+    assertTrue(WeaverTransformer.isNeverRewritten(WeaverTransformer.asmPrefix() + "ClassWriter"));
+  }
+
+  private static TypeDescription latent(String name) {
+    return new TypeDescription.Latent(name, 0, TypeDescription.Generic.OBJECT);
   }
 
   private static void register(
