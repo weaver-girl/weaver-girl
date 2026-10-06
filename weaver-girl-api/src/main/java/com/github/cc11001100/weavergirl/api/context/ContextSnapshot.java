@@ -103,6 +103,9 @@ public final class ContextSnapshot {
     if (p instanceof TracerPropagator) {
       return TracerPropagator.SpanSnapshot.EMPTY;
     }
+    if (p instanceof TaintContextPropagator) {
+      return TaintContextPropagator.TaintSnapshot.EMPTY;
+    }
     // Third-party propagator: use a generic empty snapshot that is a no-op
     // on restore/cleanup. This means activating an empty snapshot won't
     // clear third-party state — those propagators should handle this in

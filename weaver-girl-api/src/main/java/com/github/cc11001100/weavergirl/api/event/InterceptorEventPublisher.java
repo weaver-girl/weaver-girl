@@ -1,6 +1,8 @@
 package com.github.cc11001100.weavergirl.api.event;
 
 import com.github.cc11001100.weavergirl.api.exporter.ExporterRegistry;
+import com.github.cc11001100.weavergirl.api.tracing.SpanContext;
+import com.github.cc11001100.weavergirl.api.tracing.Tracer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -95,6 +97,10 @@ public class InterceptorEventPublisher {
    * @param event the event to publish
    */
   public void publish(InterceptorEvent event) {
+    if (event == null) {
+      return;
+    }
+    event = stampActiveSpan(event);
     recordHistory(event);
     for (InterceptorEventListener listener : listeners) {
       try {
@@ -108,5 +114,17 @@ public class InterceptorEventPublisher {
     } catch (Exception e) {
       System.err.println("[weaver-girl] ExporterRegistry threw exception: " + e.getMessage());
     }
+  }
+
+  /**
+   * Attach the span that is current on this thread. Plugins do not copy trace ids themselves. With
+   * no current span the ids are omitted.
+   */
+  static InterceptorEvent stampActiveSpan(InterceptorEvent event) {
+    SpanContext span = Tracer.getCurrentSpan();
+    if (span == null || span.getTraceId() == null || span.getSpanId() == null) {
+      return event.withTrace(null, null);
+    }
+    return event.withTrace(span.getTraceId(), span.getSpanId());
   }
 }

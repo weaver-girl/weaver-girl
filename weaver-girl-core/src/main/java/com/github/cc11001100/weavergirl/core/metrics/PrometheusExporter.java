@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li>{@code weavergirl_error_operations_total} — counter of errors by plugin
  *   <li>{@code weavergirl_operation_duration_ms_sum} — cumulative duration by plugin
  *   <li>{@code weavergirl_operation_duration_ms_count} — operation count by plugin
+ *   <li>{@code weavergirl_iast_findings_total} — IAST slice findings by sink kind only
  * </ul>
  *
  * <p>Example output:
@@ -50,6 +51,9 @@ public class PrometheusExporter implements InterceptorEventListener {
       "# HELP weavergirl_operation_duration_ms_count Total number of operations tracked";
   private static final String TYPE_DURATION_COUNT =
       "# TYPE weavergirl_operation_duration_ms_count counter";
+  private static final String HELP_IAST =
+      "# HELP weavergirl_iast_findings_total IAST slice findings by sink kind";
+  private static final String TYPE_IAST = "# TYPE weavergirl_iast_findings_total counter";
 
   // Key: plugin -> type -> counter
   private final ConcurrentMap<String, ConcurrentMap<String, AtomicLong>> slowCounters =
@@ -59,6 +63,8 @@ public class PrometheusExporter implements InterceptorEventListener {
   private final ConcurrentMap<String, AtomicLong> durationSum =
       new ConcurrentHashMap<String, AtomicLong>();
   private final ConcurrentMap<String, AtomicLong> durationCount =
+      new ConcurrentHashMap<String, AtomicLong>();
+  private final ConcurrentMap<String, AtomicLong> iastFindings =
       new ConcurrentHashMap<String, AtomicLong>();
 
   private volatile HttpServer server;
@@ -129,6 +135,22 @@ public class PrometheusExporter implements InterceptorEventListener {
         counter = new AtomicLong(0);
         AtomicLong existing = errorCounters.putIfAbsent(plugin, counter);
         if (existing != null) counter = existing;
+      }
+      counter.incrementAndGet();
+    }
+
+    if ("iast-finding".equals(type)) {
+      String sink = event.getAttributes().get("sink");
+      if (sink == null || sink.isEmpty()) {
+        sink = "unknown";
+      }
+      AtomicLong counter = iastFindings.get(sink);
+      if (counter == null) {
+        counter = new AtomicLong(0);
+        AtomicLong existing = iastFindings.putIfAbsent(sink, counter);
+        if (existing != null) {
+          counter = existing;
+        }
       }
       counter.incrementAndGet();
     }
@@ -210,6 +232,19 @@ public class PrometheusExporter implements InterceptorEventListener {
           .append("\n");
     }
     sb.append("\n");
+
+    if (!iastFindings.isEmpty()) {
+      sb.append(HELP_IAST).append("\n");
+      sb.append(TYPE_IAST).append("\n");
+      for (ConcurrentMap.Entry<String, AtomicLong> entry : iastFindings.entrySet()) {
+        sb.append("weavergirl_iast_findings_total{sink=\"")
+            .append(escape(entry.getKey()))
+            .append("\"} ")
+            .append(entry.getValue().get())
+            .append("\n");
+      }
+      sb.append("\n");
+    }
 
     return sb.toString();
   }

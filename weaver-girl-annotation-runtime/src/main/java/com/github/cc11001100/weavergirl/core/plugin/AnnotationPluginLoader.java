@@ -1,6 +1,7 @@
 package com.github.cc11001100.weavergirl.core.plugin;
 
 import com.github.cc11001100.weavergirl.annotation.*;
+import com.github.cc11001100.weavergirl.api.context.ThreadContext;
 import com.github.cc11001100.weavergirl.api.interceptor.CatchInterceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.CatchInvocation;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
@@ -26,7 +27,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Scans classes for weaver-girl annotations and registers them as interceptor definitions.
  *
- * <p>Supports 50 annotations across 12 dimensions:
+ * <p>Supports 58 annotations across 12 dimensions:
  *
  * <ul>
  *   <li><b>Lifecycle:</b> @Before, @After, @Around, @OnException, @AfterReturning,
@@ -35,12 +36,14 @@ import org.slf4j.LoggerFactory;
  *   <li><b>Matching:</b> @WeaveClass, @OnMethodPattern, @WhenAnnotated, @Pointcut
  *   <li><b>Ordering:</b> @Order, @DeclarePrecedence
  *   <li><b>Condition:</b> @EnableIf, @SampleRate
- *   <li><b>Observability:</b> @Timed, @Trace, @Tag, @Counted, @Logged, @Metric, @Histogram, @Gauge
- *   <li><b>Resilience:</b> @RetryOnException, @CircuitBreaker, @Timeout, @Fallback, @Bulkhead, @RateLimiter
- *   <li><b>Caching:</b> @CacheResult, @CacheEvict
- *   <li><b>Security:</b> @RequiresRole, @Audited
+ *   <li><b>Observability:</b> @Timed, @Trace, @Tag, @Counted, @Logged, @Metric, @Histogram, @Gauge,
+ *       @SpanAttribute, @WarnIfSlow
+ *   <li><b>Resilience:</b> @RetryOnException, @CircuitBreaker, @Timeout, @Fallback, @FallbackValue,
+ *       @SuppressExceptions, @Bulkhead, @RateLimiter
+ *   <li><b>Caching:</b> @CacheResult, @CacheEvict, @CachePut
+ *   <li><b>Security:</b> @RequiresRole, @PreAuthorize, @DenyAll, @Audited
  *   <li><b>Concurrency:</b> @Synchronized, @ReadOnly, @Idempotent
- *   <li><b>Context:</b> @Arg, @Return, @This, @Origin, @Elapsed
+ *   <li><b>Context:</b> @Arg, @Return, @This, @Origin, @Elapsed, @WithMDC
  *   <li><b>Validation:</b> @ValidateArgs, @ValidateReturn, @NotNull
  * </ul>
  *
@@ -153,6 +156,15 @@ public class AnnotationPluginLoader {
     Map<String, List<Method>> validateReturnMethods = new HashMap<>();
     Map<String, List<Method>> methodPatternMethods = new HashMap<>();
     Map<String, List<Method>> whenAnnotatedMethods = new HashMap<>();
+    // Additional annotations (1.9.0): caching, resilience, security, context, observability
+    Map<String, List<Method>> cachePutMethods = new HashMap<>();
+    Map<String, List<Method>> fallbackValueMethods = new HashMap<>();
+    Map<String, List<Method>> suppressExceptionsMethods = new HashMap<>();
+    Map<String, List<Method>> denyAllMethods = new HashMap<>();
+    Map<String, List<Method>> preAuthorizeMethods = new HashMap<>();
+    Map<String, List<Method>> withMdcMethods = new HashMap<>();
+    Map<String, List<Method>> spanAttributeMethods = new HashMap<>();
+    Map<String, List<Method>> warnIfSlowMethods = new HashMap<>();
     List<Method> constructorMethods = new ArrayList<>();
     List<Method> fieldGetMethods = new ArrayList<>();
     List<Method> fieldSetMethods = new ArrayList<>();
@@ -343,6 +355,40 @@ public class AnnotationPluginLoader {
         ValidateReturn ann = m.getAnnotation(ValidateReturn.class);
         validateReturnMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
       }
+
+      // Additional annotations (1.9.0)
+      if (m.isAnnotationPresent(CachePut.class)) {
+        CachePut ann = m.getAnnotation(CachePut.class);
+        cachePutMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
+      }
+      if (m.isAnnotationPresent(FallbackValue.class)) {
+        FallbackValue ann = m.getAnnotation(FallbackValue.class);
+        fallbackValueMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
+      }
+      if (m.isAnnotationPresent(SuppressExceptions.class)) {
+        SuppressExceptions ann = m.getAnnotation(SuppressExceptions.class);
+        suppressExceptionsMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
+      }
+      if (m.isAnnotationPresent(DenyAll.class)) {
+        DenyAll ann = m.getAnnotation(DenyAll.class);
+        denyAllMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
+      }
+      if (m.isAnnotationPresent(PreAuthorize.class)) {
+        PreAuthorize ann = m.getAnnotation(PreAuthorize.class);
+        preAuthorizeMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
+      }
+      if (m.isAnnotationPresent(WithMDC.class)) {
+        WithMDC ann = m.getAnnotation(WithMDC.class);
+        withMdcMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
+      }
+      if (m.isAnnotationPresent(SpanAttribute.class)) {
+        SpanAttribute ann = m.getAnnotation(SpanAttribute.class);
+        spanAttributeMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
+      }
+      if (m.isAnnotationPresent(WarnIfSlow.class)) {
+        WarnIfSlow ann = m.getAnnotation(WarnIfSlow.class);
+        warnIfSlowMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
+      }
     }
 
     // --- PointcutExpression mode ---
@@ -519,6 +565,14 @@ public class AnnotationPluginLoader {
     allTargetMethods.addAll(idempotentMethods.keySet());
     allTargetMethods.addAll(validateArgsMethods.keySet());
     allTargetMethods.addAll(validateReturnMethods.keySet());
+    allTargetMethods.addAll(cachePutMethods.keySet());
+    allTargetMethods.addAll(fallbackValueMethods.keySet());
+    allTargetMethods.addAll(suppressExceptionsMethods.keySet());
+    allTargetMethods.addAll(denyAllMethods.keySet());
+    allTargetMethods.addAll(preAuthorizeMethods.keySet());
+    allTargetMethods.addAll(withMdcMethods.keySet());
+    allTargetMethods.addAll(spanAttributeMethods.keySet());
+    allTargetMethods.addAll(warnIfSlowMethods.keySet());
 
     if (allTargetMethods.isEmpty()) {
       return;
@@ -567,6 +621,21 @@ public class AnnotationPluginLoader {
           validateArgsMethods.getOrDefault(targetMethod, Collections.emptyList());
       List<Method> validateReturns =
           validateReturnMethods.getOrDefault(targetMethod, Collections.emptyList());
+      List<Method> cachePuts =
+          cachePutMethods.getOrDefault(targetMethod, Collections.emptyList());
+      List<Method> fallbackValues =
+          fallbackValueMethods.getOrDefault(targetMethod, Collections.emptyList());
+      List<Method> suppressExceptionss =
+          suppressExceptionsMethods.getOrDefault(targetMethod, Collections.emptyList());
+      List<Method> denyAlls = denyAllMethods.getOrDefault(targetMethod, Collections.emptyList());
+      List<Method> preAuthorizes =
+          preAuthorizeMethods.getOrDefault(targetMethod, Collections.emptyList());
+      List<Method> withMdcs =
+          withMdcMethods.getOrDefault(targetMethod, Collections.emptyList());
+      List<Method> spanAttributes =
+          spanAttributeMethods.getOrDefault(targetMethod, Collections.emptyList());
+      List<Method> warnIfSlows =
+          warnIfSlowMethods.getOrDefault(targetMethod, Collections.emptyList());
 
       MethodMatcher methodMatcher = buildMethodMatcher(targetMethod);
 
@@ -625,6 +694,23 @@ public class AnnotationPluginLoader {
         interceptor = wrapWithValidateReturn(interceptor, validateReturns, interceptorInstance);
       if (!retries.isEmpty())
         interceptor = wrapWithRetry(interceptor, retries, interceptorInstance);
+      if (!cachePuts.isEmpty())
+        interceptor = wrapWithCachePut(interceptor, cachePuts, interceptorInstance);
+      if (!fallbackValues.isEmpty())
+        interceptor = wrapWithFallbackValue(interceptor, fallbackValues, interceptorInstance);
+      if (!suppressExceptionss.isEmpty())
+        interceptor =
+            wrapWithSuppressExceptions(interceptor, suppressExceptionss, interceptorInstance);
+      if (!denyAlls.isEmpty())
+        interceptor = wrapWithDenyAll(interceptor, denyAlls, interceptorInstance);
+      if (!preAuthorizes.isEmpty())
+        interceptor = wrapWithPreAuthorize(interceptor, preAuthorizes, interceptorInstance);
+      if (!withMdcs.isEmpty())
+        interceptor = wrapWithMdc(interceptor, withMdcs, interceptorInstance);
+      if (!spanAttributes.isEmpty())
+        interceptor = wrapWithSpanAttribute(interceptor, spanAttributes, interceptorInstance);
+      if (!warnIfSlows.isEmpty())
+        interceptor = wrapWithWarnIfSlow(interceptor, warnIfSlows, interceptorInstance);
 
       Pointcut pointcut = new Pointcut(classMatcher, methodMatcher);
       String defName = "annotation-" + clazz.getSimpleName() + "-" + targetMethod;
@@ -1758,6 +1844,359 @@ public class AnnotationPluginLoader {
           if (exType.isInstance(t)) return true;
         }
         return false;
+      }
+    };
+  }
+
+  // ==================== Additional annotation wrappers (1.9.0) ====================
+
+  /**
+   * {@code @CachePut}: writes the method's return value into the shared cache on success, so a
+   * later {@code @CacheResult} read observes fresh data. No skip logic (write-through only).
+   */
+  private Interceptor wrapWithCachePut(
+      Interceptor delegate, List<Method> methods, Object instance) {
+    CachePut ann = methods.get(0).getAnnotation(CachePut.class);
+    return new Interceptor() {
+      @Override
+      public void before(MethodInvocation inv) {
+        inv.setAttachment("cachePut.key", buildCachePutKey(ann, inv));
+        delegate.before(inv);
+      }
+
+      @Override
+      public void after(MethodInvocation inv) {
+        delegate.after(inv);
+        String cacheKey = (String) inv.getAttachment("cachePut.key");
+        if (cacheKey != null && inv.getReturnValue() != null) {
+          long ttlNanos = ann.ttlMs() > 0 ? ann.ttlMs() * 1_000_000 : Long.MAX_VALUE;
+          cacheStore.put(cacheKey, new CacheEntry(inv.getReturnValue(), System.nanoTime() + ttlNanos));
+        }
+      }
+
+      @Override
+      public void onException(MethodInvocation inv) {
+        delegate.onException(inv);
+      }
+    };
+  }
+
+  private String buildCachePutKey(CachePut ann, MethodInvocation inv) {
+    String prefix = ann.keyPrefix().isEmpty() ? ann.value() : ann.keyPrefix();
+    if (ann.keyArgIndices().length > 0) {
+      StringBuilder sb = new StringBuilder(prefix).append(":");
+      for (int idx : ann.keyArgIndices()) {
+        sb.append(inv.getArgument(idx)).append(",");
+      }
+      return sb.toString();
+    }
+    return prefix + ":" + Arrays.toString(inv.getArguments());
+  }
+
+  /**
+   * {@code @FallbackValue}: on a matching exception, suppresses it and returns a configured static
+   * value instead of routing to a fallback method.
+   */
+  private Interceptor wrapWithFallbackValue(
+      Interceptor delegate, List<Method> methods, Object instance) {
+    FallbackValue ann = methods.get(0).getAnnotation(FallbackValue.class);
+    return new Interceptor() {
+      @Override
+      public void before(MethodInvocation inv) {
+        delegate.before(inv);
+      }
+
+      @Override
+      public void after(MethodInvocation inv) {
+        delegate.after(inv);
+      }
+
+      @Override
+      public void onException(MethodInvocation inv) {
+        Throwable t = inv.getThrowable();
+        if (shouldFallbackFor(t, ann.onExceptions())) {
+          inv.suppressException();
+          Object fallback = resolveFallbackValue(ann, inv.getReturnType());
+          if (fallback != null) {
+            inv.setReturnValue(fallback);
+          }
+          invokeMethods(instance, methods, inv);
+        }
+        delegate.onException(inv);
+      }
+
+      private boolean shouldFallbackFor(Throwable t, Class<? extends Throwable>[] types) {
+        if (types.length == 0) return true;
+        for (Class<? extends Throwable> type : types) {
+          if (type.isInstance(t)) return true;
+        }
+        return false;
+      }
+
+      private Object resolveFallbackValue(FallbackValue a, Class<?> returnType) {
+        if (!a.stringValue().isEmpty()) return coerce(a.stringValue(), returnType);
+        if (a.longValue() != 0L) return coerce(a.longValue(), returnType);
+        if (!Double.isNaN(a.doubleValue())) return coerce(a.doubleValue(), returnType);
+        if (a.useBooleanValue()) return coerce(a.booleanValue(), returnType);
+        return null;
+      }
+
+      private Object coerce(Object value, Class<?> returnType) {
+        if (returnType == null || returnType == void.class) {
+          // Unknown return type (void or no Method reference): keep the raw boxed value so
+          // consumers can still read the fallback; the engine only writes back for non-void.
+          return value;
+        }
+        if (returnType.isInstance(value)) return value;
+        if (returnType == String.class) return String.valueOf(value);
+        if (returnType == long.class || returnType == Long.class)
+          return ((Number) value).longValue();
+        if (returnType == int.class || returnType == Integer.class)
+          return ((Number) value).intValue();
+        if (returnType == double.class || returnType == Double.class)
+          return ((Number) value).doubleValue();
+        if (returnType == float.class || returnType == Float.class)
+          return ((Number) value).floatValue();
+        if (returnType == short.class || returnType == Short.class)
+          return ((Number) value).shortValue();
+        if (returnType == byte.class || returnType == Byte.class)
+          return ((Number) value).byteValue();
+        if (returnType == boolean.class || returnType == Boolean.class)
+          return Boolean.valueOf(String.valueOf(value));
+        return null;
+      }
+    };
+  }
+
+  /** {@code @SuppressExceptions}: swallow matching exceptions so the caller observes a normal return. */
+  private Interceptor wrapWithSuppressExceptions(
+      Interceptor delegate, List<Method> methods, Object instance) {
+    SuppressExceptions ann = methods.get(0).getAnnotation(SuppressExceptions.class);
+    return new Interceptor() {
+      @Override
+      public void before(MethodInvocation inv) {
+        delegate.before(inv);
+      }
+
+      @Override
+      public void after(MethodInvocation inv) {
+        delegate.after(inv);
+      }
+
+      @Override
+      public void onException(MethodInvocation inv) {
+        Throwable t = inv.getThrowable();
+        if (shouldSuppress(t, ann.suppressFor())) {
+          inv.suppressException();
+          invokeMethods(instance, methods, inv);
+        }
+        delegate.onException(inv);
+      }
+
+      private boolean shouldSuppress(Throwable t, Class<? extends Throwable>[] types) {
+        if (types.length == 0) return true;
+        for (Class<? extends Throwable> type : types) {
+          if (type.isInstance(t)) return true;
+        }
+        return false;
+      }
+    };
+  }
+
+  /** {@code @DenyAll}: skip every invocation and flag the denial on the attachment. */
+  private Interceptor wrapWithDenyAll(
+      Interceptor delegate, List<Method> methods, Object instance) {
+    DenyAll ann = methods.get(0).getAnnotation(DenyAll.class);
+    return new Interceptor() {
+      @Override
+      public void before(MethodInvocation inv) {
+        inv.skipMethod();
+        inv.setReturnValue(null);
+        inv.setAttachment("denyAll.rejected", ann.message());
+        invokeMethods(instance, methods, inv);
+        delegate.before(inv);
+      }
+
+      @Override
+      public void after(MethodInvocation inv) {
+        delegate.after(inv);
+      }
+
+      @Override
+      public void onException(MethodInvocation inv) {
+        delegate.onException(inv);
+      }
+    };
+  }
+
+  /** {@code @PreAuthorize}: skip the call when the access-control expression does not hold. */
+  private Interceptor wrapWithPreAuthorize(
+      Interceptor delegate, List<Method> methods, Object instance) {
+    PreAuthorize ann = methods.get(0).getAnnotation(PreAuthorize.class);
+    return new Interceptor() {
+      @Override
+      public void before(MethodInvocation inv) {
+        boolean allowed = evaluateRule(ann.expression(), inv);
+        if (!allowed) {
+          inv.skipMethod();
+          inv.setReturnValue(null);
+          inv.setAttachment("preAuthorize.denied", ann.message());
+        }
+        invokeMethods(instance, methods, inv);
+        delegate.before(inv);
+      }
+
+      @Override
+      public void after(MethodInvocation inv) {
+        delegate.after(inv);
+      }
+
+      @Override
+      public void onException(MethodInvocation inv) {
+        delegate.onException(inv);
+      }
+    };
+  }
+
+  /** {@code @WithMDC}: scope extra context keys to the method, restoring their prior values on exit. */
+  private Interceptor wrapWithMdc(Interceptor delegate, List<Method> methods, Object instance) {
+    WithMDC ann = methods.get(0).getAnnotation(WithMDC.class);
+    return new Interceptor() {
+      @Override
+      public void before(MethodInvocation inv) {
+        Map<String, Object> prior = captureAndPut(inv);
+        inv.setAttachment("withMdc.prior", prior);
+        delegate.before(inv);
+      }
+
+      @Override
+      public void after(MethodInvocation inv) {
+        delegate.after(inv);
+        restore(inv);
+      }
+
+      @Override
+      public void onException(MethodInvocation inv) {
+        delegate.onException(inv);
+        restore(inv);
+      }
+
+      private Map<String, Object> captureAndPut(MethodInvocation inv) {
+        Map<String, Object> prior = new HashMap<>();
+        String[] keys = ann.keys();
+        for (int i = 0; i < keys.length; i++) {
+          prior.put(keys[i], ThreadContext.get(keys[i]));
+          String value = resolveValue(i, inv);
+          if (value != null) {
+            ThreadContext.put(keys[i], value);
+          } else {
+            ThreadContext.remove(keys[i]);
+          }
+        }
+        return prior;
+      }
+
+      private String resolveValue(int keyIndex, MethodInvocation inv) {
+        if (keyIndex < ann.argIndices().length) {
+          Object arg = inv.getArgument(ann.argIndices()[keyIndex]);
+          return arg != null ? String.valueOf(arg) : null;
+        }
+        if (keyIndex < ann.staticValues().length && !ann.staticValues()[keyIndex].isEmpty()) {
+          return ann.staticValues()[keyIndex];
+        }
+        return null;
+      }
+
+      @SuppressWarnings("unchecked")
+      private void restore(MethodInvocation inv) {
+        Object stored = inv.getAttachment("withMdc.prior");
+        if (!(stored instanceof Map)) {
+          return;
+        }
+        Map<String, Object> prior = (Map<String, Object>) stored;
+        for (Map.Entry<String, Object> entry : prior.entrySet()) {
+          if (entry.getValue() != null) {
+            ThreadContext.put(entry.getKey(), entry.getValue());
+          } else {
+            ThreadContext.remove(entry.getKey());
+          }
+        }
+        inv.removeAttachment("withMdc.prior");
+      }
+    };
+  }
+
+  /** {@code @SpanAttribute}: record a key-value span attribute under {@code spanAttr.<key>}. */
+  private Interceptor wrapWithSpanAttribute(
+      Interceptor delegate, List<Method> methods, Object instance) {
+    return new Interceptor() {
+      @Override
+      public void before(MethodInvocation inv) {
+        for (Method m : methods) {
+          SpanAttribute ann = m.getAnnotation(SpanAttribute.class);
+          String value = ann.attributeValue();
+          if (value.isEmpty() && ann.argIndex() >= 0) {
+            Object arg = inv.getArgument(ann.argIndex());
+            value = arg != null ? arg.toString() : null;
+          }
+          inv.setAttachment("spanAttr." + ann.key(), value);
+        }
+        delegate.before(inv);
+      }
+
+      @Override
+      public void after(MethodInvocation inv) {
+        for (Method m : methods) {
+          SpanAttribute ann = m.getAnnotation(SpanAttribute.class);
+          if (ann.useReturn()) {
+            inv.setAttachment("spanAttr." + ann.key(), inv.getReturnValue());
+          }
+        }
+        delegate.after(inv);
+      }
+
+      @Override
+      public void onException(MethodInvocation inv) {
+        delegate.onException(inv);
+      }
+    };
+  }
+
+  /** {@code @WarnIfSlow}: log a WARN when the method's elapsed time exceeds the threshold. */
+  private Interceptor wrapWithWarnIfSlow(
+      Interceptor delegate, List<Method> methods, Object instance) {
+    WarnIfSlow ann = methods.get(0).getAnnotation(WarnIfSlow.class);
+    return new Interceptor() {
+      @Override
+      public void before(MethodInvocation inv) {
+        inv.setAttachment("warnIfSlow.startNanos", System.nanoTime());
+        delegate.before(inv);
+      }
+
+      @Override
+      public void after(MethodInvocation inv) {
+        delegate.after(inv);
+        warnIfSlow(inv);
+      }
+
+      @Override
+      public void onException(MethodInvocation inv) {
+        delegate.onException(inv);
+        warnIfSlow(inv);
+      }
+
+      private void warnIfSlow(MethodInvocation inv) {
+        Long start = (Long) inv.getAttachment("warnIfSlow.startNanos");
+        if (start != null) {
+          long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+          if (elapsedMs > ann.thresholdMs()) {
+            log.warn(
+                "[{}] slow call detected: {} ms (threshold {} ms)",
+                ann.value(),
+                elapsedMs,
+                ann.thresholdMs());
+          }
+        }
       }
     };
   }

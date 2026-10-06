@@ -23,6 +23,12 @@ package com.github.cc11001100.weavergirl.api.event;
  */
 public class InterceptorEvent {
 
+  /** Attribute carrying the active span's trace id, stamped on the public publish path. */
+  public static final String TRACE_ID = "traceId";
+
+  /** Attribute carrying the active span's span id, stamped on the public publish path. */
+  public static final String SPAN_ID = "spanId";
+
   private final String type;
   private final String plugin;
   private final String className;
@@ -82,6 +88,25 @@ public class InterceptorEvent {
   /** Returns an unmodifiable view of the event's key-value attributes. */
   public java.util.Map<String, String> getAttributes() {
     return java.util.Collections.unmodifiableMap(attributes);
+  }
+
+  /**
+   * Copy this event, setting or clearing trace correlation. A null id removes that attribute so a
+   * publish with no current span does not keep a stale id.
+   */
+  public InterceptorEvent withTrace(String traceId, String spanId) {
+    java.util.Map<String, String> copy = new java.util.LinkedHashMap<String, String>(attributes);
+    if (traceId != null) {
+      copy.put(TRACE_ID, traceId);
+    } else {
+      copy.remove(TRACE_ID);
+    }
+    if (spanId != null) {
+      copy.put(SPAN_ID, spanId);
+    } else {
+      copy.remove(SPAN_ID);
+    }
+    return new InterceptorEvent(type, plugin, className, methodName, timestamp, durationMs, copy);
   }
 
   /** Convert to a JSON-friendly map for structured output. */

@@ -285,6 +285,45 @@ public class MethodInvocation {
   }
 
   /**
+   * Detaches and returns all attachments currently stored on this invocation, leaving the
+   * attachment store {@code null}.
+   *
+   * <p>Used by the weaving engine to carry {@code before} advice state across the {@code
+   * MethodInvocationPool} release/acquire boundary between enter and exit advice: after this call
+   * the invocation may be safely returned to the pool (its {@code clear()} no longer wipes the
+   * carried state), and the returned map is re-attached to the exit-time invocation via {@link
+   * #restoreAttachments(Map)}.
+   *
+   * @return the live attachment map, or {@code null} if no attachment was ever stored
+   * @see #restoreAttachments(Map)
+   * @since 1.9.0
+   */
+  public Map<String, Object> drainAttachments() {
+    Map<String, Object> carried = this.attachments;
+    this.attachments = null;
+    return carried;
+  }
+
+  /**
+   * Re-attaches a map previously detached by {@link #drainAttachments()} onto this invocation.
+   * Existing attachment keys keep their current values (existing entries win).
+   *
+   * @param carried the attachment map to restore, or {@code null} for a no-op
+   * @see #drainAttachments()
+   * @since 1.9.0
+   */
+  public void restoreAttachments(Map<String, Object> carried) {
+    if (carried == null || carried.isEmpty()) {
+      return;
+    }
+    if (this.attachments == null) {
+      this.attachments = carried;
+    } else {
+      this.attachments.putAll(carried);
+    }
+  }
+
+  /**
    * Returns the class that declares the intercepted method.
    *
    * @return the target class, never null

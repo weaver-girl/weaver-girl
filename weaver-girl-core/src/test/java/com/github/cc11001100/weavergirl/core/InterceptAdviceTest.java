@@ -47,7 +47,7 @@ class InterceptAdviceTest {
     Method method = SampleClass.class.getMethod("greet");
     Object[] args = new Object[0];
 
-    MethodInvocation result =
+    Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), args);
 
     assertNull(
@@ -73,14 +73,16 @@ class InterceptAdviceTest {
             skipInterceptor));
 
     Method method = SampleClass.class.getMethod("greet");
-    MethodInvocation result =
+    Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
-    assertNotNull(
+    assertInstanceOf(
+        MethodInvocation.class,
         result,
-        "Should return non-null MethodInvocation when skipMethod is called — triggers ByteBuddy"
-            + " skipOn");
-    assertTrue(result.isSkipped(), "The returned invocation should have isSkipped=true");
+        "skip() must return the MethodInvocation itself — triggers ByteBuddy skipOn");
+    MethodInvocation skip =
+        (MethodInvocation) result;
+    assertTrue(skip.isSkipped(), "The returned invocation should have isSkipped=true");
   }
 
   @Test
@@ -102,7 +104,7 @@ class InterceptAdviceTest {
 
     // Call onMethodEnter for SampleClass — interceptor should NOT match
     Method method = SampleClass.class.getMethod("greet");
-    MethodInvocation result =
+    Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
     assertNull(
@@ -115,7 +117,7 @@ class InterceptAdviceTest {
     InterceptorHolder.setRegistry(null);
 
     Method method = SampleClass.class.getMethod("greet");
-    MethodInvocation result =
+    Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
     assertNull(result, "Should return null when registry is null — original method should execute");
@@ -139,7 +141,7 @@ class InterceptAdviceTest {
             noOpInterceptor));
 
     Method method = SampleClass.class.getMethod("greet");
-    MethodInvocation result =
+    Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
     assertNull(
@@ -153,7 +155,7 @@ class InterceptAdviceTest {
     InterceptorHolder.setInterceptionEnabled(false, "test");
     Method method = SampleClass.class.getMethod("greet");
 
-    MethodInvocation result =
+    Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
     assertNull(result, "Should return null when global interception switch is disabled");
@@ -164,7 +166,7 @@ class InterceptAdviceTest {
     SamplingController.getInstance().setSamplingRate(2);
     Method method = SampleClass.class.getMethod("greet");
 
-    MethodInvocation result =
+    Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
     assertNull(result, "Should return null when the invocation is not sampled");
@@ -189,7 +191,7 @@ class InterceptAdviceTest {
             }));
 
     Method method = SampleClass.class.getMethod("greet");
-    MethodInvocation result =
+    Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
     assertNull(result);
@@ -217,7 +219,7 @@ class InterceptAdviceTest {
     assertFalse(InterceptorHolder.shouldInvoke(name), "Circuit breaker should be open");
 
     Method method = SampleClass.class.getMethod("greet");
-    MethodInvocation result =
+    Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
     assertNull(result);
@@ -242,7 +244,7 @@ class InterceptAdviceTest {
             }));
 
     Method method = SampleClass.class.getMethod("echo", String.class);
-    MethodInvocation result =
+    Object result =
         InterceptAdvice.onMethodEnter(
             SampleClass.class, method, new SampleClass(), new Object[] {"x"});
 
@@ -268,7 +270,7 @@ class InterceptAdviceTest {
             }));
 
     Method method = SampleClass.class.getMethod("greet");
-    MethodInvocation result =
+    Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
     assertNull(result);
@@ -300,7 +302,7 @@ class InterceptAdviceTest {
     PointcutExpression.enterCflow(SampleClass.class.getName(), "outer");
     try {
       Method method = SampleClass.class.getMethod("greet");
-      MethodInvocation result =
+      Object result =
           InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
       assertNull(result);
       assertTrue(
@@ -354,13 +356,19 @@ class InterceptAdviceTest {
             }));
 
     Method method = SampleClass.class.getMethod("greet");
-    MethodInvocation result =
+    Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
-    assertNotNull(result);
+    assertInstanceOf(
+        MethodInvocation.class,
+        result,
+        "must return the MethodInvocation itself when the interceptor skips");
+    MethodInvocation skipped =
+        (MethodInvocation) result;
     assertTrue(
-        result.hasPerInstance(), "Per-instance context should be created for instance-bound pointcuts");
-    assertNotNull(result.getPerInstance());
+        skipped.hasPerInstance(),
+        "Per-instance context should be created for instance-bound pointcuts");
+    assertNotNull(skipped.getPerInstance());
   }
 
   @Test
@@ -384,7 +392,7 @@ class InterceptAdviceTest {
     InterceptorHolder.setRegistry(throwing);
     Method method = SampleClass.class.getMethod("greet");
     try {
-      MethodInvocation result =
+      Object result =
           InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
       assertNull(result, "Outer catch should swallow the exception and return null");
     } finally {
@@ -638,7 +646,7 @@ class InterceptAdviceTest {
       // onMethodEnter pushes its own "greet" frame on top of "outer"; that self-frame is
       // still present (not popped) when onMethodExit's interceptor loop runs, matching how
       // real weaving keeps the frame alive across the whole method body's execution.
-      MethodInvocation invocation =
+      Object invocation =
           InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
       InterceptAdvice.onMethodExit(
           invocation, SampleClass.class, method, new SampleClass(), new Object[0], null, "hello");
@@ -925,7 +933,7 @@ class InterceptAdviceTest {
             aroundInterceptor));
 
     Method method = SampleClass.class.getMethod("greet");
-    MethodInvocation result =
+    Object result =
         InterceptAdvice.onMethodEnter(
             SampleClass.class, method, new SampleClass(), new Object[0]);
 
@@ -957,12 +965,16 @@ class InterceptAdviceTest {
             aroundInterceptor));
 
     Method method = SampleClass.class.getMethod("greet");
-    MethodInvocation result =
+    Object result =
         InterceptAdvice.onMethodEnter(
             SampleClass.class, method, new SampleClass(), new Object[0]);
 
-    assertNotNull(result, "Should return non-null MethodInvocation when proceed is skipped");
-    assertTrue(result.isSkipped(), "Invocation should be marked as skipped");
+    assertInstanceOf(
+        MethodInvocation.class,
+        result,
+        "Should return the MethodInvocation itself when proceed is skipped");
+    assertTrue(
+        ((MethodInvocation) result).isSkipped(), "Invocation should be marked as skipped");
     assertTrue(aroundCalled[0], "around() should have been invoked");
   }
 
@@ -1047,13 +1059,15 @@ class InterceptAdviceTest {
             aroundInterceptor));
 
     Method method = SampleClass.class.getMethod("greet");
-    MethodInvocation result =
+    Object result =
         InterceptAdvice.onMethodEnter(
             SampleClass.class, method, new SampleClass(), new Object[0]);
 
-    assertNotNull(result, "Should return invocation when method is skipped");
-    assertTrue(result.isSkipped());
-    assertEquals("cached", result.getReturnValue(), "Return value should be overridden by interceptor");
+    assertInstanceOf(
+        MethodInvocation.class, result, "Should return invocation when method is skipped");
+    MethodInvocation skipped = (MethodInvocation) result;
+    assertTrue(skipped.isSkipped());
+    assertEquals("cached", skipped.getReturnValue(), "Return value should be overridden by interceptor");
   }
 
   @Test
@@ -1078,12 +1092,17 @@ class InterceptAdviceTest {
             badInterceptor));
 
     Method method = SampleClass.class.getMethod("greet");
-    MethodInvocation result =
+    Object result =
         InterceptAdvice.onMethodEnter(
             SampleClass.class, method, new SampleClass(), new Object[0]);
 
-    assertNotNull(result, "Should return invocation when around interceptor throws");
-    assertTrue(result.isSkipped(), "Method should be skipped when around interceptor throws");
+    assertInstanceOf(
+        MethodInvocation.class,
+        result,
+        "Should return invocation when around interceptor throws");
+    assertTrue(
+        ((MethodInvocation) result).isSkipped(),
+        "Method should be skipped when around interceptor throws");
   }
 
   @Test

@@ -12,6 +12,7 @@ import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.implementation.bytecode.assign.Assigner;
 
@@ -41,7 +42,7 @@ public class InterceptAdvice {
       new ThreadLocal<>();
 
   @Advice.OnMethodEnter(skipOn = MethodInvocation.class)
-  public static MethodInvocation onMethodEnter(
+  public static Object onMethodEnter(
       @Advice.Origin Class<?> targetClass,
       @Advice.Origin Method method,
       @Advice.This(optional = true) Object target,
@@ -171,10 +172,14 @@ public class InterceptAdvice {
       if (invocation.isSkipped()) {
         return invocation;
       }
-      // Not skipped — release back to pool and return null. onMethodExit will acquire
-      // a fresh MethodInvocation from the pool using the available parameters.
+      // Not skipped — detach any before-advice attachments so they survive the
+      // pool's release/acquire boundary, then release the invocation and carry the
+      // attachments to onMethodExit via @Advice.Enter. ByteBuddy only treats a
+      // returned MethodInvocation as a skip signal, so a Map passes through as a
+      // plain carrier without skipping the method body.
+      Map<String, Object> carried = invocation.drainAttachments();
       MethodInvocationPool.release(invocation);
-      return null;
+      return carried;
     } catch (Throwable e) {
       // Never let any error (including OOM, StackOverflow) escape the advice
       return null;
@@ -182,8 +187,9 @@ public class InterceptAdvice {
   }
 
   @Advice.OnMethodExit(onThrowable = Throwable.class)
+  @SuppressWarnings("unchecked")
   public static void onMethodExit(
-      @Advice.Enter MethodInvocation invocation,
+      @Advice.Enter Object enterValue,
       @Advice.Origin Class<?> targetClass,
       @Advice.Origin Method method,
       @Advice.This(optional = true) Object target,
@@ -194,9 +200,9 @@ public class InterceptAdvice {
       // Global kill-switch: when disabled, skip all after/onException callbacks.
       // Release any pooled invocation that enter may have returned (skip case).
       if (!InterceptorHolder.isInterceptionEnabled()) {
-        if (invocation != null) {
+        if (enterValue instanceof MethodInvocation) {
           try {
-            MethodInvocationPool.release(invocation);
+            MethodInvocationPool.release((MethodInvocation) enterValue);
           } catch (Throwable ignored) {
           }
         }
@@ -205,21 +211,29 @@ public class InterceptAdvice {
 
       String methodName = method.getName();
 
-      // If onMethodEnter returned null (no skip), acquire a fresh MethodInvocation
-      // from the pool for the after/onException callbacks.
-      // If onMethodEnter returned an invocation (skip triggered), reuse it.
+      // If onMethodEnter returned a MethodInvocation (skip triggered), reuse it.
+      // If it returned null (no skip), acquire a fresh MethodInvocation from the
+      // pool for the after/onException callbacks; any attachment carrier (Map)
+      // returned by enter is re-attached so before-phase state survives.
       MethodInvocation context;
-      if (invocation != null) {
-        context = invocation;
+      if (enterValue instanceof MethodInvocation) {
+        context = (MethodInvocation) enterValue;
       } else {
         context = MethodInvocationPool.acquire(targetClass, methodName, method, target, arguments);
+        if (enterValue instanceof Map) {
+          context.restoreAttachments((Map<String, Object>) enterValue);
+        }
       }
 
       // Store the original return value / throwable into the invocation context.
+      // In the skip path the invocation is reused, and before/around advice may have already
+      // set a return value via setReturnValue(); initReturnValue() would clobber it with the
+      // (null) default return slot that ByteBuddy left behind for the skipped body, so only
+      // initialize when nothing has been overridden yet.
       if (throwable != null) {
         InterceptorHolder.incrementInterceptorErrorCount();
         context.setThrowable(throwable);
-      } else {
+      } else if (!context.isReturnOverridden()) {
         context.initReturnValue(returnValue);
       }
 
@@ -328,9 +342,9 @@ public class InterceptAdvice {
     } catch (Throwable e) {
       // Never let any error (including OOM, StackOverflow) crash the target application
       // If we have a pooled invocation, release it to prevent pool leak
-      if (invocation != null) {
+      if (enterValue instanceof MethodInvocation) {
         try {
-          MethodInvocationPool.release(invocation);
+          MethodInvocationPool.release((MethodInvocation) enterValue);
         } catch (Throwable poolError) {
           System.err.println(
               "[weaver-girl] Failed to release MethodInvocation to pool: "

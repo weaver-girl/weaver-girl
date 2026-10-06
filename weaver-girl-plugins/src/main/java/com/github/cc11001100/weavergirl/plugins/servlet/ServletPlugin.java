@@ -10,6 +10,8 @@ import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.api.taint.HttpSourceCapture;
+import com.github.cc11001100.weavergirl.api.taint.Taint;
 import com.github.cc11001100.weavergirl.api.tracing.SpanContext;
 import com.github.cc11001100.weavergirl.api.tracing.Tracer;
 import java.lang.reflect.Method;
@@ -193,11 +195,40 @@ public class ServletPlugin extends AbstractPlugin {
 
     Interceptor serviceInterceptor =
         new Interceptor() {
-          private final ThreadLocal<Long> startTime = new ThreadLocal<>();
+          /** One start time per nested service/doFilter. Shared by every registration of this interceptor. */
+          private final ThreadLocal<ArrayDeque<Long>> startTimes = new ThreadLocal<>();
+
+          private void pushStart() {
+            ArrayDeque<Long> stack = startTimes.get();
+            if (stack == null) {
+              stack = new ArrayDeque<Long>();
+              startTimes.set(stack);
+            }
+            stack.addFirst(System.nanoTime());
+          }
+
+          private long popStart() {
+            ArrayDeque<Long> stack = startTimes.get();
+            if (stack == null || stack.isEmpty()) {
+              return System.nanoTime();
+            }
+            long start = stack.removeFirst();
+            if (stack.isEmpty()) {
+              startTimes.remove();
+            }
+            return start;
+          }
 
           @Override
           public void before(MethodInvocation inv) {
-            startTime.set(System.nanoTime());
+            pushStart();
+            // One scope per nested service/doFilter. Closed in after / onException.
+            Taint.openScope();
+            try {
+              HttpSourceCapture.captureRequest(getRequestObject(inv));
+            } catch (Throwable ignored) {
+              // Source capture must not fail the request.
+            }
 
             // === Trace context propagation: incoming request ===
             // Extract trace context from HTTP request headers
@@ -255,8 +286,29 @@ public class ServletPlugin extends AbstractPlugin {
 
           @Override
           public void after(MethodInvocation inv) {
-            long elapsedMs = (System.nanoTime() - startTime.get()) / 1_000_000;
-            startTime.remove();
+            long elapsedMs = (System.nanoTime() - popStart()) / 1_000_000;
+            try {
+              finishServlet(inv, elapsedMs, null);
+            } finally {
+              Taint.closeScope();
+            }
+          }
+
+          @Override
+          public void onException(MethodInvocation inv) {
+            popStart();
+            try {
+              finishServlet(inv, 0, inv.getThrowable());
+            } finally {
+              Taint.closeScope();
+            }
+          }
+
+          private void finishServlet(MethodInvocation inv, long elapsedMs, Throwable error) {
+            if (error != null) {
+              finishServletError(inv, error);
+              return;
+            }
 
             // === Trace context propagation: outgoing response ===
             SpanContext currentSpan = Tracer.getCurrentSpan();
@@ -314,10 +366,7 @@ public class ServletPlugin extends AbstractPlugin {
                         .build());
           }
 
-          @Override
-          public void onException(MethodInvocation inv) {
-            startTime.remove();
-
+          private void finishServletError(MethodInvocation inv, Throwable error) {
             // === Trace context propagation: outgoing response (error) ===
             SpanContext currentSpan = Tracer.getCurrentSpan();
             if (currentSpan != null) {

@@ -11,6 +11,7 @@ import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.api.taint.SqlExecutionSink;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,7 +40,6 @@ public class JdbcPlugin extends AbstractPlugin {
 
   // Target class names
   private static final String STATEMENT = "java.sql.Statement";
-  private static final String PREPARED_STATEMENT = "java.sql.PreparedStatement";
   private static final String CONNECTION = "java.sql.Connection";
   private static final String DATASOURCE = "javax.sql.DataSource";
   // Common implementations
@@ -69,6 +69,11 @@ public class JdbcPlugin extends AbstractPlugin {
           @Override
           public void before(MethodInvocation inv) {
             startTime.set(System.nanoTime());
+            try {
+              SqlExecutionSink.observe(extractSql(inv));
+            } catch (Throwable ignored) {
+              // Sink observation must not fail the query.
+            }
             if (logSql && log.isDebugEnabled()) {
               // Try to extract SQL from first argument (PreparedStatement) or target
               String sql = extractSql(inv);
@@ -154,16 +159,9 @@ public class JdbcPlugin extends AbstractPlugin {
             executeInterceptor,
             10));
 
-    // Intercept PreparedStatement.execute methods
-    // PreparedStatement extends Statement — use byInterface for same reason
-    registry.register(
-        new InterceptorDefinition(
-            name() + "-" + PREPARED_STATEMENT + "-execute",
-            new Pointcut(
-                ClassMatcher.byInterface(PREPARED_STATEMENT),
-                MethodMatcher.byNamePattern("execute|executeQuery|executeUpdate|executeBatch")),
-            executeInterceptor,
-            10));
+    // PreparedStatement extends Statement, so byInterface(Statement) already matches
+    // prepared-statement implementations. A second execute pointcut on PreparedStatement
+    // would run this same interceptor twice and emit two findings for one call.
 
     // Intercept Connection methods
     Interceptor connectionInterceptor =

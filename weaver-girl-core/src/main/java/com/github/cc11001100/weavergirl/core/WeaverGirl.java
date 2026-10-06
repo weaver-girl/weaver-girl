@@ -163,6 +163,7 @@ public class WeaverGirl {
     com.github.cc11001100.weavergirl.core.management.StartupMetrics.begin();
     try {
       ValidationUtils.requireNonNull(instrumentation, "instrumentation");
+      com.github.cc11001100.weavergirl.core.taint.TaintInstrumentation.install(instrumentation);
       log.info("WeaverGirl agent starting...");
       WeaverGirl weaverGirl = new WeaverGirl();
       weaverGirl.instrumentation = instrumentation;
