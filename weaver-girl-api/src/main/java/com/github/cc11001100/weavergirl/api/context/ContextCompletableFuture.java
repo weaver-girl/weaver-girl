@@ -276,7 +276,11 @@ public final class ContextCompletableFuture {
       Executor executor) {
     Objects.requireNonNull(future, "future");
     Objects.requireNonNull(function, "function");
-    return future.exceptionallyAsync(ContextPropagators.wrap(function), wrapExecutor(executor));
+    // CompletableFuture.exceptionallyAsync(fn, executor) is Java 12+; this module targets
+    // Java 8, so emulate it with handleAsync, which has had an executor overload since Java 8.
+    return future.handleAsync(
+        (value, ex) -> ex == null ? value : ContextPropagators.wrap(function).apply(ex),
+        wrapExecutor(executor));
   }
 
   /**

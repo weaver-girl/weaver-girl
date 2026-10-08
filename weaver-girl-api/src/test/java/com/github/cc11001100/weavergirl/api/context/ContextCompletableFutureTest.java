@@ -263,12 +263,12 @@ class ContextCompletableFutureTest {
     ExecutorService delegate = Executors.newSingleThreadExecutor();
     try {
       String result =
-          ContextCompletableFuture.<String>supplyAsync(() -> {
-            throw new IllegalStateException("boom");
-          }, delegate)
-              .exceptionallyAsync(
-                  ex -> ThreadContext.<String>get("traceId"),
-                  ContextCompletableFuture.wrapExecutor(delegate))
+          ContextCompletableFuture.exceptionallyAsync(
+              ContextCompletableFuture.<String>supplyAsync(() -> {
+                throw new IllegalStateException("boom");
+              }, delegate),
+              ex -> ThreadContext.<String>get("traceId"),
+              delegate)
               .get(5, TimeUnit.SECONDS);
 
       assertEquals(

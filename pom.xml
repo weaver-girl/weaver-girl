@@ -187,8 +187,9 @@
                     <execution>
                         <id>default-compile</id>
                         <configuration>
-                            <source>1.8</source>
-                            <target>1.8</target>
+                            <!-- release (not source/target) checks the JDK 8 API surface, so a
+                                 newer-JDK method cannot compile into the Java 8 bytecode. -->
+                            <release>8</release>
                         </configuration>
                     </execution>
                 </executions>
