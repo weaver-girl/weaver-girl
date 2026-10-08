@@ -1,0 +1,64 @@
+name: GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/frontend/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/frontend/package-lock.json
+
+      - name: Install and build
+        working-directory: website/frontend
+        run: |
+          npm ci
+          npm run build
+
+      # react-router's BrowserRouter only handles in-app navigation. A hard
+      # refresh on a sub-route asks Pages for a file that does not exist, so
+      # mirror index.html at every route the app declares.
+      - name: Add SPA fallbacks
+        working-directory: website/frontend
+        run: |
+          for route in quick-start plugins architecture docs; do
+            mkdir -p "dist/$route"
+            cp dist/index.html "dist/$route/index.html"
+          done
+          cp dist/index.html dist/404.html
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: website/frontend/dist
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

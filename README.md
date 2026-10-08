@@ -226,6 +226,14 @@ docker-compose up
 - Java 1.8+
 - Maven 3.6+
 
+## Website
+
+The project site (TypeScript + React + Ant Design) lives in [`website/frontend`](website/frontend) and is published to GitHub Pages by [`.github/workflows/pages.yml`](.github/workflows/pages.yml) on every push to `main` that touches it.
+
+```bash
+cd website/frontend && npm ci && npm run dev   # local preview
+```
+
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
