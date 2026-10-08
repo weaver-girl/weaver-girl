@@ -6,10 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.github.cc11001100.weavergirl.core.InterceptorHolder;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class GlobalInterceptionSwitchTest {
 
+  // The switch is a JVM-wide singleton other test classes toggle (and only restore the flag,
+  // not the counter), so both ends of each test must reset or the count assertions race.
+  @BeforeEach
   @AfterEach
   void reset() {
     GlobalInterceptionSwitch.resetForTest();
