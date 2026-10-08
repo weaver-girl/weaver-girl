@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 17 (release)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           # The compiler plugin still targets Java 1.8 bytecode; JDK 17 is used so the
           # Maven release tooling (central-publishing-maven-plugin) and GPG signing run.
@@ -27,7 +27,7 @@ jobs:
           gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
 
       - name: Cache Maven packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
@@ -65,7 +65,7 @@ jobs:
           cat $AGENT_JAR.sha256
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: Weaver-Girl ${{ github.ref_name }}
           body: |
