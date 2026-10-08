@@ -78,11 +78,20 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
    * annotations. The precedence map assigns each aspect class a stable precedence index based on its
    * position in its own declaration.
    */
+  /**
+   * Aspect names that failed to resolve to a class. {@code getAspectClassName()} falls back to
+   * the definition name, which is not a class, so every registration used to repeat a failing
+   * {@code Class.forName} per definition — quadratic, and the dominant cost of the
+   * concurrent-registration stress tests. Names that do resolve are not cached, so a precedence
+   * annotation added later is still picked up.
+   */
+  private final Set<String> precedenceUnresolvable = new HashSet<>();
+
   private void refreshPrecedence() {
     Map<String, Integer> newMap = new LinkedHashMap<>();
     for (InterceptorDefinition def : definitions) {
       String aspectName = def.getAspectClassName();
-      if (aspectName == null || aspectName.isEmpty()) {
+      if (aspectName == null || aspectName.isEmpty() || precedenceUnresolvable.contains(aspectName)) {
         continue;
       }
       try {
@@ -98,6 +107,7 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
           }
         }
       } catch (Throwable t) {
+        precedenceUnresolvable.add(aspectName);
         log.debug("Failed to load aspect class {} for precedence resolution: {}", aspectName, t.getMessage());
       }
     }
@@ -258,6 +268,7 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
       fireReloadHooks();
     }
     precedenceMap.clear();
+    precedenceUnresolvable.clear();
     for (InterceptorDefinition def : clearedDefinitions) {
       boolean destroyOk = true;
       try {

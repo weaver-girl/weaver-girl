@@ -371,7 +371,7 @@ class FullAgentLifecycleTest {
           .start();
     }
 
-    assertTrue(latch.await(60, TimeUnit.SECONDS));
+    assertTrue(latch.await(10, TimeUnit.SECONDS));
     assertEquals(threadCount * registrationsPerThread, totalRegistered.get());
     assertEquals(threadCount * registrationsPerThread, registry.getAllDefinitions().size());
   }
