@@ -1,52 +1,49 @@
-import { Table, Typography } from "antd";
-import type { TableProps } from "antd";
-import { CodeBlock } from "../components/CodeBlock";
-import { type ModuleRow, modules } from "../data/content";
+import { PageHero } from "../components/PageHero";
+import { modules } from "../data/content";
 
-const { Title, Paragraph } = Typography;
-
-const columns: TableProps<ModuleRow>["columns"] = [
-  { title: "模块", dataIndex: "name", key: "name", render: (name: string) => <code>{name}</code> },
-  { title: "职责", dataIndex: "description", key: "description" },
+const FLOW = [
+  { name: "premain", text: "启动时挂入目标 JVM" },
+  { name: "PluginLoader", text: "SPI 发现插件" },
+  { name: "Registry", text: "登记拦截器" },
+  { name: "Advice", text: "内联进目标方法" },
 ];
-
-const architecture = `+--------------------------------------------------+
-|                  目标 JVM                          |
-|  +----------------------------------------------+ |
-|  |        Weaver-Girl Agent (premain)            | |
-|  |   Transformer    PluginLoader     YAML 配置   | |
-|  |        \\              |              /        | |
-|  |         +------------- v -------------+        | |
-|  |         |  DefaultInterceptorRegistry |        | |
-|  |         +------------- | -------------+        | |
-|  |         |     InterceptAdvice         |        | |
-|  |         |  (ByteBuddy @Advice 内联)    |        | |
-|  |         +-----------------------------+        | |
-|  +----------------------------------------------+ |
-+--------------------------------------------------+`;
 
 export function ArchitecturePage() {
   return (
     <>
-      <Title level={2}>架构</Title>
-      <Paragraph>
-        Agent 在目标 JVM 启动时通过 premain 挂入，由插件加载器经 SPI 发现插件并登记拦截器，
-        ByteBuddy 在类加载时把 Advice 内联进目标方法。
-      </Paragraph>
-      <CodeBlock code={architecture} />
+      <PageHero
+        kicker="ARCHITECTURE"
+        title="一条织入链路"
+        lede="Agent 在目标 JVM 启动时通过 premain 挂入，插件加载器经 SPI 发现插件并登记拦截器，ByteBuddy 在类加载时把 Advice 内联进目标方法。"
+      />
 
-      <Title level={3} style={{ marginTop: 32 }}>
-        模块
-      </Title>
-      <Table<ModuleRow> columns={columns} dataSource={modules} pagination={false} size="middle" />
+      <div className="flow" style={{ marginTop: 36 }}>
+        {FLOW.map((node, i) => (
+          <span key={node.name} style={{ display: "contents" }}>
+            {i > 0 && <span className="flow-arrow">→</span>}
+            <div className="flow-node">
+              <b>{node.name}</b>
+              <span>{node.text}</span>
+            </div>
+          </span>
+        ))}
+      </div>
 
-      <Title level={3} style={{ marginTop: 32 }}>
-        运行时要求
-      </Title>
-      <Paragraph>
-        主代码以 <code>--release 8</code> 编译，保证产物只使用 JDK 8 的 API，可以运行在 Java 8
-        及以上。构建本身需要 JDK 11 或更高版本。
-      </Paragraph>
+      <h2 className="subhead">模块</h2>
+      <div className="module-list">
+        {modules.map((mod) => (
+          <div key={mod.key} className="module-row">
+            <code>{mod.name}</code>
+            <span>{mod.description}</span>
+          </div>
+        ))}
+      </div>
+
+      <h2 className="subhead">运行时要求</h2>
+      <p className="prose">
+        主代码以 <code className="inline">--release 8</code> 编译，产物只使用 JDK 8 的 API，可以运行在 Java
+        8 及以上。构建本身需要 JDK 11 或更高版本。
+      </p>
     </>
   );
 }

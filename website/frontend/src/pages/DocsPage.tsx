@@ -1,25 +1,23 @@
-import { Card, Col, Row, Typography } from "antd";
-import { ExportOutlined } from "@ant-design/icons";
+import { PageHero } from "../components/PageHero";
 import { docLinks } from "../data/content";
-
-const { Title, Paragraph } = Typography;
 
 export function DocsPage() {
   return (
     <>
-      <Title level={2}>文档</Title>
-      <Paragraph>完整文档随源码维护在仓库的 docs 目录，这里给出入口。</Paragraph>
-      <Row gutter={[16, 16]}>
-        {docLinks.map((doc) => (
-          <Col key={doc.href} xs={24} md={12}>
-            <a href={doc.href} target="_blank" rel="noreferrer">
-              <Card hoverable title={doc.title} extra={<ExportOutlined />}>
-                {doc.description}
-              </Card>
-            </a>
-          </Col>
+      <PageHero
+        kicker="DOCS"
+        title="文档都在仓库里"
+        lede="完整文档随源码一起维护在 docs 目录，保证和代码同一个版本。这里是入口。"
+      />
+      <div className="doc-grid" style={{ marginTop: 36 }}>
+        {docLinks.map((doc, i) => (
+          <a key={doc.href} className="doc-card" href={doc.href} target="_blank" rel="noreferrer">
+            <span className="doc-kicker">0{i + 1} · 仓库文档</span>
+            <h3>{doc.title}</h3>
+            <p>{doc.description}</p>
+          </a>
         ))}
-      </Row>
+      </div>
     </>
   );
 }

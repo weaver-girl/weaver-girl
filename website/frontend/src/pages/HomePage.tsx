@@ -1,56 +1,83 @@
-import { Button, Card, Col, Row, Space, Typography } from "antd";
-import { GithubOutlined } from "@ant-design/icons";
 import { Link } from "react-router-dom";
 import { CodeBlock } from "../components/CodeBlock";
+import { Loom } from "../components/Loom";
 import { REPO_URL, features, quickStart } from "../data/content";
 
-const { Title, Paragraph, Text } = Typography;
+const STATS = [
+  { value: "16", label: "内置插件，挂上即拦截" },
+  { value: "3", label: "种写法：API、注解、YAML" },
+  { value: "Java 8+", label: "字节码，JDK 8 到 21 通吃" },
+  { value: "0", label: "配置即可启动" },
+];
 
 export function HomePage() {
   return (
     <>
       <section className="hero">
-        <Text type="secondary">基于 ByteBuddy 的 Java 字节码插桩框架</Text>
-        <Title style={{ marginTop: 8, marginBottom: 12 }}>Weaver Girl</Title>
-        <Paragraph style={{ fontSize: 18, maxWidth: 720 }}>
-          给任意 Java 应用挂上一个 agent，无需改源码即可拦截方法调用、采集调用链与指标。
-          灵感来自 SkyWalking 与 OpenTelemetry Java Agent，定位是 APM / IAST 工具的 Hook 底座。
-        </Paragraph>
-        <Space size="middle" wrap>
-          <Link to="/quick-start">
-            <Button type="primary" size="large">
+        <div>
+          <div className="eyebrow">
+            <span className="eyebrow-dot" />
+            基于 ByteBuddy 的 Java 字节码插桩框架
+          </div>
+          <h1>
+            把观测能力
+            <br />
+            <em>织进</em>
+            <br />
+            每一个方法。
+          </h1>
+          <p className="lede">
+            给任意 Java 应用挂上一个 agent，不用改一行源码，就能拦截方法调用、串起调用链、导出指标。
+            灵感来自 SkyWalking 与 OpenTelemetry Java Agent，定位是 APM 与 IAST 工具的 Hook 底座。
+          </p>
+          <div className="cta-row">
+            <Link to="/quick-start" className="btn btn-primary">
               30 秒上手
-            </Button>
-          </Link>
-          <Button size="large" icon={<GithubOutlined />} href={REPO_URL} target="_blank">
-            GitHub
-          </Button>
-        </Space>
-        <div className="hero-code">
-          <CodeBlock code={"java -javaagent:weaver-girl-agent.jar -jar your-app.jar"} />
+            </Link>
+            <a className="btn btn-ghost" href={REPO_URL} target="_blank" rel="noreferrer">
+              查看源码
+            </a>
+          </div>
+        </div>
+        <div className="hero-art">
+          <Loom />
+        </div>
+      </section>
+
+      <section className="stats">
+        {STATS.map((stat) => (
+          <div key={stat.label} className="stat">
+            <b>{stat.value}</b>
+            <span>{stat.label}</span>
+          </div>
+        ))}
+      </section>
+
+      <section className="section">
+        <div className="section-head">
+          <h2>能做什么</h2>
+          <p>从拦截到可观测，生产环境要的自我保护也在里面。</p>
+        </div>
+        <div className="grid-3">
+          {features.map((feature, i) => (
+            <article key={feature.title} className="feature-card">
+              <span className="feature-index">0{i + 1}</span>
+              <h3>{feature.title}</h3>
+              <p>{feature.description}</p>
+            </article>
+          ))}
         </div>
       </section>
 
       <section className="section">
-        <Title level={2}>能做什么</Title>
-        <Row gutter={[16, 16]}>
-          {features.map((feature) => (
-            <Col key={feature.title} xs={24} md={12} lg={8}>
-              <Card title={feature.title} style={{ height: "100%" }}>
-                {feature.description}
-              </Card>
-            </Col>
-          ))}
-        </Row>
-      </section>
-
-      <section className="section">
-        <Title level={2}>立刻跑起来</Title>
-        <Paragraph>构建 agent 并挂到任何 Java 进程上，16 个内置插件自动发现并开始拦截。</Paragraph>
-        <CodeBlock code={quickStart} />
-        <Paragraph style={{ marginTop: 16 }}>
-          <Link to="/quick-start">查看配置、编程式 API 与注解写法 →</Link>
-        </Paragraph>
+        <div className="section-head">
+          <h2>立刻跑起来</h2>
+          <p>构建 agent，挂到任何 Java 进程。16 个内置插件自动发现并开始拦截。</p>
+        </div>
+        <CodeBlock code={quickStart} file="terminal" />
+        <p className="prose" style={{ marginTop: 16 }}>
+          <Link to="/quick-start">接着看配置、编程式 API 与注解写法 →</Link>
+        </p>
       </section>
     </>
   );
