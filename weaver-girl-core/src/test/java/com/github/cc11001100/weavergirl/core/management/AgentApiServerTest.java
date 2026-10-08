@@ -140,7 +140,8 @@ class AgentApiServerTest {
 
     String response = get("/events");
     assertTrue(response.contains("\"events\""));
-    assertTrue(response.contains("\"count\":1"));
+    // The publisher history is a JVM-wide bounded buffer other tests write concurrently, so
+    // assert that this test's own event is present rather than an exact count.
     assertTrue(response.contains("test-event"));
     assertTrue(response.contains("com.example.Foo"));
     assertTrue(response.contains("bar"));
@@ -168,9 +169,8 @@ class AgentApiServerTest {
 
     String response = get("/lifecycle");
     assertTrue(response.contains("\"events\""));
-    assertTrue(response.contains("\"count\":2"));
-    assertTrue(response.contains("\"registryCount\":1"));
-    assertTrue(response.contains("\"pluginCount\":1"));
+    // Counts come from the shared publisher history, which other tests append to concurrently,
+    // so check the events this test published instead of exact totals.
     assertTrue(response.contains("weaver-girl.lifecycle.registry"));
     assertTrue(response.contains("weaver-girl.lifecycle.plugin"));
     assertTrue(response.contains("test-reg"));
