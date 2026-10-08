@@ -22,16 +22,16 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK ${{ matrix.java }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: ${{ matrix.java }}
           distribution: temurin
 
       - name: Cache Maven packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
@@ -48,7 +48,7 @@ jobs:
 
       - name: Upload test reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-reports-jdk${{ matrix.java }}
           path: '**/surefire-reports/*.txt'
@@ -59,16 +59,16 @@ jobs:
     needs: build
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 17
           distribution: temurin
 
       - name: Cache Maven packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
@@ -79,7 +79,7 @@ jobs:
 
       - name: Upload JaCoCo Report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: jacoco-coverage-report
           path: '**/target/site/jacoco/**'
@@ -89,14 +89,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 17 (build)
         # The reactor cannot build on JDK 8: all main sources use --release 8,
         # which is not a valid javac flag on JDK 8. JDK 17 is the build JDK; the
         # resulting agent jar is --release 8 bytecode and still loads on JDK 8
         # (verified by agent-smoke.yml's bare-attach matrix).
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: 17
           distribution: temurin
@@ -114,7 +114,7 @@ jobs:
           echo "Plugin count:"
           jar tf "$AGENT_JAR" | grep 'plugins/.*Plugin\.class' | grep -v '\$' | wc -l
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: weaver-girl-agent
           path: weaver-girl-agent/target/weaver-girl-agent-*.jar
@@ -130,10 +130,10 @@ jobs:
         java: [ 8, 11, 17, 21 ]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK ${{ matrix.java }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           java-version: ${{ matrix.java }}
           distribution: temurin
@@ -146,7 +146,7 @@ jobs:
 
       - name: Verify agent loads on JDK ${{ matrix.java }}
         run: |
-          AGENT_JAR=$(find agent-jar -name "weaver-girl-agent-*.jar" | head -1)
+          AGENT_JAR=$(find agent-jar -name "weaver-girl-agent-*.jar" ! -name "*sources*" ! -name "*javadoc*" | head -1)
           test -n "$AGENT_JAR" || (echo "FAIL: agent jar not found" && exit 1)
 
           cat > /tmp/CompatibilityTarget.java <<'EOF'
