@@ -71,7 +71,7 @@ class ConcurrencyStressTest {
     }
 
     startLatch.countDown();
-    assertTrue(doneLatch.await(120, TimeUnit.SECONDS));
+    assertTrue(doneLatch.await(30, TimeUnit.SECONDS));
     executor.shutdown();
 
     assertEquals(0, errors.get(), "No exceptions expected during concurrent operations");
@@ -147,7 +147,7 @@ class ConcurrencyStressTest {
     }
 
     startLatch.countDown();
-    assertTrue(doneLatch.await(120, TimeUnit.SECONDS));
+    assertTrue(doneLatch.await(30, TimeUnit.SECONDS));
     executor.shutdown();
 
     assertEquals(0, readErrors.get(), "Readers should never see exceptions");
@@ -189,7 +189,7 @@ class ConcurrencyStressTest {
     }
 
     startLatch.countDown();
-    assertTrue(doneLatch.await(120, TimeUnit.SECONDS));
+    assertTrue(doneLatch.await(30, TimeUnit.SECONDS));
     executor.shutdown();
 
     assertEquals(0, errors.get(), "InterceptorHolder should be thread-safe");
