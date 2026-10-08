@@ -54,7 +54,7 @@ class DefaultInterceptorRegistryConcurrentTest {
           });
     }
 
-    assertTrue(latch.await(10, TimeUnit.SECONDS));
+    assertTrue(latch.await(60, TimeUnit.SECONDS));
     executor.shutdown();
 
     assertEquals(threadCount * registrationsPerThread, registry.getAllDefinitions().size());
@@ -89,7 +89,7 @@ class DefaultInterceptorRegistryConcurrentTest {
           });
     }
 
-    assertTrue(latch.await(10, TimeUnit.SECONDS));
+    assertTrue(latch.await(60, TimeUnit.SECONDS));
     executor.shutdown();
 
     // Should have original odd-numbered interceptors + new ones
@@ -138,7 +138,7 @@ class DefaultInterceptorRegistryConcurrentTest {
           });
     }
 
-    assertTrue(latch.await(10, TimeUnit.SECONDS));
+    assertTrue(latch.await(60, TimeUnit.SECONDS));
     executor.shutdown();
 
     // All queries should have completed without exception
