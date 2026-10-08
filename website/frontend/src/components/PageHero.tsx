@@ -8,12 +8,9 @@ interface PageHeroProps {
 export function PageHero({ kicker, title, lede }: PageHeroProps) {
   return (
     <header className="page-hero">
-      <div className="eyebrow">
-        <span className="eyebrow-dot" />
-        {kicker}
-      </div>
+      <p className="kicker">{kicker}</p>
       <h1>{title}</h1>
-      <p>{lede}</p>
+      <p className="dek">{lede}</p>
     </header>
   );
 }
