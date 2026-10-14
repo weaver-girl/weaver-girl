@@ -62,7 +62,7 @@
         <snakeyaml.version>2.7</snakeyaml.version>
         <junit.version>5.10.2</junit.version>
         <mockito.version>5.11.0</mockito.version>
-        <micrometer.version>1.14.5</micrometer.version>
+        <micrometer.version>1.17.1</micrometer.version>
         <aopalliance.version>1.0</aopalliance.version>
 
         <!-- Quality tools -->
