@@ -411,6 +411,33 @@ class FieldAdviceTest {
   }
 
   @Test
+  void onFieldExit_publishesSnapshotToDurableRegistry() throws Exception {
+    // The pool clears returnSnapshot off the invocation, so the only way a consumer can read it
+    // is through the durable registry that onFieldExit publishes to alongside setReturnSnapshot.
+    com.github.cc11001100.weavergirl.api.interceptor.ReturnVersion.clear();
+    Field f = field("value");
+
+    FieldAdvice.onFieldExit(
+        new CapturingFieldInvocation(SampleClass.class, "value", "java.lang.String", new SampleClass()),
+        SampleClass.class,
+        f,
+        new SampleClass(),
+        "hello",
+        null);
+
+    String fieldKey = SampleClass.class.getName() + ".value";
+    com.github.cc11001100.weavergirl.api.interceptor.ReturnSnapshot snapshot =
+        com.github.cc11001100.weavergirl.api.interceptor.ReturnVersion.latestSnapshot(fieldKey);
+    assertNotNull(snapshot, "onFieldExit must publish the snapshot to the durable registry");
+    assertEquals("hello", snapshot.getValue());
+    assertEquals("value", snapshot.getMethodName(), "a field snapshot records the field name");
+    assertEquals(
+        com.github.cc11001100.weavergirl.api.interceptor.ReturnVersion.get(fieldKey),
+        snapshot.getVersion(),
+        "the published snapshot version must match the version tracker");
+  }
+
+  @Test
   void onFieldExit_returnOverridden_usesOverrideValueInSnapshot() throws Exception {
     Field f = field("value");
     CapturingFieldInvocation invocation =

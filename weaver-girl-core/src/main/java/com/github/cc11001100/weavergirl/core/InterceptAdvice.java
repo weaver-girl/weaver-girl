@@ -306,6 +306,11 @@ public class InterceptAdvice {
               new com.github.cc11001100.weavergirl.api.interceptor.ReturnSnapshot(
                   returnValue, version, methodName, method.getReturnType());
           context.setReturnSnapshot(snapshot);
+          // The context is pooled and cleared right after this method returns, which would
+          // otherwise null out returnSnapshot before any consumer could read it. Publish the
+          // snapshot to the durable registry so downstream consumers can still observe it.
+          com.github.cc11001100.weavergirl.api.interceptor.ReturnVersion.recordSnapshot(
+              methodKey, snapshot);
         } catch (Throwable versionError) {
           // Never let bookkeeping break the return path
         }

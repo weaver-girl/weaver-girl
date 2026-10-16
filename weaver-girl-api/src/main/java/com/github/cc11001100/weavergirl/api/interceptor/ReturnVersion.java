@@ -33,6 +33,8 @@ import java.util.concurrent.atomic.AtomicLong;
 public class ReturnVersion {
 
   private static final ConcurrentHashMap<String, AtomicLong> VERSION_MAP = new ConcurrentHashMap<>();
+  private static final ConcurrentHashMap<String, ReturnSnapshot> LATEST_SNAPSHOT =
+      new ConcurrentHashMap<>();
 
   private ReturnVersion() {}
 
@@ -63,6 +65,55 @@ public class ReturnVersion {
   }
 
   /**
+   * Publishes the most recent {@link ReturnSnapshot} for the given method or field signature.
+   *
+   * <p>The snapshot survives invocation pooling: the exit advice records the snapshot on the
+   * per-access invocation, but that invocation is cleared when it returns to the pool, so
+   * {@code invocation.getReturnSnapshot()} is never observable by downstream consumers after the
+   * advice returns. This registry is the durable publish point — consumers read the last snapshot
+   * with {@link #latestSnapshot(String)} and pair it with {@link #get(String)} to detect a stale
+   * cached value.
+   *
+   * @param methodSignature the method or field signature (e.g. {@code "com.example.Service.process"})
+   * @param snapshot the snapshot to publish, or null to leave the last snapshot in place
+   * @see #latestSnapshot(String)
+   * @since 2.0.0
+   */
+  public static void recordSnapshot(String methodSignature, ReturnSnapshot snapshot) {
+    if (snapshot != null) {
+      LATEST_SNAPSHOT.put(methodSignature, snapshot);
+    }
+  }
+
+  /**
+   * Returns the most recent {@link ReturnSnapshot} published for the given method or field
+   * signature, or {@code null} if none has been recorded yet.
+   *
+   * <p>The returned snapshot carries a {@link ReturnSnapshot#getVersion() version}; compare it
+   * against {@link #get(String)} to check whether a cached value is still current.
+   *
+   * @param methodSignature the method or field signature
+   * @return the last published snapshot, or null
+   * @see #recordSnapshot(String, ReturnSnapshot)
+   * @since 2.0.0
+   */
+  public static ReturnSnapshot latestSnapshot(String methodSignature) {
+    return LATEST_SNAPSHOT.get(methodSignature);
+  }
+
+  /**
+   * Removes the published snapshot for the given signature.
+   *
+   * <p>This is primarily intended for testing.
+   *
+   * @param methodSignature the method or field signature
+   * @since 2.0.0
+   */
+  public static void clearSnapshot(String methodSignature) {
+    LATEST_SNAPSHOT.remove(methodSignature);
+  }
+
+  /**
    * Resets the version counter for the given method signature to 0.
    *
    * <p>This is primarily intended for testing.
@@ -80,5 +131,6 @@ public class ReturnVersion {
    */
   public static void clear() {
     VERSION_MAP.clear();
+    LATEST_SNAPSHOT.clear();
   }
 }

@@ -460,6 +460,31 @@ class InterceptAdviceTest {
   }
 
   @Test
+  void onMethodExit_publishesSnapshotToDurableRegistry() throws Exception {
+    // The context is cleared when released to the pool, so the only way a consumer can read the
+    // return snapshot is through the durable registry that onMethodExit publishes to alongside
+    // setReturnSnapshot.
+    com.github.cc11001100.weavergirl.api.interceptor.ReturnVersion.clear();
+    Method method = SampleClass.class.getMethod("greet");
+    MethodInvocation invocation =
+        new MethodInvocation(SampleClass.class, "greet", new SampleClass(), new Object[0]);
+
+    InterceptAdvice.onMethodExit(
+        invocation, SampleClass.class, method, new SampleClass(), new Object[0], null, "hello");
+
+    String methodKey = SampleClass.class.getName() + ".greet";
+    com.github.cc11001100.weavergirl.api.interceptor.ReturnSnapshot snapshot =
+        com.github.cc11001100.weavergirl.api.interceptor.ReturnVersion.latestSnapshot(methodKey);
+    assertNotNull(snapshot, "onMethodExit must publish the snapshot to the durable registry");
+    assertEquals("hello", snapshot.getValue());
+    assertEquals("greet", snapshot.getMethodName());
+    assertEquals(
+        com.github.cc11001100.weavergirl.api.interceptor.ReturnVersion.get(methodKey),
+        snapshot.getVersion(),
+        "the published snapshot version must match the version tracker");
+  }
+
+  @Test
   void onMethodExit_withThrowable_setsThrowableAndCallsOnException() throws Exception {
     MethodInvocation invocation =
         new MethodInvocation(SampleClass.class, "greet", new SampleClass(), new Object[0]);
