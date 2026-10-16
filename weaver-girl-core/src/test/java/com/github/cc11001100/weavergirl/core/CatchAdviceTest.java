@@ -1,6 +1,12 @@
 package com.github.cc11001100.weavergirl.core;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.github.cc11001100.weavergirl.api.interceptor.CatchInterceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.CatchInvocation;
@@ -21,6 +27,12 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Unit tests for {@link CatchAdvice#dispatch}: gating, matching, invocation, and disposition
+ * resolution. These drive the dispatch entry point directly (no weaving); the end-to-end wiring
+ * through {@link com.github.cc11001100.weavergirl.core.transformer.WeaverTransformer} on a real
+ * generated class is covered by {@link CatchAdviceRealWeavingTest}.
+ */
 class CatchAdviceTest {
 
   private DefaultInterceptorRegistry registry;
@@ -83,57 +95,57 @@ class CatchAdviceTest {
     return CatchPointcut.inClass(ClassMatcher.byName(SampleClass.class.getName()), Throwable.class);
   }
 
-  // --- onCatchEnter: gating checks ---
+  // --- dispatch: gating checks ---
 
   @Test
-  void onCatchEnter_interceptionDisabled_returnsNull() throws Exception {
+  void dispatch_interceptionDisabled_returnsNull() throws Exception {
     GlobalInterceptionSwitch.setEnabled(false, "test");
 
-    CatchInvocation result =
-        CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), new RuntimeException("boom"));
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(SampleClass.class, method("doWork"), new RuntimeException("boom"), registry);
 
     assertNull(result);
   }
 
   @Test
-  void onCatchEnter_nullRegistry_returnsNull() throws Exception {
-    InterceptorHolder.setRegistry(null);
-
-    CatchInvocation result =
-        CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), new RuntimeException("boom"));
+  void dispatch_nullRegistry_returnsNull() throws Exception {
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(SampleClass.class, method("doWork"), new RuntimeException("boom"), null);
 
     assertNull(result);
   }
 
   @Test
-  void onCatchEnter_samplingSkipsInvocation_returnsNull() throws Exception {
+  void dispatch_samplingSkipsInvocation_returnsNull() throws Exception {
     SamplingController.getInstance().setSamplingRate(2);
     SamplingController.getInstance().resetCounter();
 
     // First invocation with rate=2: counter=1, 1 % 2 != 0 -> shouldSample() is false
-    CatchInvocation result =
-        CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), new RuntimeException("boom"));
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(SampleClass.class, method("doWork"), new RuntimeException("boom"), registry);
 
     assertNull(result);
   }
 
   @Test
-  void onCatchEnter_nullCaughtException_returnsNull() throws Exception {
-    CatchInvocation result = CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), null);
+  void dispatch_nullCaughtException_returnsNull() throws Exception {
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(SampleClass.class, method("doWork"), null, registry);
 
     assertNull(result);
   }
 
   @Test
-  void onCatchEnter_noMatchingInterceptor_returnsNullAndReleasesInvocation() throws Exception {
-    CatchInvocation result =
-        CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), new RuntimeException("boom"));
+  void dispatch_noMatchingInterceptor_returnsNull() throws Exception {
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(
+            SampleClass.class, method("doWork"), new RuntimeException("boom"), registry);
 
-    assertNull(result, "Unlike FieldAdvice, CatchAdvice releases and returns null when nothing matches");
+    assertNull(result);
   }
 
   @Test
-  void onCatchEnter_nonCatchInterceptorsAreIgnored() throws Exception {
+  void dispatch_nonCatchInterceptorsAreIgnored() throws Exception {
     Interceptor plainInterceptor =
         new Interceptor() {
           @Override
@@ -143,16 +155,17 @@ class CatchAdviceTest {
         new InterceptorDefinition(
             "plain", new Pointcut(ClassMatcher.any(), MethodMatcher.any()), plainInterceptor));
 
-    CatchInvocation result =
-        CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), new RuntimeException("boom"));
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(
+            SampleClass.class, method("doWork"), new RuntimeException("boom"), registry);
 
     assertNull(result);
   }
 
-  // --- onCatchEnter: matching invokes onCatch ---
+  // --- dispatch: matching invokes onCatch ---
 
   @Test
-  void onCatchEnter_matchingInterceptor_invokesOnCatch_andReturnsInvocation() throws Exception {
+  void dispatch_matchingInterceptor_invokesOnCatch() throws Exception {
     List<Throwable> seen = new ArrayList<>();
     AbstractCatchInterceptor interceptor =
         new AbstractCatchInterceptor() {
@@ -169,18 +182,16 @@ class CatchAdviceTest {
     registerCatchInterceptor(registry, "match-test", interceptor);
 
     RuntimeException ex = new RuntimeException("boom");
-    CatchInvocation result = CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), ex);
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(SampleClass.class, method("doWork"), ex, registry);
 
     assertEquals(1, seen.size());
     assertSame(ex, seen.get(0));
-    assertNotNull(result, "A matched interceptor should cause the invocation to be returned (not released)");
-    assertEquals(SampleClass.class, result.getTargetClass());
-    assertEquals("doWork", result.getMethodName());
-    assertSame(ex, result.getCaughtException());
+    assertNull(result, "an interceptor that only observes requests no change, so dispatch stays null");
   }
 
   @Test
-  void onCatchEnter_nonMatchingExceptionType_interceptorNotInvoked() throws Exception {
+  void dispatch_nonMatchingExceptionType_interceptorNotInvoked() throws Exception {
     boolean[] called = {false};
     AbstractCatchInterceptor interceptor =
         new AbstractCatchInterceptor() {
@@ -198,15 +209,16 @@ class CatchAdviceTest {
         };
     registerCatchInterceptor(registry, "no-match", interceptor);
 
-    CatchInvocation result =
-        CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), new RuntimeException("boom"));
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(
+            SampleClass.class, method("doWork"), new RuntimeException("boom"), registry);
 
     assertFalse(called[0]);
     assertNull(result);
   }
 
   @Test
-  void onCatchEnter_nonMatchingClass_interceptorNotInvoked() throws Exception {
+  void dispatch_nonMatchingClass_interceptorNotInvoked() throws Exception {
     boolean[] called = {false};
     AbstractCatchInterceptor interceptor =
         new AbstractCatchInterceptor() {
@@ -224,15 +236,16 @@ class CatchAdviceTest {
         };
     registerCatchInterceptor(registry, "no-class-match", interceptor);
 
-    CatchInvocation result =
-        CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), new RuntimeException("boom"));
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(
+            SampleClass.class, method("doWork"), new RuntimeException("boom"), registry);
 
     assertFalse(called[0]);
     assertNull(result);
   }
 
   @Test
-  void onCatchEnter_subclassExceptionMatches() throws Exception {
+  void dispatch_subclassExceptionMatches() throws Exception {
     boolean[] called = {false};
     AbstractCatchInterceptor interceptor =
         new AbstractCatchInterceptor() {
@@ -250,15 +263,16 @@ class CatchAdviceTest {
         };
     registerCatchInterceptor(registry, "subclass-match", interceptor);
 
-    CatchInvocation result =
-        CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), new IllegalArgumentException("boom"));
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(
+            SampleClass.class, method("doWork"), new IllegalArgumentException("boom"), registry);
 
     assertTrue(called[0]);
-    assertNotNull(result);
+    assertNull(result, "an observer-only interceptor requests no change");
   }
 
   @Test
-  void onCatchEnter_multipleCatchPointcutsOnSameInterceptor_matchesEither() throws Exception {
+  void dispatch_multipleCatchPointcutsOnSameInterceptor_matchesEither() throws Exception {
     List<String> matches = new ArrayList<>();
     AbstractCatchInterceptor interceptor =
         new AbstractCatchInterceptor() {
@@ -277,14 +291,15 @@ class CatchAdviceTest {
         };
     registerCatchInterceptor(registry, "multi-pointcut", interceptor);
 
-    CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), new IllegalArgumentException("boom"));
+    CatchAdvice.dispatch(
+        SampleClass.class, method("doWork"), new IllegalArgumentException("boom"), registry);
 
     assertEquals(1, matches.size());
     assertEquals("java.lang.IllegalArgumentException", matches.get(0));
   }
 
   @Test
-  void onCatchEnter_multipleInterceptorsMatchingSameCatch_bothInvoked() throws Exception {
+  void dispatch_multipleInterceptorsMatchingSameCatch_bothInvoked() throws Exception {
     List<String> invoked = new ArrayList<>();
     AbstractCatchInterceptor first =
         new AbstractCatchInterceptor() {
@@ -313,17 +328,18 @@ class CatchAdviceTest {
     registerCatchInterceptor(registry, "first", first);
     registerCatchInterceptor(registry, "second", second);
 
-    CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), new RuntimeException("boom"));
+    CatchAdvice.dispatch(
+        SampleClass.class, method("doWork"), new RuntimeException("boom"), registry);
 
     assertEquals(2, invoked.size());
     assertTrue(invoked.contains("first"));
     assertTrue(invoked.contains("second"));
   }
 
-  // --- onCatchEnter: interceptor behavior controls are recorded on the invocation ---
+  // --- dispatch: interceptor behavior controls resolve into a disposition ---
 
   @Test
-  void onCatchEnter_interceptorSuppressesCatch_invocationReflectsSuppression() throws Exception {
+  void dispatch_interceptorSuppressesCatch_resolvesSuppression() throws Exception {
     AbstractCatchInterceptor interceptor =
         new AbstractCatchInterceptor() {
           @Override
@@ -338,15 +354,18 @@ class CatchAdviceTest {
         };
     registerCatchInterceptor(registry, "suppress-test", interceptor);
 
-    CatchInvocation result =
-        CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), new RuntimeException("boom"));
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(
+            SampleClass.class, method("doWork"), new RuntimeException("boom"), registry);
 
     assertNotNull(result);
-    assertTrue(result.isCatchSuppressed());
+    assertTrue(result.suppressed);
+    assertNull(result.replacementException);
+    assertFalse(result.returnOverridden);
   }
 
   @Test
-  void onCatchEnter_interceptorReplacesException_invocationReflectsReplacement() throws Exception {
+  void dispatch_interceptorReplacesException_resolvesReplacement() throws Exception {
     IllegalStateException replacement = new IllegalStateException("replacement");
     AbstractCatchInterceptor interceptor =
         new AbstractCatchInterceptor() {
@@ -362,16 +381,18 @@ class CatchAdviceTest {
         };
     registerCatchInterceptor(registry, "replace-test", interceptor);
 
-    CatchInvocation result =
-        CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), new RuntimeException("boom"));
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(
+            SampleClass.class, method("doWork"), new RuntimeException("boom"), registry);
 
     assertNotNull(result);
-    assertTrue(result.isExceptionOverridden());
-    assertSame(replacement, result.getReplacementException());
+    assertSame(replacement, result.replacementException);
+    assertFalse(result.returnOverridden);
+    assertFalse(result.suppressed);
   }
 
   @Test
-  void onCatchEnter_interceptorSetsCatchReturnValue_invocationReflectsOverride() throws Exception {
+  void dispatch_interceptorSetsCatchReturnValue_resolvesReturnOverride() throws Exception {
     AbstractCatchInterceptor interceptor =
         new AbstractCatchInterceptor() {
           @Override
@@ -386,18 +407,19 @@ class CatchAdviceTest {
         };
     registerCatchInterceptor(registry, "return-override-test", interceptor);
 
-    CatchInvocation result =
-        CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), new RuntimeException("boom"));
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(
+            SampleClass.class, method("doWork"), new RuntimeException("boom"), registry);
 
     assertNotNull(result);
-    assertTrue(result.isReturnOverridden());
-    assertEquals("fallback", result.getCatchReturnValue());
+    assertTrue(result.returnOverridden);
+    assertEquals("fallback", result.returnValue);
   }
 
-  // --- onCatchEnter: interceptor exceptions are swallowed ---
+  // --- dispatch: interceptor exceptions are swallowed ---
 
   @Test
-  void onCatchEnter_interceptorThrows_exceptionSwallowed_invocationStillReturned() throws Exception {
+  void dispatch_interceptorThrows_exceptionSwallowed_dispatchStillResolves() throws Exception {
     AbstractCatchInterceptor interceptor =
         new AbstractCatchInterceptor() {
           @Override
@@ -412,16 +434,17 @@ class CatchAdviceTest {
         };
     registerCatchInterceptor(registry, "throwing", interceptor);
 
-    CatchInvocation result =
+    CatchAdvice.CatchDisposition result =
         assertDoesNotThrow(
-            () -> CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), new RuntimeException("boom")));
+            () ->
+                CatchAdvice.dispatch(
+                    SampleClass.class, method("doWork"), new RuntimeException("boom"), registry));
 
-    assertNotNull(result, "Invocation should still be returned even when an interceptor throws");
-    assertFalse(result.isCatchSuppressed());
+    assertNull(result, "a throwing interceptor requests no change, so dispatch stays null");
   }
 
   @Test
-  void onCatchEnter_oneInterceptorThrows_othersStillInvoked() throws Exception {
+  void dispatch_oneInterceptorThrows_othersStillInvoked() throws Exception {
     List<String> invoked = new ArrayList<>();
     AbstractCatchInterceptor throwing =
         new AbstractCatchInterceptor() {
@@ -441,6 +464,7 @@ class CatchAdviceTest {
           @Override
           public void onCatch(CatchInvocation invocation) {
             invoked.add("healthy");
+            invocation.setCatchReturnValue("handled");
           }
 
           @Override
@@ -451,56 +475,27 @@ class CatchAdviceTest {
     registerCatchInterceptor(registry, "throwing", throwing);
     registerCatchInterceptor(registry, "healthy", healthy);
 
-    CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), new RuntimeException("boom"));
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(
+            SampleClass.class, method("doWork"), new RuntimeException("boom"), registry);
 
     assertEquals(2, invoked.size());
     assertTrue(invoked.contains("throwing"));
     assertTrue(invoked.contains("healthy"));
+    assertNotNull(result);
+    assertTrue(result.returnOverridden);
+    assertEquals("handled", result.returnValue);
   }
 
-  // --- onCatchExit ---
+  // --- dispatch: invocation lifecycle ---
 
   @Test
-  void onCatchExit_nullInvocation_doesNotThrow() {
-    assertDoesNotThrow(() -> CatchAdvice.onCatchExit(null));
-  }
-
-  @Test
-  void onCatchExit_releasesInvocationBackToPool() throws Exception {
-    CatchInvocation invocation =
-        CatchInvocationPool.acquire(SampleClass.class, "doWork", new RuntimeException("boom"));
-
-    assertDoesNotThrow(() -> CatchAdvice.onCatchExit(invocation));
-
-    // Pool releases clear() the instance; a freshly-acquired instance afterward is the same
-    // cleared object, confirming it was actually returned to the (thread-local) pool.
-    CatchInvocation reacquired =
-        CatchInvocationPool.acquire(SampleClass.class, "otherMethod", new IllegalStateException("x"));
-    assertSame(invocation, reacquired);
-  }
-
-  @Test
-  void onCatchExit_clearsCatchInvocationState() throws Exception {
-    CatchInvocation invocation =
-        CatchInvocationPool.acquire(SampleClass.class, "doWork", new RuntimeException("boom"));
-    invocation.suppressCatch();
-    invocation.setCatchReturnValue("value");
-
-    CatchAdvice.onCatchExit(invocation);
-
-    assertFalse(invocation.isCatchSuppressed(), "release() clears the invocation for pool reuse");
-    assertFalse(invocation.isReturnOverridden());
-  }
-
-  // --- full round trip ---
-
-  @Test
-  void fullRoundTrip_enterThenExit_doesNotThrow() throws Exception {
+  void dispatch_releasesInvocationBackToPool() throws Exception {
     AbstractCatchInterceptor interceptor =
         new AbstractCatchInterceptor() {
           @Override
           public void onCatch(CatchInvocation invocation) {
-            invocation.setCatchReturnValue("handled");
+            invocation.setCatchReturnValue("value");
           }
 
           @Override
@@ -508,15 +503,17 @@ class CatchAdviceTest {
             return new CatchPointcut[] {anyExceptionInSampleClass()};
           }
         };
-    registerCatchInterceptor(registry, "roundtrip", interceptor);
+    registerCatchInterceptor(registry, "pool-test", interceptor);
 
-    CatchInvocation invocation =
-        CatchAdvice.onCatchEnter(SampleClass.class, method("doWork"), new RuntimeException("boom"));
-    assertNotNull(invocation);
-    assertTrue(invocation.isReturnOverridden());
-    assertEquals("handled", invocation.getCatchReturnValue());
+    CatchAdvice.dispatch(
+        SampleClass.class, method("doWork"), new RuntimeException("boom"), registry);
 
-    assertDoesNotThrow(() -> CatchAdvice.onCatchExit(invocation));
+    // dispatch() release()s the instance back to the (thread-local) pool; a freshly-acquired
+    // instance afterwards is the same cleared object, confirming it was actually returned.
+    CatchInvocation reacquired =
+        CatchInvocationPool.acquire(SampleClass.class, "otherMethod", new IllegalStateException("x"));
+    assertFalse(reacquired.isCatchSuppressed(), "release() clears the invocation for pool reuse");
+    assertFalse(reacquired.isReturnOverridden());
   }
 
   // --- Helper sample class for testing ---

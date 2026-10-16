@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.github.cc11001100.weavergirl.api.interceptor.CatchInvocation;
 import com.github.cc11001100.weavergirl.api.interceptor.FieldInvocation;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
@@ -142,10 +141,11 @@ class PluginFieldCatchDispatchTest {
 
     IOException thrown = new IOException("disk");
     Method method = Target.class.getDeclaredMethod("work");
-    CatchInvocation result = CatchAdvice.onCatchEnter(Target.class, method, thrown);
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(Target.class, method, thrown, registry);
 
     assertSame(thrown, seen.get());
-    assertTrue(result.isCatchSuppressed());
+    assertTrue(result.suppressed);
   }
 
   @Test
@@ -158,8 +158,8 @@ class PluginFieldCatchDispatchTest {
             invocation -> hits.incrementAndGet()));
 
     Method method = Target.class.getDeclaredMethod("work");
-    CatchInvocation result =
-        CatchAdvice.onCatchEnter(Target.class, method, new IllegalArgumentException("no"));
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(Target.class, method, new IllegalArgumentException("no"), registry);
 
     assertEquals(0, hits.get());
     assertNull(result);
