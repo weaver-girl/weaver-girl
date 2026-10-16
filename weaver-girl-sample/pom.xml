@@ -18,6 +18,92 @@
 
     <build>
         <plugins>
+            <!-- The audit plugin ships as its own jar, the way a third-party plugin does: its own
+                 SPI entry and its own contract declaration, dropped into plugins/ next to the agent.
+                 It carries only the plugin classes, not the payment service, or the plugin would bring
+                 the application along with it. The classes and the declarations come from different
+                 directories, so they are staged into one directory and jarred from there. -->
+            <plugin>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>stage-audit-plugin</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <mkdir dir="${project.build.directory}/audit-plugin"/>
+                                <copy todir="${project.build.directory}/audit-plugin">
+                                    <fileset dir="${project.build.outputDirectory}" includes="com/github/cc11001100/weavergirl/sample/audit/AuditPlugin*.class"/>
+                                </copy>
+                                <copy todir="${project.build.directory}/audit-plugin">
+                                    <fileset dir="src/main/plugin-resources"/>
+                                </copy>
+
+                                <!-- Each scenario plugin is staged on its own, so its jar carries only
+                                     its own classes and its own SPI entry. Sharing one service file
+                                     would make every jar load every plugin. -->
+                                <mkdir dir="${project.build.directory}/redaction-plugin"/>
+                                <copy todir="${project.build.directory}/redaction-plugin">
+                                    <fileset dir="${project.build.outputDirectory}" includes="com/github/cc11001100/weavergirl/sample/redaction/RedactionPlugin*.class"/>
+                                </copy>
+                                <copy todir="${project.build.directory}/redaction-plugin">
+                                    <fileset dir="src/main/plugin-resources-redaction"/>
+                                </copy>
+
+                                <mkdir dir="${project.build.directory}/resilience-plugin"/>
+                                <copy todir="${project.build.directory}/resilience-plugin">
+                                    <fileset dir="${project.build.outputDirectory}" includes="com/github/cc11001100/weavergirl/sample/resilience/ResiliencePlugin*.class"/>
+                                </copy>
+                                <copy todir="${project.build.directory}/resilience-plugin">
+                                    <fileset dir="src/main/plugin-resources-resilience"/>
+                                </copy>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>audit-plugin-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>audit-plugin</classifier>
+                            <classesDirectory>${project.build.directory}/audit-plugin</classesDirectory>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>redaction-plugin-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>redaction-plugin</classifier>
+                            <classesDirectory>${project.build.directory}/redaction-plugin</classesDirectory>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>resilience-plugin-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>resilience-plugin</classifier>
+                            <classesDirectory>${project.build.directory}/resilience-plugin</classesDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
@@ -28,6 +114,10 @@
             </plugin>
         </plugins>
     </build>
+
+    <properties>
+        <moduleinfo.skip>true</moduleinfo.skip>
+    </properties>
 
     <dependencies>
         <!-- Sample plugins only need to depend on api (Plugin SDK), simulating real plugin development -->

@@ -64,6 +64,7 @@ for JAVA in "${JDKS[@]}"; do
   SPORT=$((PORT_BASE + idx * 10))      # sample app http port
   MPORT=$((PORT_BASE + idx * 10 + 1))  # agent prometheus metrics port
   HPORT=$((PORT_BASE + idx * 10 + 2))  # agent health/ready port
+  DPORT=$((PORT_BASE + idx * 10 + 3))  # agent diagnostics port (/stats)
   JV=$("$JAVA" -version 2>&1 | head -1)
   LOG="/tmp/wg-smoke-jdk-$idx.log"
   echo ""
@@ -71,7 +72,7 @@ for JAVA in "${JDKS[@]}"; do
   echo "    $JAVA"
 
   "$JAVA" -Dsample.port="$SPORT" \
-          -javaagent:"$AGENT_JAR"=metricsPort="$MPORT",healthPort="$HPORT" \
+          -javaagent:"$AGENT_JAR"=metricsPort="$MPORT",healthPort="$HPORT",diagnosticsPort="$DPORT" \
           -cp "$CP" \
           com.github.cc11001100.weavergirl.sample.app.SampleApplication \
           >"$LOG" 2>&1 &
@@ -93,11 +94,11 @@ for JAVA in "${JDKS[@]}"; do
   if [ "$ok" -eq 1 ]; then
     curl -sf "http://localhost:$HPORT/health" | grep -q '"status":"UP"'    || { echo "FAIL: /health";  ok=0; }
     curl -sf "http://localhost:$HPORT/ready"  | grep -q '"status":"READY"' || { echo "FAIL: /ready";   ok=0; }
-    curl -sf "http://localhost:$HPORT/stats"  | grep -q 'interceptorInvocationCount' || { echo "FAIL: /stats"; ok=0; }
+    curl -sf "http://localhost:$DPORT/stats"  | grep -q 'interceptorInvocationCount' || { echo "FAIL: /stats"; ok=0; }
     # Isolation: ByteBuddy must resolve in the agent's isolated child-first loader, NOT
     # the host system loader. If this shows anything other than AgentClassLoader, the
     # agent's ByteBuddy is leaking onto the host classpath (version-collision risk).
-    curl -sf "http://localhost:$HPORT/stats"  | grep -q '"byteBuddyClassLoader":"AgentClassLoader"' \
+    curl -sf "http://localhost:$DPORT/stats"  | grep -q '"byteBuddyClassLoader":"AgentClassLoader"' \
       || { echo "FAIL: ByteBuddy not isolated"; ok=0; }
     curl -sf "http://localhost:$MPORT/metrics" | grep -q 'weavergirl'      || { echo "FAIL: /metrics"; ok=0; }
 
@@ -132,7 +133,7 @@ for JAVA in "${JDKS[@]}"; do
       # in the advice is no longer reaching AgentStatus — a silent observability
       # regression that the in-process unit suite cannot catch (it doesn't run the
       # advice against live framework traffic).
-      STATS=$(curl -sf "http://localhost:$HPORT/stats" 2>/dev/null || true)
+      STATS=$(curl -sf "http://localhost:$DPORT/stats" 2>/dev/null || true)
       { printf '%s' "$STATS" | grep -qF '"topHooks":[{'; } \
         || { echo "FAIL: /stats topHooks empty (per-hook latency not exposed)"; ok=0; }
       if [ "$ok" -eq 1 ]; then

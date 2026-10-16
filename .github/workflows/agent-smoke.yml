@@ -66,7 +66,7 @@ jobs:
           # Compile the bare target to 1.8 bytecode so it loads on every matrix JDK.
           "$RUN_JAVAC" -source 8 -target 8 scripts/bare-target/MinimalApp.java
           echo "Run JDK: $($RUN_JAVA -version 2>&1 | head -1)"
-          "$RUN_JAVA" -javaagent:"$AGENT_JAR"=metricsPort=9500,healthPort=9501 \
+          "$RUN_JAVA" -javaagent:"$AGENT_JAR"=metricsPort=9500,healthPort=9501,diagnosticsPort=9502 \
                       -cp scripts/bare-target MinimalApp &
           APP_PID=$!
           for i in $(seq 1 60); do
@@ -77,11 +77,11 @@ jobs:
           curl -sf http://localhost:9501/ready  | grep -q '"status":"READY"'
           # /stats exposes the live instrumentation counters — verifies the
           # observation plumbing (JMX-backed AgentStatus -> HTTP) loads on this JDK.
-          curl -sf http://localhost:9501/stats  | grep -q 'interceptorInvocationCount'
+          curl -sf http://localhost:9502/stats  | grep -q 'interceptorInvocationCount'
           # Isolation: ByteBuddy must be loaded by the agent's isolated child-first
           # AgentClassLoader, not the host system loader — proves the agent's ByteBuddy
           # is not leaking onto the host classpath on this JDK.
-          curl -sf http://localhost:9501/stats  | grep -q '"byteBuddyClassLoader":"AgentClassLoader"'
+          curl -sf http://localhost:9502/stats  | grep -q '"byteBuddyClassLoader":"AgentClassLoader"'
           curl -sf http://localhost:9500/metrics | grep -q 'weavergirl'
           kill "$APP_PID" 2>/dev/null || true
           wait "$APP_PID" 2>/dev/null || true
@@ -127,7 +127,7 @@ jobs:
           CP="weaver-girl-sample/target/classes:weaver-girl-sample/target/sample-libs/*"
           # Non-default ports so a stray local service can't shadow the sample.
           java -Dsample.port=18080 \
-               -javaagent:"$AGENT_JAR"=metricsPort=9400,healthPort=9401 \
+               -javaagent:"$AGENT_JAR"=metricsPort=9400,healthPort=9401,diagnosticsPort=9402 \
                -cp "$CP" \
                com.github.cc11001100.weavergirl.sample.app.SampleApplication &
           APP_PID=$!
@@ -159,9 +159,9 @@ jobs:
           done
           sleep 2
           curl -sf http://localhost:9400/metrics | grep -qE '^weavergirl_operation_duration_ms_count\{plugin="servlet"\} [1-9]'
-          curl -sf http://localhost:9401/stats   | grep -q '"interceptorInvocationCount"'
+          curl -sf http://localhost:9402/stats   | grep -q '"interceptorInvocationCount"'
           # ByteBuddy must resolve in the isolated AgentClassLoader, not the system loader.
-          curl -sf http://localhost:9401/stats   | grep -q '"byteBuddyClassLoader":"AgentClassLoader"'
+          curl -sf http://localhost:9402/stats   | grep -q '"byteBuddyClassLoader":"AgentClassLoader"'
           echo "Interception verified: servlet events recorded, invocation count advancing."
           kill "$APP_PID" 2>/dev/null || true
           wait "$APP_PID" 2>/dev/null || true

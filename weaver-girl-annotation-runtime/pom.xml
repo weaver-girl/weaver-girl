@@ -16,6 +16,10 @@
     <name>Weaver Girl - Annotation Runtime</name>
     <description>Annotation scanning and reflective interceptor wiring: AnnotationPluginLoader + AnnotatedClassScanner. Depends only on annotation + api (+ slf4j), never on core engine.</description>
 
+    <properties>
+        <moduleinfo.skip>false</moduleinfo.skip>
+    </properties>
+
     <dependencies>
         <!-- Internal — runtime wires annotations into api definitions -->
         <dependency>

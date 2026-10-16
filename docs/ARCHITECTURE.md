@@ -8,50 +8,71 @@ Weaver-Girl is a Java bytecode instrumentation framework built on [ByteBuddy](ht
 
 ## Module Structure
 
-The project is organized as a multi-module Maven build with 6 modules plus the parent POM:
+The project is a multi-module Maven build. Every library module is also a JPMS module: its
+`module-info.java` (under `src/main/java9`) is compiled for JDK 9 and shipped at
+`META-INF/versions/9/module-info.class`, so the same jar is a plain Java 8 jar on JDK 8 and a named
+module on JDK 9+.
 
 ```
-weaver-girl/                          (parent POM, packaging=pom)
-├── weaver-girl-api/                  Plugin SDK — interfaces, matchers, context, event system
-├── weaver-girl-core/                 Core engine — transformer, registry, config, circuit breaker, sampling
-├── weaver-girl-annotation/           Declarative annotations — @WeaveClass, @Before, @After, @Around
-├── weaver-girl-plugins/              16 built-in instrumentation plugins
-├── weaver-girl-agent/                Agent entry point — premain/agentmain, YAML config loading
-└── weaver-girl-sample/               Sample application — embedded Jetty + H2 demo
+weaver-girl/                              (parent POM, packaging=pom)
+├── weaver-girl-api/                      Plugin SDK — interfaces, matchers, context, event system
+├── weaver-girl-annotation/               Declarative annotations — @WeaveClass, @Before, @After, @Around
+├── weaver-girl-annotation-runtime/       Scans and loads @WeaveClass interceptors
+├── weaver-girl-core/                     Engine — transformer, registry, config, circuit breaker, sampling
+├── weaver-girl-bridge-micrometer/        Optional: publishes agent counters to a Micrometer registry
+├── weaver-girl-bridge-aopalliance/       Optional: adapts an AOP Alliance MethodInterceptor
+├── weaver-girl-plugins/                  (aggregator POM, packaging=pom)
+│   ├── weaver-girl-plugin-servlet/       one module per built-in plugin, each depending on api only
+│   ├── weaver-girl-plugin-jdbc/
+│   ├── ...                               (17 plugin modules, 18 plugins — async ships two)
+│   └── weaver-girl-plugins-tests/        cross-plugin regression tests
+├── weaver-girl-runtime-plugins/          (aggregator POM, packaging=pom)
+│   ├── weaver-girl-runtime-json-events/  the agent's own optional capabilities, one per module
+│   ├── weaver-girl-runtime-prometheus/
+│   ├── weaver-girl-runtime-config-watch/
+│   ├── weaver-girl-runtime-annotation-scan/
+│   └── weaver-girl-runtime-management-api/
+├── weaver-girl-agent/                    Agent entry point — premain/agentmain, shades the engine
+└── weaver-girl-sample/                   Sample application — embedded Jetty + H2 demo
 ```
 
 ### Module Dependency Graph
 
 ```
-                    weaver-girl-api  (Plugin SDK)
-                    /      |      \
-                   /       |       \
-    weaver-girl-annotation  |   weaver-girl-plugins
+                 weaver-girl-annotation
                           |
-                   weaver-girl-core
-                          |
-                   weaver-girl-agent
-                          |
-                   weaver-girl-sample
+                 weaver-girl-api  (Plugin SDK)
+                /    |        \
+               /     |         \
+   bridge-*   core   plugin-<name> ...
+       \       |         /
+        \      |        /
+         weaver-girl-agent   (shades everything into one javaagent jar)
+                 |
+         weaver-girl-sample
 ```
 
 Key dependency rules:
 
-- **`weaver-girl-api`** has no internal dependencies -- it is the pure Plugin SDK that third-party plugins depend on
-- **`weaver-girl-core`** depends on `weaver-girl-api` -- it provides the engine implementation
-- **`weaver-girl-plugins`** depends on `weaver-girl-api` only -- plugins never depend on core internals
-- **`weaver-girl-annotation`** depends on `weaver-girl-api` -- annotation definitions reference API types
-- **`weaver-girl-agent`** depends on `weaver-girl-core` -- it wires everything together at startup
-- **`weaver-girl-sample`** depends on `weaver-girl-api` and `weaver-girl-annotation` -- demonstrates all three hook modes
+- **`weaver-girl-api`** depends only on `weaver-girl-annotation` -- it is the Plugin SDK that third-party plugins code against
+- **`weaver-girl-core`** depends on `weaver-girl-api` only -- the engine carries no Micrometer and no AOP Alliance dependency
+- **each `weaver-girl-plugin-*`** depends on `weaver-girl-api` only -- plugins never depend on core, and they match target classes by name so they compile without the instrumented library
+- **`weaver-girl-bridge-*`** depend on `weaver-girl-api` plus the one third-party library they bridge; they read engine state through `AgentStatusView`, never through core internals
+- **`weaver-girl-agent`** shades core, the bridges and the annotation runtime into the single jar a JVM loads with `-javaagent`. The plugins are **not** inside it: the build copies each plugin jar into a `plugins/` directory next to the agent jar, and at startup only the jars for enabled capabilities are put on the agent ClassLoader. `disabledPlugins` (or `enabledPlugins`, an allowlist) decides this before any plugin class is loaded, so a capability that is off costs nothing. With neither set, every jar is loaded. Dropping a plugin dependency from the agent module ships a distribution without that capability
+- **`weaver-girl-runtime-*`** are the agent's own optional capabilities, packaged and loaded exactly like the instrumentation plugins. Each switches itself on from a config key (`jsonEvents`, `metricsPort`, `watch`, `annotationPackages`, `apiPort`) and does nothing when that key is absent, so shipping the jar costs nothing until the capability is asked for. They are the one exception to "plugins depend only on the API": they drive engine services (`PrometheusExporter`, `ConfigWatcher`, `AgentApiServer`, `AnnotatedClassScanner`), so they depend on core
+- **`weaver-girl-sample`** depends on `weaver-girl-api` and `weaver-girl-core` -- demonstrates all three hook modes
 
 ### Module Details
 
 | Module | Purpose | Key Classes |
 |--------|---------|-------------|
-| `weaver-girl-api` | Plugin SDK: interfaces and value objects that plugin developers code against | `WeaverPlugin`, `AbstractPlugin`, `Interceptor`, `MethodInvocation`, `ClassMatcher`, `MethodMatcher`, `Pointcut`, `InterceptorDefinition`, `InterceptorRegistry`, `PluginContext`, `ThreadContext`, `ContextSnapshot`, `ContextScope`, `ContextPropagator`, `ContextExecutorService`, `InterceptorEvent`, `InterceptorEventPublisher`, `InterceptorEventListener` |
+| `weaver-girl-api` | Plugin SDK: the only module a third-party plugin codes against | `WeaverPlugin`, `AbstractPlugin` (method, field and catch builders), `Interceptor`, `FieldInterceptor`, `CatchInterceptor`, `MethodInvocation`, `ClassMatcher`, `MethodMatcher`, `FieldMatcher`, `Pointcut`, `InterceptorDefinition`, `InterceptorRegistry`, `PluginContext`, `ThreadContext`, `Tracer`, `MetricRegistry`, `ExporterRegistry`, `TopologyGraph`, `AlertEngine`, `Taint`, `TaintFindings`, `InterceptorEvent`, `InterceptorEventPublisher` |
 | `weaver-girl-core` | Engine implementation: bytecode transformation, registry, config, fault isolation | `WeaverGirl`, `InterceptAdvice`, `WeaverTransformer`, `DefaultInterceptorRegistry`, `PluginLoader`, `YamlConfigLoader`, `ConfigWatcher`, `InterceptorCircuitBreaker`, `SamplingController`, `PrometheusExporter`, `AgentMXBean`/`AgentMonitor` |
 | `weaver-girl-annotation` | Declarative annotation-driven hook mode | `@WeaveClass`, `@Before`, `@After`, `@Around` |
-| `weaver-girl-plugins` | Built-in instrumentation plugins | `ServletPlugin`, `JdbcPlugin`, `SpringPlugin`, `RedisPlugin`, `KafkaPlugin`, `GrpcPlugin`, `MongoPlugin`, `HttpClientPlugin`, `HikariPlugin`, `MethodTimingPlugin`, `TraceCorrelationPlugin`, `ExceptionMonitorPlugin`, `LoggingPlugin`, `OkHttpPlugin`, `RabbitMQPlugin`, `ElasticsearchPlugin`, `AsyncContextPropagationPlugin` |
+| `weaver-girl-plugin-<name>` | One built-in instrumentation plugin per module | `ServletPlugin`, `JdbcPlugin`, `SpringPlugin`, `RedisPlugin`, `KafkaPlugin`, `GrpcPlugin`, `MongoPlugin`, `HttpClientPlugin`, `HikariPlugin`, `MethodTimingPlugin`, `TraceCorrelationPlugin`, `ExceptionMonitorPlugin`, `LoggingPlugin`, `OkHttpPlugin`, `RabbitMQPlugin`, `ElasticsearchPlugin`, `AsyncContextPropagationPlugin`, `CompletableFuturePropagationPlugin` |
+| `weaver-girl-runtime-<capability>` | One of the agent's own optional capabilities, loaded only when its config key is set | `JsonEventsPlugin` (`jsonEvents`), `PrometheusPlugin` (`metricsPort`), `ConfigWatchPlugin` (`watch`), `AnnotationScanPlugin` (`annotationPackages`), `ManagementApiPlugin` (`apiPort`) |
+| `weaver-girl-bridge-micrometer` | Publishes agent counters to a Micrometer `MeterRegistry` | `MicrometerBridge` |
+| `weaver-girl-bridge-aopalliance` | Adapts an AOP Alliance `MethodInterceptor` | `AopAllianceAdapter` |
 | `weaver-girl-agent` | Java Agent entry point | `WeaverGirlAgent` |
 | `weaver-girl-sample` | Demonstration application | `SampleApplication`, `TargetService`, sample plugins and interceptors |
 
@@ -148,13 +169,69 @@ META-INF/services/com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin
 PluginLoader.loadPlugins(ClassLoader, InterceptorRegistry, Map<String,String>)
     |
     |-- 1. ServiceLoader.load(WeaverPlugin.class, classLoader)
-    |-- 2. Filter out disabled plugins (from WeaverConfig.disabledPlugins)
+    |-- 2. Select capability jars (plugins/ next to the agent jar):
+    |       enabledPlugins allowlist, else everything not in disabledPlugins
+    |-- 3. Filter discovered plugins by the same selection (disabledPlugins / enabledPlugins)
     |-- 3. PluginDependencyResolver.resolve() -- topological sort based on depends()
     |-- 4. For each plugin in dependency order:
     |       a. plugin.init(context)        -- pass DefaultPluginContext with config
-    |       b. plugin.registerInterceptors(registry)  -- register InterceptorDefinitions
-    |-- 5. Log summary: succeeded / failed counts
+    |       b. plugin.isEnabled(context)   -- false skips it (inactive, not a failure)
+    |       c. plugin.registerInterceptors(registry)  -- register InterceptorDefinitions
+    |-- 5. Log summary: succeeded / inactive / failed counts
 ```
+
+Both kinds of capability jar are selected the same way. An instrumentation plugin jar is named
+`weaver-girl-plugin-<capability>-<version>.jar` and a runtime capability jar
+`weaver-girl-runtime-<capability>-<version>.jar`; the capability names the selection matches against
+come from the jar's `META-INF/weavergirl-capabilities` marker. A jar that follows neither convention
+is a third-party drop-in and is always loaded, which is how a user-supplied plugin joins in: drop it
+in `plugins/` (or the directory named by the `plugins` agent argument) and declare its
+`WeaverPlugin` in the SPI file.
+
+The runtime capabilities are what used to be hardcoded in the agent entry point. They stay plugins so
+the agent itself only boots the engine:
+
+| Capability | Plugin | Enabled by |
+|------------|--------|------------|
+| JSON event log | `json-events` | `jsonEvents=true` |
+| Prometheus metrics endpoint | `prometheus` | `metricsPort=<port>` |
+| Config hot-reload | `config-watch` | `watch=true` with a `config` path |
+| `@WeaveClass` scanning | `annotation-scan` | `annotationPackages=<pkgs>` |
+| Management REST API | `management-api` | `apiPort=<port>` |
+
+`init()` runs before `isEnabled()`, so each of these returns immediately when its key is absent. The
+config-watch plugin reloads the YAML itself but cannot see the agent instance, so after a reload it
+runs the retransform callback the agent installed on `InterceptorHolder` — that class is resolved
+parent-first, which is the only way a plugin inside the isolated loader can reach the agent.
+
+### The plugin contract
+
+`weaver-girl-api` is the whole of the supported surface for a plugin that does not ship with the
+agent. A third-party jar is loaded by a child-first loader that delegates to its parent only for
+`com.github.cc11001100.weavergirl.api`, `com.github.cc11001100.weavergirl.annotation` and the JDK, so
+anything in core that happens to be visible is visible by fall-through, not by contract, and may be a
+different copy from the one the engine holds. The `weaver-girl-runtime-*` plugins are the exception
+because they are loaded by the agent's own loader.
+
+What a product plugin registers and what it reports both go through that module:
+
+- **Join points.** `AbstractPlugin` builds three kinds of definition, each woven with its own advice.
+  `intercept(...)` is a method hook on the standard advice. `interceptField(...)` sets
+  `AdviceMode.FIELD` and an interceptor that implements `FieldInterceptor`, which is the combination
+  `WeaverTransformer` and `FieldAdvice` both require — the advice picks interceptors with
+  `instanceof FieldInterceptor` and then matches `fieldPointcuts()`, while the advice mode only
+  decides that field advice is woven at all. `interceptCatch(...)` does the same for
+  `AdviceMode.CATCH` and `CatchInterceptor`. A field or catch interceptor registered as a plain method
+  definition is never called.
+- **Ordering and compatibility.** `depends()` is resolved across jars, not inside each one, so a product plugin can depend on a built-in plugin. A jar that declares `plugin.apiVersion` in `META-INF/weaver-girl-plugin.properties` is refused when it is newer than `WeaverPlugin.API_VERSION`; jars that declare nothing load as before.
+- **Logging.** `PluginContext.getLogger()` returns a logger bound to the agent's logging, because a plugin's own class loader would bind one to the application's instead.
+- **Product services.** `Tracer`, `MetricRegistry`, `ExporterRegistry`/`DataExporter`,
+  `TopologyGraph`, `AlertEngine`, `InterceptorEventPublisher` and `Taint`/`TaintPropagation`/
+  `TaintFindings` are static and live in the API module, so a plugin reports spans, metrics, topology,
+  alerts, events and taint findings without holding any core type. An exporter has to be `activate`d
+  after `register`; registration alone does not send it events.
+
+The developer guide at `docs/plugin-developer-guide.md` is the worked form of this contract.
 
 ### Plugin Lifecycle
 
@@ -162,9 +239,10 @@ Each plugin goes through these phases:
 
 1. **Discovery** -- loaded via `ServiceLoader`
 2. **Initialization** -- `init(PluginContext)` called once at startup; read config, allocate resources
-3. **Registration** -- `registerInterceptors(InterceptorRegistry)` called once after init; register all `InterceptorDefinition` instances
-4. **Runtime** -- interceptors are invoked as matched methods are called; the plugin itself has no active role
-5. **Destroy** -- `destroy()` called at agent shutdown; release resources, flush buffers
+3. **Enable check** -- `isEnabled(PluginContext)` decides whether the plugin actually activates; a plugin that returns false is inactive, not failed
+4. **Registration** -- `registerInterceptors(InterceptorRegistry)` called once after the enable check; register all `InterceptorDefinition` instances
+5. **Runtime** -- interceptors are invoked as matched methods are called; the plugin itself has no active role
+6. **Destroy** -- `destroy()` called at agent shutdown; release resources, flush buffers
 
 ### ClassLoader Isolation
 
@@ -378,7 +456,7 @@ long interceptCount = (Long) mBeanServer.getAttribute(name, "TotalInterceptCount
 |-----------|-------------|
 | `resetCounters()` | Reset all counters to zero |
 
-There is also a legacy MBean `WeaverGirlMBean` registered via `JmxRegistrar` that exposes `AgentStatus` data (transformation count, error count, interceptor invocation/error counts, active plugin count, uptime, status report).
+There is also a legacy MBean `WeaverGirlMBean` that exposes `AgentStatus` data (transformation count, error count, interceptor invocation/error counts, active plugin count, uptime, status report). The `jmx` plugin registers it, and `jmx=false` leaves it unregistered.
 
 ---
 

@@ -28,6 +28,8 @@ java -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml,watch=true -jar
 
 # Disable specific plugins
 java -javaagent:weaver-girl-agent.jar=config=/weaver.yml,disabledPlugins=servlet,kafka -jar your-app.jar
+# 只加载列出的能力（jar 按能力拆分，未启用的不会被加载）：
+java -javaagent:weaver-girl-agent.jar=enabledPlugins=jdbc,servlet -jar your-app.jar
 ```
 
 **Minimal weaver.yml:**
@@ -55,7 +57,7 @@ interceptors:
 
 - **16 Built-in Plugins**: Servlet, Spring, JDBC, Redis, Kafka, gRPC, MongoDB, HttpClient, HikariCP, MethodTiming, TraceCorrelation, ExceptionMonitor, Logging, OkHttp, RabbitMQ, Elasticsearch
 - **Three Hook Modes**: Programmatic API, Annotation-driven, YAML configuration
-- **Plugin System**: SPI-based plugin discovery with dependency resolution, ClassLoader isolation, conditional enable/disable, state management, and hot loading
+- **Plugin System**: SPI-based plugin discovery with dependency resolution, ClassLoader isolation, conditional enable/disable, state management, and hot loading. A third-party product (an APM agent, an IAST scanner) extends the platform through a plugin that codes only against `weaver-girl-api`: method, field and catch interception, plus the shared tracing, metrics, exporter, topology, alerting and taint services. See the [Plugin Developer Guide](docs/plugin-developer-guide.md).
 - **ByteBuddy Advice**: Zero-allocation inlined method interception with skip & return-value override
 - **Bootstrap Class Injection**: Intercept `java.*` and `javax.*` classes
 - **Dynamic Attach**: Runtime attachment via `agentmain` with retransformation
@@ -145,6 +147,29 @@ public class MyInterceptor {
 
 The sample demonstrates all three hook modes: Programmatic, Annotation, and YAML.
 
+### Drop-in plugin demo
+
+`scripts/run-audit-demo.sh` builds a plugin that the application never references and runs the same program twice. With the agent and the plugin jar in `plugins/` it exits 0 and prints an audit trail (card numbers masked, charged cents summed from the metric registry, the rejected charge left out). Without the agent it exits 2 and the trail is empty — the payment service ran either way, the difference is the plugin being woven in.
+
+```bash
+scripts/run-audit-demo.sh
+```
+
+### Scenarios where the plugin changes what the program does
+
+`scripts/run-scenario-demos.sh` runs two small applications that have no protection of their own, each with and without its plugin. Neither application references the plugin; the jar is found because it sits in `plugins/`.
+
+| Scenario | Without the plugin | With the plugin |
+|---|---|---|
+| Support desk (`com.example.support.RedactionDemo`) | The text an agent pastes into chat carries the customer's card number and phone number | Those come back masked (`411111******1234`, `138****5678`), the stored ticket is untouched, and each catch is counted in `redaction.secrets.masked` |
+| Payment gateway (`com.example.gateway.ResilienceDemo`) | A provider that fails its first four calls is hit by all six charges | After three failures the circuit opens and the next charge is answered with `queued:` without calling the provider, counted in `resilience.charges.shed` |
+
+Both exit 0 under the agent and 2 without it.
+
+```bash
+scripts/run-scenario-demos.sh
+```
+
 ## Observability
 
 ```bash
@@ -166,6 +191,8 @@ curl http://localhost:9400/metrics
 - **Health**: Kubernetes liveness/readiness probes via `/health` and `/ready`
 - **OTel**: Span bridge to OpenTelemetry Collector
 - **JSON Events**: Structured event output with `jsonEvents=true`
+
+`metricsPort`, `jsonEvents`, `apiPort`, `annotationPackages` and config hot-reload (`watch=true`) are plugins (`weaver-girl-runtime-*`). Each ships as its own jar and only activates when its config key is set, so a distribution can leave out the capabilities it does not use. A custom plugin is added the same way: drop its jar in the `plugins/` directory next to the agent.
 
 ## Deployment
 
@@ -217,7 +244,9 @@ docker-compose up
 | `weaver-girl-api` | Plugin SDK — interfaces and value objects |
 | `weaver-girl-core` | Engine — ByteBuddy transformer, registry, config |
 | `weaver-girl-annotation` | Declarative annotations for interceptors |
-| `weaver-girl-plugins` | 16 built-in instrumentation plugins |
+| `weaver-girl-plugin-<name>` | One built-in instrumentation plugin per module (17 modules) |
+| `weaver-girl-bridge-micrometer` | Optional Micrometer metrics bridge |
+| `weaver-girl-bridge-aopalliance` | Optional AOP Alliance interceptor adapter |
 | `weaver-girl-agent` | Agent entry point (premain/agentmain) |
 | `weaver-girl-sample` | Sample application demonstrating all modes |
 

@@ -91,7 +91,7 @@ CI runs the full build matrix across JDK 8, 11, 17, and 21 (see `.github/workflo
 
 ## How to Add a New Plugin
 
-Plugins are the primary extension point. Here is the step-by-step process for adding a new plugin to the `weaver-girl-plugins` module.
+Plugins are the primary extension point. Each built-in plugin is its own Maven module under the `weaver-girl-plugins` aggregator (`weaver-girl-plugin-<name>`), depending only on `weaver-girl-api`. Here is the step-by-step process for adding one.
 
 ### 1. Create the Plugin Class
 
@@ -137,6 +137,20 @@ public class MyPlugin extends AbstractPlugin {
                 .build()
         );
 
+        // Field access and catch blocks are separate builders. Each weaves its own advice,
+        // so a field or catch hook cannot be expressed with the method builder above.
+        registry.register(
+            interceptField("com.example.User", "password")
+                .onGet((invocation, value) -> { /* read */ })
+                .onSet((invocation, target, value) -> { /* write */ })
+                .build()
+        );
+        registry.register(
+            interceptCatch("com.example.Repository", "java.sql.SQLException")
+                .onCatch(invocation -> { /* caught exception */ })
+                .build()
+        );
+
         // Or construct InterceptorDefinition directly:
         Interceptor myInterceptor = new Interceptor() {
             @Override
@@ -176,27 +190,21 @@ The `ClassMatcher.MatchType` you choose is critical for correct interception:
 
 Add your plugin class to the SPI service file:
 
-**File:** `weaver-girl-plugins/src/main/resources/META-INF/services/com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin`
+Each plugin module carries its own service file, so adding a plugin never means editing a shared list.
+
+**File:** `weaver-girl-plugins/weaver-girl-plugin-myplugin/src/main/resources/META-INF/services/com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin`
 
 ```
-com.github.cc11001100.weavergirl.plugins.timing.MethodTimingPlugin
-com.github.cc11001100.weavergirl.plugins.servlet.ServletPlugin
-com.github.cc11001100.weavergirl.plugins.jdbc.JdbcPlugin
-com.github.cc11001100.weavergirl.plugins.trace.TraceCorrelationPlugin
-com.github.cc11001100.weavergirl.plugins.spring.SpringPlugin
-com.github.cc11001100.weavergirl.plugins.exception.ExceptionMonitorPlugin
-com.github.cc11001100.weavergirl.plugins.redis.RedisPlugin
-com.github.cc11001100.weavergirl.plugins.httpclient.HttpClientPlugin
-com.github.cc11001100.weavergirl.plugins.grpc.GrpcPlugin
-com.github.cc11001100.weavergirl.plugins.kafka.KafkaPlugin
-com.github.cc11001100.weavergirl.plugins.mongo.MongoPlugin
-com.github.cc11001100.weavergirl.plugins.logging.LoggingPlugin
 com.github.cc11001100.weavergirl.plugins.myplugin.MyPlugin
 ```
 
+Then add the new module to the `<modules>` of `weaver-girl-plugins/pom.xml` and as a `provided`-scope dependency of `weaver-girl-agent`. The agent does not bundle it: the build copies the jar into `plugins/` next to the agent jar, and it is loaded only when its capability is enabled. Also add a `META-INF/weavergirl-capabilities` file to the module, one plugin `name()` per line, so `disabledPlugins` / `enabledPlugins` can match the jar before it is loaded.
+
+A capability of the agent itself (an endpoint, a watcher, a scan — something that drives the engine rather than instrumenting an application library) goes under `weaver-girl-runtime-plugins` instead, as `weaver-girl-runtime-<capability>`. Those jars follow the same SPI and marker convention but are named `weaver-girl-runtime-<capability>-<version>.jar`, and they may depend on `weaver-girl-core` because they use engine services. Such a plugin switches itself on from a config key inside `isEnabled()` and must tolerate `init()` being called when that key is absent, since `init()` runs first. See `ConfigWatchPlugin` for one.
+
 ### 4. Write Tests
 
-Create a test class in `weaver-girl-plugins/src/test/java/`:
+Create a test class in the plugin module, `weaver-girl-plugins/weaver-girl-plugin-myplugin/src/test/java/`:
 
 ```java
 package com.github.cc11001100.weavergirl.plugins.myplugin;

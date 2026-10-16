@@ -19,6 +19,11 @@ export const features: Feature[] = [
       "编程式 API、注解驱动、YAML 配置，同一套拦截器注册表，按场景选最顺手的写法。",
   },
   {
+    title: "插件即产品底座",
+    description:
+      "做 APM 或 IAST 只需写一个插件：方法、字段、异常捕获三种拦截，加上追踪、指标、导出、拓扑、告警和污点分析，全部只依赖 weaver-girl-api。",
+  },
+  {
     title: "零分配字节码织入",
     description:
       "基于 ByteBuddy Advice 内联拦截，支持跳过原方法与改写返回值，热路径上不产生额外对象。",
@@ -73,11 +78,13 @@ export interface ModuleRow {
 }
 
 export const modules: ModuleRow[] = [
-  { key: "api", name: "weaver-girl-api", description: "插件 SDK：接口、匹配器、上下文与事件体系" },
+  { key: "api", name: "weaver-girl-api", description: "插件 SDK：第三方插件唯一依赖的模块，含拦截、追踪、指标、导出与污点分析" },
   { key: "core", name: "weaver-girl-core", description: "引擎：ByteBuddy 转换器、注册表、配置、熔断与采样" },
   { key: "annotation", name: "weaver-girl-annotation", description: "声明式注解：@WeaveClass、@Before、@After、@Around" },
   { key: "runtime", name: "weaver-girl-annotation-runtime", description: "注解切面的加载与织入运行时" },
-  { key: "plugins", name: "weaver-girl-plugins", description: "16 个内置插桩插件" },
+  { key: "plugins", name: "weaver-girl-plugin-*", description: "内置插桩插件，每个插件一个独立模块，只依赖 api" },
+  { key: "runtime-plugins", name: "weaver-girl-runtime-*", description: "Agent 自身的可选能力（指标、热加载、注解扫描、管理接口），配置了才加载" },
+  { key: "bridge", name: "weaver-girl-bridge-*", description: "可选桥接：Micrometer 指标与 AOP Alliance 拦截器" },
   { key: "agent", name: "weaver-girl-agent", description: "Agent 入口：premain / agentmain 与 YAML 配置加载" },
   { key: "sample", name: "weaver-girl-sample", description: "示例应用，演示编程式、注解与 YAML 三种模式" },
 ];
@@ -91,9 +98,13 @@ export const configExample = `# 只拦截自己的代码
 onlyInterceptPackages:
   - com.myapp
 
-# 关闭不需要的内置插件
+# 关闭不需要的内置插件（对应的 jar 不会被加载）
 disabledPlugins:
   - servlet
+
+# 或者反过来，只加载列出的能力
+# enabledPlugins:
+#   - jdbc
 
 # 自定义拦截器
 interceptors:

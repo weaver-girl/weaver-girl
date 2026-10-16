@@ -13,11 +13,20 @@ echo "== clean quality-gated build =="
 ./mvnw -B -Pquality-gate clean verify
 
 echo "== required publication artifacts =="
-for module in weaver-girl-annotation weaver-girl-annotation-runtime weaver-girl-api weaver-girl-core weaver-girl-plugins weaver-girl-agent; do
-  version="$(sed -n 's:.*<version>\([^<]*\)</version>.*:\1:p' "$module/pom.xml" | head -1)"
-  [[ -n "$version" ]] || { echo "FAIL: cannot determine version for $module" >&2; exit 1; }
+# weaver-girl-plugins is an aggregator POM now; each built-in plugin and each optional bridge
+# publishes its own jar.
+modules="weaver-girl-annotation weaver-girl-annotation-runtime weaver-girl-api weaver-girl-core weaver-girl-bridge-micrometer weaver-girl-bridge-aopalliance weaver-girl-agent"
+for plugin in weaver-girl-plugins/weaver-girl-plugin-*; do
+  modules="$modules $plugin"
+done
+for module_dir in $modules; do
+  # Child modules inherit their version from the parent, so read it there. The artifact name is
+  # the module directory, not the path.
+  version="$(sed -n 's:.*<version>\([^<]*\)</version>.*:\1:p' pom.xml | head -1)"
+  [[ -n "$version" ]] || { echo "FAIL: cannot determine version for $module_dir" >&2; exit 1; }
+  module="$(basename "$module_dir")"
   for suffix in jar sources.jar javadoc.jar; do
-    artifact="$module/target/${module}-${version}-${suffix}"
+    artifact="$module_dir/target/${module}-${version}.${suffix}"
     [[ -f "$artifact" ]] || { echo "FAIL: missing $artifact" >&2; exit 1; }
   done
 done

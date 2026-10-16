@@ -17,7 +17,10 @@
         <module>weaver-girl-annotation-runtime</module>
         <module>weaver-girl-api</module>
         <module>weaver-girl-core</module>
+        <module>weaver-girl-bridge-micrometer</module>
+        <module>weaver-girl-bridge-aopalliance</module>
         <module>weaver-girl-plugins</module>
+        <module>weaver-girl-runtime-plugins</module>
         <module>weaver-girl-agent</module>
         <module>weaver-girl-sample</module>
     </modules>
@@ -47,6 +50,8 @@
     </developers>
 
     <properties>
+        <!-- Overridden to false by every module that ships src/main/java9/module-info.java. -->
+        <moduleinfo.skip>true</moduleinfo.skip>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <!-- MAIN code targets the JDK 8 API surface (release 8, scoped to the
@@ -149,12 +154,711 @@
             </dependency>
             <dependency>
                 <groupId>com.github.cc11001100</groupId>
-                <artifactId>weaver-girl-api</artifactId>
+                <artifactId>weaver-girl-bridge-micrometer</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.github.cc11001100</groupId>
-                <artifactId>weaver-girl-plugins</artifactId>
+                <artifactId>weaver-girl-bridge-aopalliance</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- weaver-girl-runtime-plugins is an aggregator (packaging pom); each of the agent's own
+                 optional capabilities is its own module so a distribution can ship exactly the ones it
+                 wants, and each is loaded only when its config key is set. -->
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-runtime-json-events</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-runtime-prometheus</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-runtime-config-watch</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-runtime-annotation-scan</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-runtime-management-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-runtime-health</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-runtime-diagnostics</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-runtime-otlp</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-runtime-span-export</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-runtime-update-check</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-runtime-alert-file</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-runtime-dynamic-refresh</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-runtime-jmx</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-runtime-taint</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- weaver-girl-plugins is an aggregator (packaging pom); each built-in plugin is its
+                 own module so a deployment can depend on exactly the plugins it needs. -->
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-async</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-elasticsearch</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-exception</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-grpc</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-hikari</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-httpclient</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-jdbc</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-kafka</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-logging</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-mongo</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-okhttp</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-rabbitmq</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-redis</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-druid</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-dubbo</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-mybatis</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-rocketmq</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-redisson</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-feign</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-caffeine</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-servlet</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-tomcat</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-jetty</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-undertow</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-netty</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-pulsar</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-quartz</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-xxljob</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-thrift</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-jms</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-cassandra</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-graphql</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-clickhouse</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-hbase</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-reactor</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-rxjava</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-kotlin</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-vertx</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-jedis</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-lettuce</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-nats</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-hibernate</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-memcached</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-elasticjob</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-powerjob</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-grizzly</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-struts</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-javalin</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-opensearch</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-play</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-camel</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-jaxrs</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-couchbase</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-hystrix</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-c3p0</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-dbcp</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-pool</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-asynchttp</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-geode</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-influxdb</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-jfinal</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-kubernetes</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-jodd</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-vaadin</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-wicket</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-ghttp</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-restlet</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-sparkjava</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-grails</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-finatra</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-jaxws</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-vibur</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-dropwizard</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-jersey</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-resteasy</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-jsf</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-jsp</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-tapestry</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-struts2</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-cxf</artifactId>
+            <version>${project.version}</version>
+        </dependency>        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-liberty</artifactId>
+            <version>${project.version}</version>
+        </dependency>        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-activej</artifactId>
+            <version>${project.version}</version>
+        </dependency>        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-avaje</artifactId>
+            <version>${project.version}</version>
+        </dependency>        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-ratpack</artifactId>
+            <version>${project.version}</version>
+        </dependency>        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-twilio</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-gwt</artifactId>
+            <version>${project.version}</version>
+        </dependency>        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-quarkus</artifactId>
+            <version>${project.version}</version>
+        </dependency>        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-rediscala</artifactId>
+            <version>${project.version}</version>
+        </dependency>        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-jettyhttp</artifactId>
+            <version>${project.version}</version>
+        </dependency>        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-awssdk</artifactId>
+            <version>${project.version}</version>
+        </dependency>        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-azurecore</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-awssdk2</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-hibernatesearch</artifactId>
+            <version>${project.version}</version>
+        </dependency>        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-resttemplate</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-awslambda</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-googlehttp</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-springbatch</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-websocket</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-webflux</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-scheduling</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-springws</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-springrmi</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-scheduled</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-httpasync</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-withspan</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-traced</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-scalafuture</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-scalaforkjoin</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-elasticapm</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-traceanno</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-springamqp</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-springjms</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-springkafka</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-springpulsar</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-springmvc</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-estransport</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-vertxredis</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-vertxsql</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-httpclient5</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-commonshttp</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-jetty12http</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-ninghttp</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+<dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-plugin-playws</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-spring</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-timing</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-plugin-trace</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -190,6 +894,43 @@
                             <!-- release (not source/target) checks the JDK 8 API surface, so a
                                  newer-JDK method cannot compile into the Java 8 bytecode. -->
                             <release>8</release>
+                            <!-- module-info.java lives in java9/ and is compiled by the
+                                 java9-module-info execution below, never with the Java 8 sources. -->
+                            <excludes>
+                                <exclude>module-info.java</exclude>
+                            </excludes>
+                        </configuration>
+                    </execution>
+                    <!-- JPMS descriptor for JDK 9+, plus any class that has to be compiled against the
+                         Java 9 API (src/main/java9). Compiled separately against the Java 8 classes and
+                         packaged as multi-release entries (META-INF/versions/9) by the jar plugin, so the
+                         root of every jar stays Java 8 bytecode and Java 8 runtimes never see them. Modules
+                         without src/main/java9 (the agent, the sample, the test aggregator) skip this
+                         execution. -->
+                    <execution>
+                        <id>java9-module-info</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>compile</goal>
+                        </goals>
+                        <configuration>
+                            <!-- False only in modules that ship src/main/java9/module-info.java. -->
+                            <skip>${moduleinfo.skip}</skip>
+                            <release>9</release>
+                            <compileSourceRoots>
+                                <compileSourceRoot>${project.basedir}/src/main/java9</compileSourceRoot>
+                            </compileSourceRoots>
+                            <!-- ${moduleinfo.path} is produced by the stage-module-path antrun execution:
+                                 one directory per reactor dependency whose descriptor it staged where
+                                 javac can read it. The placeholder jar keeps the path non-empty for
+                                 modules that depend on nothing. multiReleaseOutput stays off because it
+                                 injects a patch-module flag naming this module, which cannot be compiled
+                                 and patched at once. The move-module-info execution relocates the class
+                                 into the multi-release location afterwards. -->
+                            <compilerArgs>
+                                <arg>--module-path</arg>
+                                <arg>${moduleinfo.path}${path.separator}${reactor.modulepath}${path.separator}${project.build.directory}/module-path-placeholder.jar</arg>
+                            </compilerArgs>
                         </configuration>
                     </execution>
                 </executions>
@@ -198,6 +939,115 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.5</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <!-- javac reads a module descriptor from a directory only when it sits at
+                             the directory root, but a reactor build resolves an upstream module as
+                             target/classes, where ours lives under META-INF/versions/9. Stage each
+                             descriptor at a sibling module-root and export the result, so a plain
+                             "mvn test" resolves modules that were never installed. -->
+                        <id>stage-module-path</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${moduleinfo.skip}</skip>
+                            <exportAntProperties>true</exportAntProperties>
+                            <target>
+                                <property name="script" location="${maven.multiModuleProjectDirectory}/scripts/module-path.py"/>
+                                <pathconvert property="reactor.classpath" refid="maven.compile.classpath" pathsep=" "/>
+                                <pathconvert property="reactor.modulepath" refid="maven.compile.classpath"/>
+                                <exec executable="python3" outputproperty="moduleinfo.path">
+                                    <arg value="${script}"/>
+                                    <arg line="${reactor.classpath}"/>
+                                </exec>
+                                <mkdir dir="${project.build.directory}"/>
+                                <jar destfile="${project.build.directory}/module-path-placeholder.jar"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <!-- The java9 classes live at the root of the build output so the tests can load
+                             them. A Java 8 runtime loading the jar cannot, so they move under
+                             META-INF/versions/9 for the jar and back to the root once it is packed. -->
+                        <id>hide-java9-classes</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${moduleinfo.skip}</skip>
+                            <target>
+                                <exec executable="python3" failonerror="true">
+                                    <arg value="${maven.multiModuleProjectDirectory}/scripts/relocate-java9.py"/>
+                                    <arg value="${project.basedir}/src/main/java9"/>
+                                    <arg value="${project.build.outputDirectory}"/>
+                                    <arg value="versioned"/>
+                                </exec>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>restore-java9-classes</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${moduleinfo.skip}</skip>
+                            <target>
+                                <exec executable="python3" failonerror="true">
+                                    <arg value="${maven.multiModuleProjectDirectory}/scripts/relocate-java9.py"/>
+                                    <arg value="${project.basedir}/src/main/java9"/>
+                                    <arg value="${project.build.outputDirectory}"/>
+                                    <arg value="root"/>
+                                </exec>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>move-module-info</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${moduleinfo.skip}</skip>
+                            <target>
+                                <!-- The java9 execution compiles its sources to the root of the output,
+                                     where tests and the exploded classes need them. The jar relocates those
+                                     classes under META-INF/versions/9, so a Java 8 runtime loading the jar
+                                     never sees bytecode it cannot run. -->
+                                <mkdir dir="${project.build.outputDirectory}/META-INF/versions/9"/>
+                                <copy file="${project.build.outputDirectory}/module-info.class"
+                                      todir="${project.build.outputDirectory}/META-INF/versions/9"
+                                      failonerror="false" quiet="true"/>
+                                <delete file="${project.build.outputDirectory}/module-info.class" quiet="true"/>
+                                <delete dir="${project.build.outputDirectory}/META-INF/versions/9/META-INF" quiet="true"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <configuration>
+                    <!-- Marks jars that carry a JDK 9+ module-info under META-INF/versions/9 as
+                         multi-release, so JDK 9+ loads the descriptor and JDK 8 ignores it. -->
+                    <archive>
+                        <manifestEntries>
+                            <Multi-Release>true</Multi-Release>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

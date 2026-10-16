@@ -9,6 +9,11 @@ import java.lang.annotation.Target;
  * Intercepts field write access (putfield) on the target class. Must be used within a class
  * annotated with {@link WeaveClass}.
  *
+ * <p>The advice method receives a {@link
+ * com.github.cc11001100.weavergirl.api.interceptor.FieldInvocation}. Calling {@code
+ * setWriteValue(...)} replaces the value stored into the field; calling {@code skipWrite()}
+ * rejects the write so the field keeps its previous value.
+ *
  * <h3>Example:</h3>
  *
  * <pre>

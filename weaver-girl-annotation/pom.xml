@@ -16,6 +16,10 @@
     <name>Weaver Girl - Annotation</name>
     <description>Annotations for declarative instrumentation</description>
 
+    <properties>
+        <moduleinfo.skip>false</moduleinfo.skip>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.junit.jupiter</groupId>

@@ -47,7 +47,8 @@ class AnnotationPluginLoaderTest {
 
     @Around("doWork")
     public void aroundDoWork(MethodInvocation invocation) {
-      // Around is called in both before and after phases
+      // @Around owns the invocation: the advice decides whether the target runs.
+      invocation.proceed();
     }
   }
 
@@ -208,10 +209,12 @@ class AnnotationPluginLoaderTest {
 
     MethodInvocation invocation =
         new MethodInvocation(String.class, "doWork", "target", new Object[0]);
+    invocation.setProceedable(true);
 
-    // Around should be called in both before and after — just verify no exceptions
-    assertDoesNotThrow(() -> interceptor.before(invocation));
-    assertDoesNotThrow(() -> interceptor.after(invocation));
+    // @Around advice runs through around(), where proceed() reaches the target method.
+    assertTrue(interceptor.hasAround(), "@Around advice must be dispatched as around advice");
+    assertDoesNotThrow(() -> interceptor.around(invocation));
+    assertTrue(invocation.isProceedCalled(), "advice that calls proceed() must reach the target");
   }
 
   @Test

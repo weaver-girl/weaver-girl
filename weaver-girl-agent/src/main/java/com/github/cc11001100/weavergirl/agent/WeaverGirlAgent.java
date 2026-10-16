@@ -1,24 +1,13 @@
 // weaver-girl-agent/src/main/java/com/github/cc11001100/weavergirl/agent/WeaverGirlAgent.java
 package com.github.cc11001100.weavergirl.agent;
 
-import com.github.cc11001100.weavergirl.core.InterceptorHolder;
 import com.github.cc11001100.weavergirl.core.WeaverGirl;
-import com.github.cc11001100.weavergirl.core.circuit.InterceptorCircuitBreaker;
-import com.github.cc11001100.weavergirl.core.config.ConfigWatcher;
 import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
 import com.github.cc11001100.weavergirl.core.config.YamlConfigLoader;
-import com.github.cc11001100.weavergirl.core.event.JsonEventListener;
-import com.github.cc11001100.weavergirl.core.metrics.PrometheusExporter;
-import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
-import com.github.cc11001100.weavergirl.core.status.AgentStatus;
-import com.github.cc11001100.weavergirl.core.status.AgentStatus.InterceptorMetrics;
-import com.sun.net.httpserver.HttpServer;
 import java.io.*;
 import java.lang.instrument.Instrumentation;
-import java.net.InetSocketAddress;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,12 +28,6 @@ import org.slf4j.LoggerFactory;
 public class WeaverGirlAgent {
 
   private static final Logger log = LoggerFactory.getLogger(WeaverGirlAgent.class);
-  private static final String CONFIG_PREFIX = "config=";
-  private static volatile ConfigWatcher configWatcher;
-  private static volatile HttpServer healthServer;
-  private static volatile com.github.cc11001100.weavergirl.core.management.AgentApiServer apiServer;
-  private static volatile WeaverGirl weaverGirlInstance;
-  private static volatile long startTimeMs = System.currentTimeMillis();
 
   /**
    * Premain entry — called before application main() when using -javaagent flag.
@@ -72,14 +55,31 @@ public class WeaverGirlAgent {
    */
   private static void run(String agentArgs, Instrumentation instrumentation, boolean isAttach) {
     try {
+      // Only the jars for enabled capabilities go on the isolated loader, so a capability that is
+      // switched off is never loaded. The selection reads the config up front, but only as text:
+      // parsing it into WeaverConfig here would define that class on the system loader and then
+      // again inside the isolated loader, and the two copies are not the same class.
+      java.util.List<java.io.File> pluginJars =
+          selectPluginJars(readPluginSelection(agentArgs), WeaverGirlAgent.class);
       com.github.cc11001100.weavergirl.agent.classloader.AgentClassLoader iso =
           com.github.cc11001100.weavergirl.agent.classloader.AgentClassLoader.create(
-              WeaverGirlAgent.class);
+              WeaverGirlAgent.class, pluginJars);
       Class<?> agentCls = Class.forName(WeaverGirlAgent.class.getName(), true, iso);
       java.lang.reflect.Method init =
           agentCls.getDeclaredMethod("init", String.class, Instrumentation.class, Boolean.TYPE);
       init.setAccessible(true);
-      init.invoke(null, agentArgs, instrumentation, isAttach);
+      // While the isolated copy runs, its thread context loader is the isolated loader. Shaded
+      // libraries (SnakeYAML resolving the YAML root type) load classes from the context loader
+      // first and only then fall back to Class.forName, which would define them on the system
+      // loader — a second copy of a class this loader already has, and a ClassCastException between
+      // the two.
+      ClassLoader previous = Thread.currentThread().getContextClassLoader();
+      Thread.currentThread().setContextClassLoader(iso);
+      try {
+        init.invoke(null, agentArgs, instrumentation, isAttach);
+      } finally {
+        Thread.currentThread().setContextClassLoader(previous);
+      }
       return;
     } catch (Throwable t) {
       // Isolation setup failed (e.g. agent jar location undetectable, or a class
@@ -125,32 +125,9 @@ public class WeaverGirlAgent {
         log.warn("Agent starting with interception DISABLED (emergency mode)");
       }
 
-      // Enable structured JSON event output if jsonEvents=true
-      if ("true".equals(args.get("jsonEvents"))) {
-        com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher.getInstance()
-            .addListener(new JsonEventListener());
-        log.info("Structured JSON event output enabled (jsonEvents=true)");
-      }
-
-      // Enable Prometheus metrics endpoint if metricsPort is specified
-      String metricsPortStr = args.get("metricsPort");
-      if (metricsPortStr != null) {
-        try {
-          int metricsPort = Integer.parseInt(metricsPortStr);
-          PrometheusExporter exporter = new PrometheusExporter();
-          com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher.getInstance()
-              .addListener(exporter);
-          exporter.start(metricsPort);
-          log.info(
-              "Prometheus metrics endpoint enabled on port {} (metricsPort={})",
-              metricsPort,
-              metricsPortStr);
-        } catch (NumberFormatException e) {
-          log.warn("Invalid metricsPort value: {}, expected integer", metricsPortStr);
-        } catch (Exception e) {
-          log.warn("Failed to start Prometheus metrics server: {}", e.getMessage());
-        }
-      }
+      // Optional capabilities (jsonEvents, metricsPort, config watching, annotation scanning, the
+      // management API) are plugins. They ship as their own jars and switch themselves on from these
+      // same arguments, so nothing is wired here — a capability that is not configured never loads.
 
       // Determine YAML config path (before bootstrap so that
       // excludedClasses can be wired into the transformer's ignore matcher)
@@ -174,7 +151,13 @@ public class WeaverGirlAgent {
       }
 
       WeaverGirl weaverGirl = WeaverGirl.bootstrap(instrumentation, args, weaverConfig);
-      weaverGirlInstance = weaverGirl;
+
+      // A config reload (the config-watch plugin) retransforms already-loaded classes through this
+      // hook. The plugin has no agent instance of its own, so the agent installs the callback here,
+      // once the transformer exists. It goes on InterceptorHolder because that class is resolved
+      // parent-first: the plugin, loaded inside the isolated loader, and this code see the same one.
+      com.github.cc11001100.weavergirl.core.InterceptorHolder.setRetransformHook(
+          () -> weaverGirl.retransformLoadedClasses());
 
       // Now register interceptors from YAML config (registry is available)
       if (configPath != null) {
@@ -184,40 +167,15 @@ public class WeaverGirlAgent {
         int afterCount = weaverGirl.getRegistry().getAllDefinitions().size();
         log.info("Loaded {} interceptor definitions from YAML config", afterCount - beforeCount);
 
-        // Start config watcher if watch=true
-        if ("true".equalsIgnoreCase(args.get("watch"))) {
-          configWatcher = new ConfigWatcher(configPath, weaverGirl.getRegistry());
-          configWatcher.setAfterReloadCallback(() -> weaverGirl.retransformLoadedClasses());
-          weaverGirl.setConfigWatcher(configWatcher);
-          configWatcher.start();
-        }
+        // Config hot-reload (watch=true) is the config-watch plugin's job. It reloads the YAML and
+        // retransforms already-loaded classes itself, so there is nothing to start here.
       }
 
-      // Load plugins from plugin directory if specified
-      String pluginDir = args.get("plugins");
-      if (pluginDir != null) {
-        PluginLoader pluginLoader = new PluginLoader();
-        pluginLoader.loadPluginsFromDirectory(pluginDir, weaverGirl.getRegistry(), args);
-        log.info("Plugins loaded from directory: {}", pluginDir);
-      }
+      // Drop-in plugins (plugins=<dir>) are loaded inside bootstrap, before the transformer is
+      // installed. Loading them here would register interceptors the installed transformer never
+      // applies.
 
-      // Scan for @WeaveClass-annotated interceptors if annotationPackages is specified
-      // Usage:
-      // -javaagent:weaver-girl-agent.jar=annotationPackages=com.example.interceptors,com.example.aspects
-      String annotationPackages = args.get("annotationPackages");
-      if (annotationPackages != null && !annotationPackages.isEmpty()) {
-        String[] packages = annotationPackages.split(";");
-        com.github.cc11001100.weavergirl.core.scanner.AnnotatedClassScanner scanner =
-            new com.github.cc11001100.weavergirl.core.scanner.AnnotatedClassScanner();
-        int found =
-            scanner.scanAndLoad(
-                weaverGirl.getRegistry(),
-                java.util.Arrays.stream(packages).map(String::trim).toArray(String[]::new));
-        log.info(
-            "Scanned {} annotation package(s), loaded {} @WeaveClass interceptors",
-            packages.length,
-            found);
-      }
+      // @WeaveClass scanning (annotationPackages) is the annotation-scan plugin's job.
 
       // If dynamically attached, retransform already-loaded classes
       if (isAttach) {
@@ -225,37 +183,9 @@ public class WeaverGirlAgent {
         log.info("Retransformed {} already-loaded classes for dynamic attach", retransformed);
       }
 
-      // Start management REST API if apiPort is specified
-      String apiPortStr = args.get("apiPort");
-      if (apiPortStr != null) {
-        try {
-          int apiPort = Integer.parseInt(apiPortStr);
-          apiServer = new com.github.cc11001100.weavergirl.core.management.AgentApiServer(apiPort);
-          apiServer.start();
-          log.info("[WeaverGirlAgent] Management API started on port {}", apiPort);
-        } catch (NumberFormatException e) {
-          log.warn("Invalid apiPort value: {}, expected integer", apiPortStr);
-        } catch (Exception e) {
-          log.warn("Failed to start management API server: {}", e.getMessage());
-        }
-      }
-
-      // Start health check endpoint if healthPort is specified
-      String healthPortStr = args.get("healthPort");
-      if (healthPortStr != null) {
-        try {
-          int healthPort = Integer.parseInt(healthPortStr);
-          startHealthEndpoint(healthPort);
-          log.info(
-              "Health check endpoint enabled on port {} (healthPort={})",
-              healthPort,
-              healthPortStr);
-        } catch (NumberFormatException e) {
-          log.warn("Invalid healthPort value: {}, expected integer", healthPortStr);
-        } catch (Exception e) {
-          log.warn("Failed to start health check server: {}", e.getMessage());
-        }
-      }
+      // The management REST API (apiPort) is the management-api plugin's job, the liveness and readiness
+      // probes (healthPort) are the health plugin's, and /stats, /metrics and the interception toggle
+      // (diagnosticsPort) are the diagnostics plugin's.
 
       // Register shutdown hook to cleanly destroy plugins
       final WeaverGirl shutdownRef = weaverGirl;
@@ -265,17 +195,12 @@ public class WeaverGirlAgent {
                   () -> {
                     try {
                       log.info("WeaverGirl agent shutting down...");
-                      if (healthServer != null) {
-                        healthServer.stop(2);
-                        log.info("Health check endpoint stopped");
-                      }
-                      if (apiServer != null) {
-                        apiServer.stop();
-                        log.info("Management API stopped");
-                      }
-                      if (configWatcher != null) {
-                        configWatcher.stop();
-                      }
+                      // The management API, the config watcher, the health probes and the diagnostics
+                      // endpoint stop themselves: each is a plugin,
+                      // and shutdown() destroys every loaded plugin. Drop the reload hook first so a
+                      // reload racing the shutdown cannot retransform into a stopped agent.
+                      com.github.cc11001100.weavergirl.core.InterceptorHolder.setRetransformHook(
+                          null);
                       shutdownRef.shutdown();
                       log.info("WeaverGirl agent shutdown complete");
                     } catch (Exception e) {
@@ -327,389 +252,160 @@ public class WeaverGirlAgent {
   }
 
   /**
-   * Start a lightweight HTTP health check endpoint. Exposes four paths:
+   * The capability jars that should be on the isolated loader for this launch.
    *
-   * <ul>
-   *   <li>{@code /health} — liveness probe (always 200 if agent is running)
-   *   <li>{@code /ready} — readiness probe (200 once agent has interceptors)
-   *   <li>{@code /stats} — live instrumentation counters: classes transformed and interceptors
-   *       actually <em>fired</em> at runtime (vs. merely registered). This is the positive signal
-   *       that instrumentation is taking effect — {@code interceptorInvocationCount > 0} means at
-   *       least one instrumented method has executed. Essential for APM/IAST operators and for
-   *       tests that must verify interception survives a packaging/classloader change.
-   *   <li>{@code /agent/interception} — runtime toggle for the global kill-switch
-   * </ul>
+   * <p>Built-in capabilities ship as individual jars in a {@code plugins/} directory next to the
+   * agent jar, and only the ones named by {@code selection} are returned. With neither key set every
+   * jar is loaded, so the default behaviour is unchanged. Returns an empty list when no plugin
+   * directory can be found (tests that run the agent straight from {@code target/classes}).
    *
-   * @param port the port to bind
+   * @param selection {@code disabledPlugins} and {@code enabledPlugins}, already read as plain text
    */
+  static java.util.List<java.io.File> selectPluginJars(Map<String, String> selection, Class<?> anchor) {
+    java.io.File pluginDir = resolvePluginDirectory(anchor);
+    if (pluginDir == null) {
+      return java.util.Collections.emptyList();
+    }
+    java.io.File[] found =
+        pluginDir.listFiles(
+            (java.io.FileFilter) file -> file.isFile() && file.getName().endsWith(".jar"));
+    if (found == null || found.length == 0) {
+      return java.util.Collections.emptyList();
+    }
+    String disabled = selection.get("disabledPlugins");
+    String enabled = selection.get("enabledPlugins");
+    return com.github.cc11001100.weavergirl.core.plugin.PluginJarSelector.select(
+        java.util.Arrays.asList(found), disabled, enabled);
+  }
+
   /**
-   * Simple name of the ClassLoader that defines the named class, resolved through the same loader
-   * as this agent class. Used by {@code /stats} to prove ByteBuddy is loaded by the isolated {@code
-   * AgentClassLoader} rather than the host system loader. Returns {@code "bootstrap"} for JDK
-   * classes, {@code "unloaded"} if the class cannot be found.
+   * Read {@code disabledPlugins} / {@code enabledPlugins} as plain text, from the agent arguments
+   * first and then, when a YAML config is named, from that file.
+   *
+   * <p>The YAML is read with a minimal line scan rather than {@link YamlConfigLoader}. This runs on
+   * the system ClassLoader, before the isolated loader exists, and loading the config classes here
+   * would define them twice — once on each loader — so the copy inside the agent would no longer be
+   * the one the rest of the agent uses.
    */
-  private static String loaderName(String className) {
+  private static Map<String, String> readPluginSelection(String agentArgs) {
+    Map<String, String> args = parseAgentArgs(agentArgs);
+    Map<String, String> selection = new LinkedHashMap<>();
+    if (args.get("disabledPlugins") != null) {
+      selection.put("disabledPlugins", args.get("disabledPlugins"));
+    }
+    if (args.get("enabledPlugins") != null) {
+      selection.put("enabledPlugins", args.get("enabledPlugins"));
+    }
+    String configPath = args.get("config");
+    if (configPath == null) {
+      return selection;
+    }
     try {
-      Class<?> c = Class.forName(className, false, WeaverGirlAgent.class.getClassLoader());
-      ClassLoader cl = c.getClassLoader();
-      if (cl == null) {
-        return "bootstrap";
-      }
-      String simple = cl.getClass().getSimpleName();
-      return simple.isEmpty() ? cl.getClass().getName() : simple;
-    } catch (Throwable t) {
-      return "unloaded";
-    }
-  }
-
-  /**
-   * Loader name of the first of {@code candidateNames} that resolves (in class-loading order);
-   * {@code "unloaded"} if none resolve. Used so the ByteBuddy isolation diagnostic works whether or
-   * not ByteBuddy is shaded.
-   */
-  private static String firstLoadedLoaderName(String... candidateNames) {
-    for (String name : candidateNames) {
-      try {
-        Class<?> c = Class.forName(name, false, WeaverGirlAgent.class.getClassLoader());
-        ClassLoader cl = c.getClassLoader();
-        if (cl == null) {
-          return "bootstrap";
+      java.util.List<String> lines =
+          java.nio.file.Files.readAllLines(java.nio.file.Paths.get(configPath));
+      String key = null;
+      java.util.List<String> values = null;
+      for (String raw : lines) {
+        String line = stripComment(raw);
+        if (line.trim().isEmpty()) {
+          continue;
         }
-        String simple = cl.getClass().getSimpleName();
-        return simple.isEmpty() ? cl.getClass().getName() : simple;
-      } catch (Throwable ignored) {
-        // try next candidate
-      }
-    }
-    return "unloaded";
-  }
-
-  /**
-   * Build a JSON array of the top {@code limit} hook points by cumulative interceptor time, each
-   * with invocation count, errors, avg/p95/max (micros) and slow-call count. Read-only over the
-   * metrics snapshot — safe to call from the /stats handler.
-   */
-  private static String buildTopHooksJson(
-      java.util.Map<
-              String, com.github.cc11001100.weavergirl.core.status.AgentStatus.InterceptorMetrics>
-          metrics,
-      int limit) {
-    java.util.List<
-            java.util.Map.Entry<
-                String,
-                com.github.cc11001100.weavergirl.core.status.AgentStatus.InterceptorMetrics>>
-        sorted = new java.util.ArrayList<>(metrics.entrySet());
-    sorted.sort((a, b) -> Long.compare(b.getValue().getTotalNanos(), a.getValue().getTotalNanos()));
-    int n = Math.min(limit, sorted.size());
-    StringBuilder sb = new StringBuilder();
-    sb.append('[');
-    for (int i = 0; i < n; i++) {
-      java.util.Map.Entry<
-              String, com.github.cc11001100.weavergirl.core.status.AgentStatus.InterceptorMetrics>
-          e = sorted.get(i);
-      com.github.cc11001100.weavergirl.core.status.AgentStatus.InterceptorMetrics m = e.getValue();
-      if (i > 0) {
-        sb.append(',');
-      }
-      sb.append("{\"name\":\"")
-          .append(jsonEscape(e.getKey()))
-          .append('"')
-          .append(",\"invocations\":")
-          .append(m.getInvocations())
-          .append(",\"errors\":")
-          .append(m.getErrors())
-          .append(",\"avgMicros\":")
-          .append(round3(m.getAverageNanos() / 1_000.0))
-          .append(",\"p95Micros\":")
-          .append(round3(m.estimatePercentile(95.0) / 1_000.0))
-          .append(",\"maxMicros\":")
-          .append(round3(m.getMaxNanos() / 1_000.0))
-          .append(",\"slowCalls\":")
-          .append(m.getSlowCalls())
-          .append('}');
-    }
-    sb.append(']');
-    return sb.toString();
-  }
-
-  private static String round3(double v) {
-    return String.format(java.util.Locale.ROOT, "%.3f", v);
-  }
-
-  /**
-   * Build a JSON array of every interceptor's circuit-breaker state: whether it is OPEN
-   * (auto-degraded / tripped), the current consecutive failure and slow counts, and how many times
-   * it has tripped overall. Read-only over the snapshot — safe to call from the /stats handler.
-   */
-  private static String buildBreakersJson(
-      java.util.List<InterceptorCircuitBreaker.BreakerSnapshot> snap) {
-    StringBuilder sb = new StringBuilder();
-    sb.append('[');
-    for (int i = 0; i < snap.size(); i++) {
-      InterceptorCircuitBreaker.BreakerSnapshot b = snap.get(i);
-      if (i > 0) {
-        sb.append(',');
-      }
-      sb.append("{\"name\":\"")
-          .append(jsonEscape(b.getName()))
-          .append('"')
-          .append(",\"open\":")
-          .append(b.isOpen())
-          .append(",\"consecutiveFailures\":")
-          .append(b.getConsecutiveFailures())
-          .append(",\"consecutiveSlow\":")
-          .append(b.getConsecutiveSlow())
-          .append(",\"timesTripped\":")
-          .append(b.getTimesTripped())
-          .append('}');
-    }
-    sb.append(']');
-    return sb.toString();
-  }
-
-  private static String jsonEscape(String s) {
-    if (s.indexOf('"') < 0 && s.indexOf('\\') < 0) {
-      return s;
-    }
-    StringBuilder sb = new StringBuilder(s.length() + 8);
-    for (int i = 0; i < s.length(); i++) {
-      char c = s.charAt(i);
-      if (c == '"' || c == '\\') {
-        sb.append('\\');
-      }
-      sb.append(c);
-    }
-    return sb.toString();
-  }
-
-  private static String escMetric(String s) {
-    if (s == null) return "";
-    return s.replace("\\", "\\\\").replace("\"", "\\\"");
-  }
-
-  private static void startHealthEndpoint(int port) throws Exception {
-    healthServer = HttpServer.create(new InetSocketAddress(port), 0);
-
-    healthServer.createContext(
-        "/health",
-        exchange -> {
-          try {
-            long uptimeSec = (System.currentTimeMillis() - startTimeMs) / 1000;
-            String json =
-                "{\"status\":\"UP\",\"agent\":\"weaver-girl\",\"uptimeSeconds\":" + uptimeSec + "}";
-            byte[] bytes = json.getBytes("UTF-8");
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, bytes.length);
-            exchange.getResponseBody().write(bytes);
-            exchange.getResponseBody().close();
-          } catch (Exception e) {
-            exchange.sendResponseHeaders(500, 0);
-            exchange.getResponseBody().close();
+        if (!startsWithWhitespace(line)) {
+          if (key != null) {
+            selection.put(key, join(values));
           }
-        });
-
-    healthServer.createContext(
-        "/ready",
-        exchange -> {
-          try {
-            WeaverGirl wg = weaverGirlInstance;
-            int defCount = (wg != null) ? wg.getRegistry().getAllDefinitions().size() : 0;
-            if (defCount > 0) {
-              String json = "{\"status\":\"READY\",\"interceptorCount\":" + defCount + "}";
-              byte[] bytes = json.getBytes("UTF-8");
-              exchange.getResponseHeaders().set("Content-Type", "application/json");
-              exchange.sendResponseHeaders(200, bytes.length);
-              exchange.getResponseBody().write(bytes);
+          key = null;
+          int colon = line.indexOf(':');
+          if (colon < 0) {
+            continue;
+          }
+          String name = line.substring(0, colon).trim();
+          String inline = line.substring(colon + 1).trim();
+          if ("disabledPlugins".equals(name) || "enabledPlugins".equals(name)) {
+            if (inline.isEmpty()) {
+              key = name;
+              values = new java.util.ArrayList<>();
             } else {
-              String json = "{\"status\":\"NOT_READY\",\"interceptorCount\":0}";
-              byte[] bytes = json.getBytes("UTF-8");
-              exchange.getResponseHeaders().set("Content-Type", "application/json");
-              exchange.sendResponseHeaders(503, bytes.length);
-              exchange.getResponseBody().write(bytes);
+              selection.put(name, unquote(inline));
             }
-            exchange.getResponseBody().close();
-          } catch (Exception e) {
-            exchange.sendResponseHeaders(500, 0);
-            exchange.getResponseBody().close();
           }
-        });
-
-    // Runtime toggle for the global interception kill-switch.
-    // POST /agent/interception  {"enabled":true|false}  -> flips the switch live.
-    healthServer.createContext(
-        "/agent/interception",
-        exchange -> {
-          try {
-            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-              exchange.sendResponseHeaders(405, -1);
-              return;
-            }
-            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
-            byte[] buf = new byte[256];
-            int n;
-            java.io.InputStream is = exchange.getRequestBody();
-            while ((n = is.read(buf)) != -1) {
-              bos.write(buf, 0, n);
-            }
-            String body = new String(bos.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
-            boolean desired =
-                body.contains("\"enabled\":true") || body.contains("\"enabled\": true");
-            com.github.cc11001100.weavergirl.core.InterceptorHolder.setInterceptionEnabled(
-                desired, "rest:/agent/interception");
-            String json = "{\"enabled\":" + desired + "}";
-            byte[] bytes = json.getBytes("UTF-8");
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, bytes.length);
-            exchange.getResponseBody().write(bytes);
-            exchange.getResponseBody().close();
-          } catch (Exception e) {
-            exchange.sendResponseHeaders(500, 0);
-            exchange.getResponseBody().close();
+        } else if (key != null) {
+          String item = line.trim();
+          if (item.startsWith("-")) {
+            item = item.substring(1).trim();
           }
-        });
-
-    // Live instrumentation counters. interceptorInvocationCount is incremented by
-    // the inlined advice on EVERY instrumented method execution, so a non-zero value
-    // is positive proof interception is wired end-to-end (advice -> registry -> plugin).
-    // The smoke harness asserts this is non-zero after driving instrumented traffic,
-    // which catches the silent "null registry" failure mode of a classloader split.
-    healthServer.createContext(
-        "/stats",
-        exchange -> {
-          try {
-            AgentStatus status = AgentStatus.getInstance();
-            long uptimeSec = (System.currentTimeMillis() - startTimeMs) / 1000;
-            // Prefer the live registry count (kept accurate as plugins register) over
-            // the cached AgentStatus value, which is only set on certain code paths.
-            WeaverGirl wg = weaverGirlInstance;
-            int registered =
-                (wg != null)
-                    ? wg.getRegistry().getAllDefinitions().size()
-                    : status.getRegisteredInterceptorCount();
-            // Isolation diagnostic: report which ClassLoader resolved ByteBuddy and the
-            // agent transformer. If both show the isolated AgentClassLoader, the agent's
-            // ByteBuddy is provably not on the host's system ClassLoader. ByteBuddy is
-            // shaded to shaded.net.bytebuddy; try the relocated name first, then the
-            // original, so this stays correct if relocation is ever toggled off.
-            String byteBuddyLoader =
-                firstLoadedLoaderName("shaded.net.bytebuddy.ByteBuddy", "net.bytebuddy.ByteBuddy");
-            String agentBodyLoader = loaderName(WeaverGirlAgent.class.getName());
-            // Per-hook performance: top hook points by cumulative interceptor time,
-            // with avg / p95 / max / count / slow-call / error breakdown. This is the
-            // per-hook-point performance signal an APM/IAST operator needs, and the
-            // input to the latency-based auto-degradation (see InterceptorCircuitBreaker).
-            String topHooksJson = buildTopHooksJson(status.getInterceptorMetrics(), 10);
-            // Live circuit-breaker state per hook: which hooks are currently tripped
-            // OPEN (auto-degraded), their consecutive failure/slow counts, and total
-            // trip count. Surfaces the auto-degradation decisions the breaker makes.
-            String breakersJson = buildBreakersJson(InterceptorHolder.getBreakerSnapshots());
-            StringBuilder sb = new StringBuilder(512);
-            sb.append("{\"status\":\"UP\",\"uptimeSeconds\":")
-                .append(uptimeSec)
-                .append(",\"transformationCount\":")
-                .append(status.getTransformationCount())
-                .append(",\"transformationErrorCount\":")
-                .append(status.getTransformationErrorCount())
-                .append(",\"interceptorInvocationCount\":")
-                .append(status.getInterceptorInvocationCount())
-                .append(",\"interceptorErrorCount\":")
-                .append(status.getInterceptorErrorCount())
-                .append(",\"registeredInterceptorCount\":")
-                .append(registered)
-                .append(",\"activePluginCount\":")
-                .append(status.getActivePluginCount())
-                .append(",\"byteBuddyClassLoader\":\"")
-                .append(byteBuddyLoader)
-                .append("\"")
-                .append(",\"agentBodyClassLoader\":\"")
-                .append(agentBodyLoader)
-                .append("\"")
-                .append(",\"topHooks\":")
-                .append(topHooksJson)
-                .append(",\"circuitBreakers\":")
-                .append(breakersJson)
-                .append("}");
-            byte[] bytes = sb.toString().getBytes("UTF-8");
-            exchange.getResponseHeaders().set("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, bytes.length);
-            exchange.getResponseBody().write(bytes);
-            exchange.getResponseBody().close();
-          } catch (Exception e) {
-            exchange.sendResponseHeaders(500, 0);
-            exchange.getResponseBody().close();
+          if (!item.isEmpty()) {
+            values.add(unquote(item));
           }
-        });
-
-    // Prometheus-compatible metric snapshot over the existing AgentStatus counters
-    // and per-hook latency histogram. This keeps a single observability port useful
-    // for both human-friendly /stats and scraping-oriented /metrics.
-    healthServer.createContext(
-        "/metrics",
-        exchange -> {
-          try {
-            StringBuilder sb = new StringBuilder(2048);
-            AgentStatus status = AgentStatus.getInstance();
-            long uptimeSec = (System.currentTimeMillis() - startTimeMs) / 1000;
-            WeaverGirl wg = weaverGirlInstance;
-            int registered =
-                (wg != null)
-                    ? wg.getRegistry().getAllDefinitions().size()
-                    : status.getRegisteredInterceptorCount();
-
-            sb.append("# HELP weavergirl_uptime_seconds Agent uptime in seconds\n");
-            sb.append("# TYPE weavergirl_uptime_seconds gauge\n");
-            sb.append("weavergirl_uptime_seconds ").append(uptimeSec).append("\n\n");
-
-            sb.append("# HELP weavergirl_transformations_total Total class transformations\n");
-            sb.append("# TYPE weavergirl_transformations_total counter\n");
-            sb.append("weavergirl_transformations_total ")
-                .append(status.getTransformationCount())
-                .append("\n\n");
-
-            sb.append("# HELP weavergirl_transformation_errors_total Transformation errors\n");
-            sb.append("# TYPE weavergirl_transformation_errors_total counter\n");
-            sb.append("weavergirl_transformation_errors_total ")
-                .append(status.getTransformationErrorCount())
-                .append("\n\n");
-
-            sb.append("# HELP weavergirl_interceptor_invocations_total Total interceptor invocations\n");
-            sb.append("# TYPE weavergirl_interceptor_invocations_total counter\n");
-            sb.append("weavergirl_interceptor_invocations_total ")
-                .append(status.getInterceptorInvocationCount())
-                .append("\n\n");
-
-            sb.append("# HELP weavergirl_interceptor_errors_total Interceptor errors\n");
-            sb.append("# TYPE weavergirl_interceptor_errors_total counter\n");
-            sb.append("weavergirl_interceptor_errors_total ")
-                .append(status.getInterceptorErrorCount())
-                .append("\n\n");
-
-            sb.append("# HELP weavergirl_registered_interceptors Number of registered interceptor definitions\n");
-            sb.append("# TYPE weavergirl_registered_interceptors gauge\n");
-            sb.append("weavergirl_registered_interceptors ").append(registered).append("\n\n");
-
-            sb.append("# HELP weavergirl_active_plugins Number of active plugins\n");
-            sb.append("# TYPE weavergirl_active_plugins gauge\n");
-            sb.append("weavergirl_active_plugins ").append(status.getActivePluginCount()).append("\n\n");
-
-            for (Map.Entry<String, InterceptorMetrics> entry : status.getInterceptorMetrics().entrySet()) {
-              String name = entry.getKey();
-              InterceptorMetrics m = entry.getValue();
-              sb.append(m.renderInterceptorHistogramPrometheus(escMetric(name)));
-            }
-
-            byte[] bytes = sb.toString().getBytes("UTF-8");
-            exchange.getResponseHeaders().set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
-            exchange.sendResponseHeaders(200, bytes.length);
-            exchange.getResponseBody().write(bytes);
-            exchange.getResponseBody().close();
-          } catch (Exception e) {
-            exchange.sendResponseHeaders(500, 0);
-            exchange.getResponseBody().close();
-          }
-        });
-
-    healthServer.setExecutor(null);
-    healthServer.start();
+        }
+      }
+      if (key != null) {
+        selection.put(key, join(values));
+      }
+    } catch (Throwable t) {
+      java.util.logging.Logger.getLogger(WeaverGirlAgent.class.getName())
+          .warning("Could not read plugin selection from " + configPath + ": " + t.getMessage());
+    }
+    return selection;
   }
+
+  private static String stripComment(String line) {
+    boolean inQuote = false;
+    for (int i = 0; i < line.length(); i++) {
+      char c = line.charAt(i);
+      if (c == '"' || c == '\'') {
+        inQuote = !inQuote;
+      } else if (c == '#' && !inQuote) {
+        return line.substring(0, i);
+      }
+    }
+    return line;
+  }
+
+  private static boolean startsWithWhitespace(String line) {
+    return !line.isEmpty() && Character.isWhitespace(line.charAt(0));
+  }
+
+  private static String unquote(String value) {
+    if (value.length() >= 2) {
+      char first = value.charAt(0);
+      char last = value.charAt(value.length() - 1);
+      if ((first == '"' || first == '\'') && last == first) {
+        return value.substring(1, value.length() - 1);
+      }
+    }
+    return value;
+  }
+
+  /** {@code plugins/} directory sitting next to the agent jar, or {@code null} when it isn't there. */
+  private static java.io.File resolvePluginDirectory(Class<?> anchor) {
+    java.security.CodeSource cs =
+        anchor.getProtectionDomain() != null ? anchor.getProtectionDomain().getCodeSource() : null;
+    java.net.URL location = cs != null ? cs.getLocation() : null;
+    if (location == null || !"file".equals(location.getProtocol())) {
+      return null;
+    }
+    java.io.File agentPath = new java.io.File(location.getPath());
+    java.io.File parent = agentPath.isDirectory() ? agentPath.getParentFile() : agentPath.getParentFile();
+    if (parent == null) {
+      return null;
+    }
+    java.io.File pluginDir = new java.io.File(parent, "plugins");
+    return pluginDir.isDirectory() ? pluginDir : null;
+  }
+
+  private static String join(java.util.List<String> values) {
+    StringBuilder sb = new StringBuilder();
+    for (String value : values) {
+      if (value == null || value.trim().isEmpty()) {
+        continue;
+      }
+      if (sb.length() > 0) {
+        sb.append(',');
+      }
+      sb.append(value.trim());
+    }
+    return sb.toString();
+  }
+
 }

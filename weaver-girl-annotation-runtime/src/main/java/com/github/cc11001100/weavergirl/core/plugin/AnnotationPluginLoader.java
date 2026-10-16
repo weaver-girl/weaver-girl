@@ -4,12 +4,16 @@ import com.github.cc11001100.weavergirl.annotation.*;
 import com.github.cc11001100.weavergirl.api.context.ThreadContext;
 import com.github.cc11001100.weavergirl.api.interceptor.CatchInterceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.CatchInvocation;
+import com.github.cc11001100.weavergirl.api.interceptor.FieldInterceptor;
+import com.github.cc11001100.weavergirl.api.interceptor.FieldInvocation;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
+import com.github.cc11001100.weavergirl.api.matcher.FieldMatcher;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 import com.github.cc11001100.weavergirl.api.pointcut.CatchPointcut;
+import com.github.cc11001100.weavergirl.api.pointcut.FieldPointcut;
 import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
 import com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression;
 import com.github.cc11001100.weavergirl.api.pointcut.PointcutParser;
@@ -126,7 +130,7 @@ public class AnnotationPluginLoader {
     // --- Collect advice methods by category ---
     Map<String, List<Method>> beforeMethods = new HashMap<>();
     Map<String, List<Method>> afterMethods = new HashMap<>();
-    Map<String, List<Method>> aroundMethods = new HashMap<>();
+    Map<String, List<Method>> aroundMethods = new LinkedHashMap<>();
     Map<String, List<Method>> onExceptionMethods = new HashMap<>();
     Map<String, List<Method>> afterReturningMethods = new HashMap<>();
     Map<String, List<Method>> afterThrowingMethods = new HashMap<>();
@@ -429,25 +433,17 @@ public class AnnotationPluginLoader {
     ClassMatcher classMatcher = buildClassMatcherFromAnnotation(weaveClass);
 
     // --- Register field interceptors ---
-    if (!fieldGetMethods.isEmpty()) {
-      for (Method m : fieldGetMethods) {
-        OnFieldGet ann = m.getAnnotation(OnFieldGet.class);
-        MethodMatcher fieldMatcher = MethodMatcher.byName(ann.value());
-        Interceptor interceptor = createFieldGetInterceptor(interceptorInstance, m, sampleRate);
-        Pointcut pointcut = new Pointcut(classMatcher, fieldMatcher);
-        String defName = "annotation-" + clazz.getSimpleName() + "-fieldGet-" + ann.value();
-        registry.register(new InterceptorDefinition(defName, pointcut, interceptor, priority));
-      }
+    // Each @OnFieldGet/@OnFieldSet method becomes a FIELD-mode definition whose interceptor
+    // implements FieldInterceptor: WeaverTransformer only routes AdviceMode.FIELD definitions to
+    // FieldAdvice, and FieldAdvice only dispatches to interceptors that implement FieldInterceptor
+    // and declare fieldPointcuts(). A plain Interceptor matched by method name would be woven with
+    // InterceptAdvice and never see the field access.
+    for (Method m : fieldGetMethods) {
+      registerFieldInterceptor(interceptorInstance, m, classMatcher, clazz, priority, true, registry);
     }
-    if (!fieldSetMethods.isEmpty()) {
-      for (Method m : fieldSetMethods) {
-        OnFieldSet ann = m.getAnnotation(OnFieldSet.class);
-        MethodMatcher fieldMatcher = MethodMatcher.byName(ann.value());
-        Interceptor interceptor = createFieldSetInterceptor(interceptorInstance, m, sampleRate);
-        Pointcut pointcut = new Pointcut(classMatcher, fieldMatcher);
-        String defName = "annotation-" + clazz.getSimpleName() + "-fieldSet-" + ann.value();
-        registry.register(new InterceptorDefinition(defName, pointcut, interceptor, priority));
-      }
+    for (Method m : fieldSetMethods) {
+      registerFieldInterceptor(
+          interceptorInstance, m, classMatcher, clazz, priority, false, registry);
     }
 
     // --- Register static init interceptor ---
@@ -1580,44 +1576,346 @@ public class AnnotationPluginLoader {
       double sampleRate,
       boolean isTimed,
       Timed timedAnnotation) {
-    return new Interceptor() {
-      @Override
-      public void before(MethodInvocation inv) {
-        if (!shouldSample(sampleRate)) return;
-        inv.setAttachment(ELAPSED_START_ATTACHMENT, System.nanoTime());
-        if (isTimed) inv.setAttachment("timed.startNanos", System.nanoTime());
-        invokeMethods(instance, arounds, inv);
+    return new ReflectiveAroundInterceptor(
+        instance,
+        befores,
+        afters,
+        arounds,
+        onExceptions,
+        afterReturnings,
+        afterThrowings,
+        afterFinallys,
+        sampleRate,
+        isTimed,
+        timedAnnotation);
+  }
+
+  /**
+   * Reflective interceptor for the lifecycle advice of one annotated class. When the class declares
+   * {@code @Around} methods, this interceptor reports {@link #hasAround()} so {@code
+   * InterceptAdvice} runs it through the proceed-chain instead of the plain before/after callbacks:
+   * each annotated method is invoked once, wrapping the next, and must call {@code proceed()} to
+   * reach the target method. Without {@code @Around} methods the interceptor stays a plain
+   * before/after/onException interceptor, preserving the behavior of advice that predates around
+   * support.
+   */
+  private final class ReflectiveAroundInterceptor implements Interceptor {
+    private final Object instance;
+    private final List<Method> befores;
+    private final List<Method> afters;
+    private final List<Method> arounds;
+    private final List<Method> onExceptions;
+    private final List<Method> afterReturnings;
+    private final List<Method> afterThrowings;
+    private final List<Method> afterFinallys;
+    private final double sampleRate;
+    private final boolean isTimed;
+    private final Timed timedAnnotation;
+
+    ReflectiveAroundInterceptor(
+        Object instance,
+        List<Method> befores,
+        List<Method> afters,
+        List<Method> arounds,
+        List<Method> onExceptions,
+        List<Method> afterReturnings,
+        List<Method> afterThrowings,
+        List<Method> afterFinallys,
+        double sampleRate,
+        boolean isTimed,
+        Timed timedAnnotation) {
+      this.instance = instance;
+      this.befores = befores;
+      this.afters = afters;
+      this.arounds = arounds;
+      this.onExceptions = onExceptions;
+      this.afterReturnings = afterReturnings;
+      this.afterThrowings = afterThrowings;
+      this.afterFinallys = afterFinallys;
+      this.sampleRate = sampleRate;
+      this.isTimed = isTimed;
+      this.timedAnnotation = timedAnnotation;
+    }
+
+    @Override
+    public boolean hasAround() {
+      return !arounds.isEmpty();
+    }
+
+    @Override
+    public void before(MethodInvocation inv) {
+      if (!shouldSample()) return;
+      inv.setAttachment(ELAPSED_START_ATTACHMENT, System.nanoTime());
+      if (isTimed) inv.setAttachment("timed.startNanos", System.nanoTime());
+      // @Around methods own the whole invocation through around(); running them here as well
+      // would execute each of them twice per call.
+      if (arounds.isEmpty()) {
         invokeMethods(instance, befores, inv);
       }
+    }
 
-      @Override
-      public void after(MethodInvocation inv) {
-        if (!shouldSample(sampleRate)) return;
-        invokeMethods(instance, arounds, inv);
-        invokeMethods(instance, afters, inv);
-        invokeMethods(instance, afterReturnings, inv);
-        if (isTimed) recordTiming(inv, timedAnnotation);
+    @Override
+    public void around(MethodInvocation inv) {
+      if (!shouldSample()) {
+        inv.proceed();
+        return;
       }
+      runAround(0, inv);
+    }
 
-      @Override
-      public void onException(MethodInvocation inv) {
-        if (!shouldSample(sampleRate)) return;
-        invokeMethods(instance, arounds, inv);
-        invokeOnExceptionFiltered(instance, onExceptions, inv);
-        invokeOnExceptionThrowingFiltered(instance, afterThrowings, inv);
-        if (isTimed) recordTiming(inv, timedAnnotation);
+    /**
+     * Runs the {@code @Around} methods as nested wrappers. Each method sees a {@code proceed()}
+     * that continues with the next method, and the innermost {@code proceed()} runs the target
+     * method. The {@code @Before} advice runs there too, right before the target method; the
+     * after-phase advice is deliberately not run here. {@code proceed()} only decides whether the
+     * target method runs — its return value and thrown exception are only known at method exit,
+     * where the engine calls {@link #after}, {@link #onException} and {@link #afterFinally}.
+     */
+    private void runAround(int index, MethodInvocation inv) {
+      if (index >= arounds.size()) {
+        invokeMethods(instance, befores, inv);
+        if (!inv.isSkipped()) {
+          inv.proceed();
+        }
+        return;
       }
+      Method around = arounds.get(index);
+      // The advice method calls proceed() on the MethodInvocation it receives. That call only
+      // flips a flag inside the engine, so hand the method a view whose proceed() also advances
+      // this chain — otherwise an @Around method could never reach the target method.
+      MethodInvocation view =
+          new ProceedingInvocation(inv) {
+            @Override
+            public void proceed() {
+              super.proceed();
+              runAround(index + 1, inv);
+            }
+          };
+      try {
+        around.setAccessible(true);
+        around.invoke(instance, resolveArgs(around, view));
+      } catch (Exception e) {
+        log.warn("Error invoking around method {}: {}", around.getName(), e.getMessage());
+      }
+    }
 
-      @Override
-      public void afterFinally(MethodInvocation inv) {
-        if (!shouldSample(sampleRate)) return;
-        invokeMethods(instance, afterFinallys, inv);
-      }
+    @Override
+    public void after(MethodInvocation inv) {
+      if (!shouldSample()) return;
+      invokeMethods(instance, afters, inv);
+      invokeMethods(instance, afterReturnings, inv);
+      if (isTimed) recordTiming(inv, timedAnnotation);
+    }
 
-      private boolean shouldSample(double rate) {
-        return rate >= 1.0 || ThreadLocalRandom.current().nextDouble() < rate;
-      }
-    };
+    @Override
+    public void onException(MethodInvocation inv) {
+      if (!shouldSample()) return;
+      invokeOnExceptionFiltered(instance, onExceptions, inv);
+      invokeOnExceptionThrowingFiltered(instance, afterThrowings, inv);
+      if (isTimed) recordTiming(inv, timedAnnotation);
+    }
+
+    @Override
+    public void afterFinally(MethodInvocation inv) {
+      if (!shouldSample()) return;
+      invokeMethods(instance, afterFinallys, inv);
+    }
+
+    private boolean shouldSample() {
+      return sampleRate >= 1.0 || ThreadLocalRandom.current().nextDouble() < sampleRate;
+    }
+  }
+
+  /**
+   * A {@link MethodInvocation} view handed to one {@code @Around} method. Every read and write is
+   * forwarded to the real invocation (so {@code setReturnValue}, {@code setArgument} and {@code
+   * skipMethod} reach the engine), while {@link #proceed()} is left to the subclass, which uses it
+   * to continue the around chain.
+   *
+   * <p>The view is only safe for the duration of the advice call: {@code MethodInvocation} instances
+   * are pooled and reset between calls, and this view keeps no state of its own.
+   */
+  private static class ProceedingInvocation extends MethodInvocation {
+    private final MethodInvocation delegate;
+
+    ProceedingInvocation(MethodInvocation delegate) {
+      super(
+          delegate.getTargetClass(), delegate.getMethodName(), delegate.getTarget(), new Object[0]);
+      this.delegate = delegate;
+      // The engine only marks the real invocation proceedable. The view must be proceedable too,
+      // or the advice's proceed() call fails its own guard before it ever reaches the delegate.
+      setProceedable(true);
+    }
+
+    @Override
+    public void proceed() {
+      delegate.proceed();
+    }
+
+    @Override
+    public Class<?> getTargetClass() {
+      return delegate.getTargetClass();
+    }
+
+    @Override
+    public String getMethodName() {
+      return delegate.getMethodName();
+    }
+
+    @Override
+    public Method getMethod() {
+      return delegate.getMethod();
+    }
+
+    @Override
+    public Object getTarget() {
+      return delegate.getTarget();
+    }
+
+    @Override
+    public void setTarget(Object target) {
+      delegate.setTarget(target);
+    }
+
+    @Override
+    public Object[] getArguments() {
+      return delegate.getArguments();
+    }
+
+    @Override
+    public Object getArgument(int index) {
+      return delegate.getArgument(index);
+    }
+
+    @Override
+    public void setArgument(int index, Object value) {
+      delegate.setArgument(index, value);
+    }
+
+    @Override
+    public Class<?>[] getParameterTypes() {
+      return delegate.getParameterTypes();
+    }
+
+    @Override
+    public Class<?> getReturnType() {
+      return delegate.getReturnType();
+    }
+
+    @Override
+    public Object getReturnValue() {
+      return delegate.getReturnValue();
+    }
+
+    @Override
+    public void setReturnValue(Object returnValue) {
+      delegate.setReturnValue(returnValue);
+    }
+
+    @Override
+    public Throwable getThrowable() {
+      return delegate.getThrowable();
+    }
+
+    @Override
+    public void setThrowable(Throwable throwable) {
+      delegate.setThrowable(throwable);
+    }
+
+    @Override
+    public boolean hasException() {
+      return delegate.hasException();
+    }
+
+    @Override
+    public boolean isSkipped() {
+      return delegate.isSkipped();
+    }
+
+    @Override
+    public void setSkipMethod(boolean skip) {
+      delegate.setSkipMethod(skip);
+    }
+
+    @Override
+    public void skipMethod() {
+      delegate.skipMethod();
+    }
+
+    @Override
+    public boolean isReturnOverridden() {
+      return delegate.isReturnOverridden();
+    }
+
+    @Override
+    public void initReturnValue(Object returnValue) {
+      delegate.initReturnValue(returnValue);
+    }
+
+    @Override
+    public void suppressException() {
+      delegate.suppressException();
+    }
+
+    @Override
+    public boolean isExceptionSuppressed() {
+      return delegate.isExceptionSuppressed();
+    }
+
+    @Override
+    public boolean isProceedable() {
+      return delegate.isProceedable();
+    }
+
+    @Override
+    public boolean isProceedCalled() {
+      return delegate.isProceedCalled();
+    }
+
+    @Override
+    public void setAttachment(String key, Object value) {
+      delegate.setAttachment(key, value);
+    }
+
+    @Override
+    public Object getAttachment(String key) {
+      return delegate.getAttachment(key);
+    }
+
+    @Override
+    public <T> T getAttachment(String key, Class<T> type) {
+      return delegate.getAttachment(key, type);
+    }
+
+    @Override
+    public Object removeAttachment(String key) {
+      return delegate.removeAttachment(key);
+    }
+
+    @Override
+    public boolean hasAttachment(String key) {
+      return delegate.hasAttachment(key);
+    }
+
+    @Override
+    public boolean hasCaller() {
+      return delegate.hasCaller();
+    }
+
+    @Override
+    public Class<?> getCallerClass() {
+      return delegate.getCallerClass();
+    }
+
+    @Override
+    public String getCallerMethodName() {
+      return delegate.getCallerMethodName();
+    }
+
+    @Override
+    public int getCallerLineNumber() {
+      return delegate.getCallerLineNumber();
+    }
   }
 
   private Interceptor createPatternInterceptor(
@@ -1665,42 +1963,88 @@ public class AnnotationPluginLoader {
     };
   }
 
-  private Interceptor createFieldGetInterceptor(Object instance, Method method, double sampleRate) {
-    return new Interceptor() {
-      @Override
-      public void after(MethodInvocation inv) {
-        if (!shouldSample(sampleRate)) return;
-        try {
-          method.setAccessible(true);
-          method.invoke(instance, inv);
-        } catch (Exception e) {
-          log.warn("Error invoking field-get method: {}", e.getMessage());
-        }
-      }
-
-      private boolean shouldSample(double rate) {
-        return rate >= 1.0 || ThreadLocalRandom.current().nextDouble() < rate;
-      }
-    };
+  /**
+   * Registers one {@code @OnFieldGet} or {@code @OnFieldSet} method as its own {@code
+   * AdviceMode.FIELD} definition. The definition's method matcher only selects the class (field
+   * selection happens inside {@link FieldAdvice} through {@link FieldInterceptor#fieldPointcuts()}),
+   * so the pointcut matches every method of the target class.
+   */
+  private void registerFieldInterceptor(
+      Object instance,
+      Method method,
+      ClassMatcher classMatcher,
+      Class<?> clazz,
+      int priority,
+      boolean read,
+      InterceptorRegistry registry) {
+    String fieldName =
+        read
+            ? method.getAnnotation(OnFieldGet.class).value()
+            : method.getAnnotation(OnFieldSet.class).value();
+    FieldPointcut fieldPointcut = FieldPointcut.inClass(classMatcher, FieldMatcher.byName(fieldName));
+    Interceptor interceptor =
+        new ReflectiveFieldInterceptor(instance, method, read, fieldPointcut);
+    Pointcut pointcut = new Pointcut(classMatcher, MethodMatcher.any());
+    String defName =
+        "annotation-"
+            + clazz.getSimpleName()
+            + (read ? "-fieldGet-" : "-fieldSet-")
+            + fieldName;
+    registry.register(
+        new InterceptorDefinition(
+            defName, pointcut, interceptor, priority, InterceptorDefinition.AdviceMode.FIELD));
   }
 
-  private Interceptor createFieldSetInterceptor(Object instance, Method method, double sampleRate) {
-    return new Interceptor() {
-      @Override
-      public void before(MethodInvocation inv) {
-        if (!shouldSample(sampleRate)) return;
-        try {
-          method.setAccessible(true);
-          method.invoke(instance, inv);
-        } catch (Exception e) {
-          log.warn("Error invoking field-set method: {}", e.getMessage());
-        }
-      }
+  /**
+   * Adapts one {@code @OnFieldGet}/{@code @OnFieldSet} method into a {@link FieldInterceptor}. The
+   * advice method receives the {@link FieldInvocation}, so it can replace a read value with {@code
+   * setReturnValue} or a written value with {@code setWriteValue}, or reject a write with {@code
+   * skipWrite()}.
+   */
+  private static final class ReflectiveFieldInterceptor implements Interceptor, FieldInterceptor {
+    private final Object instance;
+    private final Method method;
+    private final boolean read;
+    private final FieldPointcut[] fieldPointcuts;
 
-      private boolean shouldSample(double rate) {
-        return rate >= 1.0 || ThreadLocalRandom.current().nextDouble() < rate;
+    ReflectiveFieldInterceptor(
+        Object instance, Method method, boolean read, FieldPointcut fieldPointcut) {
+      this.instance = instance;
+      this.method = method;
+      this.read = read;
+      this.fieldPointcuts = new FieldPointcut[] {fieldPointcut};
+    }
+
+    @Override
+    public FieldPointcut[] fieldPointcuts() {
+      return fieldPointcuts;
+    }
+
+    @Override
+    public void onFieldGet(FieldInvocation invocation, Object originalValue) {
+      if (read) {
+        invoke(invocation);
       }
-    };
+    }
+
+    @Override
+    public void onFieldSet(FieldInvocation invocation, Object target, Object originalValue) {
+      if (!read) {
+        // FieldAdvice reports the value being written as a callback argument; the invocation's
+        // write slot only holds an interceptor's override. Hand the advice a view that reads back
+        // the original value until the advice replaces it.
+        invoke(new OriginalWriteFieldInvocation(invocation, originalValue));
+      }
+    }
+
+    private void invoke(FieldInvocation invocation) {
+      try {
+        method.setAccessible(true);
+        method.invoke(instance, resolveFieldArgs(method, invocation));
+      } catch (Exception e) {
+        log.warn("Error invoking field advice {}: {}", method.getName(), e.getMessage());
+      }
+    }
   }
 
   private Interceptor createStaticInitInterceptor(
@@ -1776,7 +2120,7 @@ public class AnnotationPluginLoader {
     public void onCatch(CatchInvocation invocation) {
       try {
         method.setAccessible(true);
-        method.invoke(instance, invocation);
+        method.invoke(instance, resolveCatchArgs(method, invocation));
       } catch (Exception e) {
         log.warn("Error invoking @OnCatch method {}: {}", method.getName(), e.getMessage());
       }
@@ -2246,6 +2590,132 @@ public class AnnotationPluginLoader {
         log.warn("Error invoking afterThrowing method {}: {}", m.getName(), e.getMessage());
       }
     }
+  }
+
+  /**
+   * A {@link FieldInvocation} view whose {@code getWriteValue()} returns the value the target code
+   * is about to store, until the advice replaces it. {@code setWriteValue} and {@code skipWrite}
+   * pass straight through, so an override or a rejected write still lands on the real invocation
+   * that {@code FieldAdvice} reads back.
+   */
+  private static final class OriginalWriteFieldInvocation extends FieldInvocation {
+    private final FieldInvocation delegate;
+    private final Object originalValue;
+
+    OriginalWriteFieldInvocation(FieldInvocation delegate, Object originalValue) {
+      super(
+          delegate.getTargetClass(),
+          delegate.getFieldName(),
+          delegate.getFieldTypeName(),
+          delegate.getTarget());
+      this.delegate = delegate;
+      this.originalValue = originalValue;
+    }
+
+    @Override
+    public Object getWriteValue() {
+      return delegate.isWriteOverridden() ? delegate.getWriteValue() : originalValue;
+    }
+
+    @Override
+    public void setWriteValue(Object writeValue) {
+      delegate.setWriteValue(writeValue);
+    }
+
+    @Override
+    public boolean isWriteOverridden() {
+      return delegate.isWriteOverridden();
+    }
+
+    @Override
+    public void skipWrite() {
+      delegate.skipWrite();
+    }
+
+    @Override
+    public boolean isWriteSkipped() {
+      return delegate.isWriteSkipped();
+    }
+
+    @Override
+    public Object getTarget() {
+      return delegate.getTarget();
+    }
+
+    @Override
+    public boolean isStatic() {
+      return delegate.isStatic();
+    }
+
+    @Override
+    public String getFieldName() {
+      return delegate.getFieldName();
+    }
+
+    @Override
+    public void setReturnValue(Object returnValue) {
+      delegate.setReturnValue(returnValue);
+    }
+
+    @Override
+    public Object getReturnValue() {
+      return delegate.getReturnValue();
+    }
+
+    @Override
+    public boolean isReturnOverridden() {
+      return delegate.isReturnOverridden();
+    }
+  }
+
+  /**
+   * Builds the argument array for a reflectively-invoked field advice method. A parameter annotated
+   * with {@code @This} receives the instance whose field is accessed; every other parameter receives
+   * the {@link FieldInvocation}.
+   */
+  private static Object[] resolveFieldArgs(Method m, FieldInvocation inv) {
+    Class<?>[] paramTypes = m.getParameterTypes();
+    if (paramTypes.length == 0) {
+      return new Object[0];
+    }
+    Annotation[][] paramAnnotations = m.getParameterAnnotations();
+    Object[] args = new Object[paramTypes.length];
+    for (int i = 0; i < paramTypes.length; i++) {
+      boolean target = false;
+      for (Annotation a : paramAnnotations[i]) {
+        if (a instanceof This) {
+          target = true;
+          break;
+        }
+      }
+      args[i] = target ? inv.getTarget() : inv;
+    }
+    return args;
+  }
+
+  /**
+   * Builds the argument array for a reflectively-invoked catch advice method. A parameter annotated
+   * with {@code @Caught} receives the caught exception; every other parameter receives the {@link
+   * CatchInvocation}.
+   */
+  private static Object[] resolveCatchArgs(Method m, CatchInvocation inv) {
+    Class<?>[] paramTypes = m.getParameterTypes();
+    if (paramTypes.length == 0) {
+      return new Object[0];
+    }
+    Annotation[][] paramAnnotations = m.getParameterAnnotations();
+    Object[] args = new Object[paramTypes.length];
+    for (int i = 0; i < paramTypes.length; i++) {
+      boolean caught = false;
+      for (Annotation a : paramAnnotations[i]) {
+        if (a instanceof Caught) {
+          caught = true;
+          break;
+        }
+      }
+      args[i] = caught ? inv.getCaughtException() : inv;
+    }
+    return args;
   }
 
   /**

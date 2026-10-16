@@ -29,10 +29,12 @@ excludedClasses:                 # class name patterns to exclude (regex)
 onlyInterceptPackages:           # only intercept classes in these packages
   - "com.myapp"
 
-# Plugin control
+# Plugin control. A disabled capability's jar is never loaded.
 disabledPlugins:                 # built-in plugins to skip (by name)
   - servlet
   - kafka
+# enabledPlugins:                # if set, ONLY these are loaded (ignores disabledPlugins)
+#   - jdbc
 
 # Logging
 logLevel: INFO                   # TRACE, DEBUG, INFO, WARN, ERROR

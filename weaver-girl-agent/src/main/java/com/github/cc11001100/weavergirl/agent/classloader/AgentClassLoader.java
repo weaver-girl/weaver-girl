@@ -139,6 +139,31 @@ public final class AgentClassLoader extends URLClassLoader {
     return new AgentClassLoader(urls, parent);
   }
 
+  /**
+   * Build an isolated loader over the agent jar plus the capability jars that should actually be
+   * active. A capability whose jar is not listed here is never loaded — its classes are simply not
+   * on the loader.
+   *
+   * @param anchor a class packaged inside the agent jar
+   * @param pluginJars the enabled capability jars, already filtered by configuration
+   * @return a new isolated agent ClassLoader
+   */
+  public static AgentClassLoader create(Class<?> anchor, java.util.List<java.io.File> pluginJars) {
+    URL[] base = agentUrls(anchor);
+    java.util.List<URL> urls = new java.util.ArrayList<>();
+    java.util.Collections.addAll(urls, base);
+    if (pluginJars != null) {
+      for (java.io.File jar : pluginJars) {
+        try {
+          urls.add(jar.toURI().toURL());
+        } catch (java.net.MalformedURLException e) {
+          throw new IllegalStateException("Cannot load capability jar " + jar, e);
+        }
+      }
+    }
+    return new AgentClassLoader(urls.toArray(new URL[0]), ClassLoader.getSystemClassLoader());
+  }
+
   /** Resolve the agent jar URL from a class packaged inside it. */
   private static URL[] agentUrls(Class<?> anchor) {
     ProtectionDomain pd = anchor.getProtectionDomain();
@@ -184,7 +209,7 @@ public final class AgentClassLoader extends URLClassLoader {
     }
   }
 
-  private boolean isParentFirst(String name) {
+  private static boolean isParentFirst(String name) {
     if (PARENT_FIRST_CLASSES.contains(name)) {
       return true;
     }
