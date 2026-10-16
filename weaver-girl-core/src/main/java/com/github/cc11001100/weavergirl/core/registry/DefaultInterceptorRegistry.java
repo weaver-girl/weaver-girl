@@ -115,6 +115,306 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
     precedenceMap.putAll(newMap);
   }
 
+  /**
+   * Who is registering right now, for the current thread. A plugin's {@code init} and {@code
+   * registerInterceptors} run on one thread, and that is the only moment a registration can be tied to
+   * the plugin making it. Set by the loader around both calls, so a plugin that registers through a
+   * registry it was handed earlier — or through any other registry it can reach — is still credited.
+   */
+  private static final ThreadLocal<com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin>
+      REGISTERING_PLUGIN = new ThreadLocal<>();
+
+  /**
+   * Run {@code action} with {@code plugin} recorded as the owner of every interceptor registered on
+   * this thread while it runs.
+   */
+  public static void registeringAs(
+      com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin plugin, Runnable action) {
+    com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin previous = REGISTERING_PLUGIN.get();
+    REGISTERING_PLUGIN.set(plugin);
+    try {
+      action.run();
+    } finally {
+      if (previous == null) {
+        REGISTERING_PLUGIN.remove();
+      } else {
+        REGISTERING_PLUGIN.set(previous);
+      }
+    }
+  }
+
+  /** The plugin whose registration is in progress on this thread, or {@code null}. */
+  public static com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin registeringPlugin() {
+    return REGISTERING_PLUGIN.get();
+  }
+
+  /**
+   * The loaded plugins, by the class loader that defined them. A plugin's own classes are defined by
+   * its loader, so a registration whose call stack passes through one of those classes belongs to that
+   * plugin — on any thread, not just the one that loaded it. One loader can define several plugins, and
+   * each keeps its own entry: a registration is credited to the one whose own class is on the stack.
+   */
+  private static final java.util.concurrent.ConcurrentHashMap<
+          ClassLoader, java.util.concurrent.CopyOnWriteArrayList<
+              com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin>>
+      PLUGINS_BY_LOADER = new java.util.concurrent.ConcurrentHashMap<>();
+
+  /**
+   * Classes a plugin has declared as its own, beyond the ones its loader defined. A plugin that delegates
+   * its registration to a helper class it does not own — a shared library, a class the application loaded —
+   * names that class here, and a registration made through it is credited to the plugin. Naming the class
+   * rather than its loader keeps every other class that loader defines, including another plugin's, out of
+   * the claim. Several plugins may declare the same class; each keeps its own claim, and a registration is
+   * credited to whichever of them is nearest the call.
+   */
+  private static final java.util.concurrent.ConcurrentHashMap<
+          String, java.util.concurrent.CopyOnWriteArrayList<
+              com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin>>
+      DECLARED_CLASSES = new java.util.concurrent.ConcurrentHashMap<>();
+
+  /** Remember that {@code plugin} was loaded, so later registrations from its classes can be credited. */
+  public static void track(com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin plugin) {
+    if (plugin != null && plugin.getClass().getClassLoader() != null) {
+      java.util.concurrent.CopyOnWriteArrayList<com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin>
+          plugins = PLUGINS_BY_LOADER.computeIfAbsent(
+              plugin.getClass().getClassLoader(), loader -> new java.util.concurrent.CopyOnWriteArrayList<>());
+      if (!plugins.contains(plugin)) {
+        plugins.add(plugin);
+      }
+    }
+  }
+
+  /**
+   * Credit registrations made through {@code helper} to {@code plugin}. A plugin calls this for a class it
+   * delegates the registering to, so a registration that never passes through the plugin's own classes is
+   * still its own. The class has to be named exactly: declaring the loader that defined it would also claim
+   * every other class that loader defines. Another plugin may declare the same class; both claims are kept,
+   * and the one nearest the registration wins. The loader that defined the plugin needs no declaration:
+   * {@link #track} already covers its classes.
+   */
+  public static void track(
+      com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin plugin, Class<?> helper) {
+    if (plugin != null && helper != null) {
+      java.util.concurrent.CopyOnWriteArrayList<com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin>
+          claimants = DECLARED_CLASSES.computeIfAbsent(
+              helper.getName(), name -> new java.util.concurrent.CopyOnWriteArrayList<>());
+      if (!claimants.contains(plugin)) {
+        claimants.add(plugin);
+      }
+    }
+  }
+
+  /**
+   * Forget every tracked plugin and every declared loader. A plugin that was not unloaded — a test that
+   * built its own loader and threw it away — would otherwise leave its declaration behind, and a later
+   * registration on the same JVM would be credited to a plugin that no longer exists.
+   */
+  public static void clearTracking() {
+    PLUGINS_BY_LOADER.clear();
+    DECLARED_CLASSES.clear();
+  }
+
+  /** Forget {@code plugin}, because it was unloaded. */
+  public static void untrack(com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin plugin) {
+    if (plugin != null) {
+      ClassLoader loader = plugin.getClass().getClassLoader();
+      java.util.concurrent.CopyOnWriteArrayList<com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin>
+          plugins = loader == null ? null : PLUGINS_BY_LOADER.get(loader);
+      if (plugins != null) {
+        plugins.remove(plugin);
+      }
+      for (java.util.concurrent.CopyOnWriteArrayList<
+              com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin>
+          claimants : DECLARED_CLASSES.values()) {
+        claimants.remove(plugin);
+      }
+    }
+  }
+
+  /**
+   * The plugin that owns the class on the call stack that called into the registry, or {@code null}
+   * when the registration did not come from a loaded plugin's class.
+   */
+  private static com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin pluginOnCallStack() {
+    if (PLUGINS_BY_LOADER.isEmpty() && DECLARED_CLASSES.isEmpty()) {
+      return null;
+    }
+    // The frames are the classes really on the stack, not names resolved afterwards. Two plugins can
+    // both define a class of the same name, and resolving that name through each loader would find both;
+    // the class object says which one actually ran.
+    List<Class<?>> stack = callerClasses();
+    // Every frame is scored rather than the walk stopping at the first one, because a helper class both
+    // plugins declared sits between them and the registration: the plugin nearest the call is the one
+    // that made it.
+    int best = Integer.MAX_VALUE;
+    com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin nearest = null;
+    for (int depth = 0; depth < stack.size(); depth++) {
+      Class<?> frame = stack.get(depth);
+      // A class the bootstrap loader defined has no ClassLoader, and the map rejects a null key.
+      ClassLoader frameLoader = frame.getClassLoader();
+      java.util.List<com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin> byLoader =
+          frameLoader == null ? null : PLUGINS_BY_LOADER.get(frameLoader);
+      // A child-first plugin loader resolves its parents' classes too, and reports itself as nowhere
+      // near them. A class one of its ancestors defines belongs to that ancestor, not to the plugin.
+      // The frame's class object says which of the loader's plugins ran. A frame that is a plugin's own
+      // class is decisive even when another plugin shares the loader and the class name; any other class
+      // the loader defines belongs to whichever of its plugins is nearest the call.
+      if (byLoader != null && !definedByAncestor(frame.getName(), frame.getClassLoader())) {
+        com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin owner = null;
+        for (com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin plugin : byLoader) {
+          if (frame == plugin.getClass()) {
+            owner = plugin;
+            break;
+          }
+          if (owner == null) {
+            owner = plugin;
+          }
+        }
+        if (owner != null && depth < best) {
+          best = depth;
+          nearest = owner;
+        }
+      }
+      // A class the plugin declared rather than one its loader defined. Matched by the class object, so
+      // declaring a helper claims that helper and nothing else the helper's loader happens to define.
+      // When several plugins declared it, the one that appears nearest the call owns the registration.
+      java.util.List<com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin> declared =
+          DECLARED_CLASSES.get(frame.getName());
+      if (declared != null) {
+        for (com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin plugin : declared) {
+          int pluginDepth = depthOf(stack, plugin);
+          if (pluginDepth >= 0 && pluginDepth < best) {
+            best = pluginDepth;
+            nearest = plugin;
+          }
+        }
+      }
+    }
+    return nearest;
+  }
+
+  /** The shallowest frame whose class is {@code plugin}'s own, or {@code -1} when it is not on the stack. */
+  private static int depthOf(
+      List<Class<?>> stack, com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin plugin) {
+    Class<?> pluginClass = plugin.getClass();
+    for (int depth = 0; depth < stack.size(); depth++) {
+      if (stack.get(depth) == pluginClass) {
+        return depth;
+      }
+    }
+    return -1;
+  }
+
+  /**
+   * Set by a test to pretend {@link CallStack} cannot be loaded, which is what a Java 8 runtime does. The
+   * class context below is then the only way to get the class object of a frame.
+   */
+  public static volatile boolean ignoreCallStack = false;
+
+  /**
+   * The classes on the current call stack, shallowest first. On Java 9 and newer {@link CallStack} returns the
+   * class object of each frame, which is the only way to tell apart two classes that share a name. It is
+   * compiled separately and shipped under {@code META-INF/versions/9}, so a Java 8 runtime never loads it. A
+   * Java 8 runtime still has {@link ClassContext}, which returns the same class objects, and only a runtime
+   * where that also fails falls back to the frame names; a stack trace only carries the name, and the first
+   * plugin loader that defined a class of that name stands for the frame.
+   */
+  private static List<Class<?>> callerClasses() {
+    if (!ignoreCallStack) {
+      List<Class<?>> frames = invokeClasses("com.github.cc11001100.weavergirl.core.registry.CallStack");
+      if (frames != null) {
+        return frames;
+      }
+    }
+    List<Class<?>> frames = invokeClasses("com.github.cc11001100.weavergirl.core.registry.ClassContext");
+    if (frames != null) {
+      return frames;
+    }
+    return classesNamedOnTheStack();
+  }
+
+  /** {@code classes()} of {@code name}, or {@code null} when that class cannot be loaded or run. */
+  @SuppressWarnings("unchecked")
+  private static List<Class<?>> invokeClasses(String name) {
+    try {
+      Class<?> type = Class.forName(name);
+      java.lang.reflect.Method classes = type.getDeclaredMethod("classes");
+      classes.setAccessible(true);
+      return (List<Class<?>>) classes.invoke(null);
+    } catch (ReflectiveOperationException | UnsupportedClassVersionError ignored) {
+      return null;
+    }
+  }
+
+  /** Java 8 fallback: the name is all a frame carries, so the class is resolved through the plugin loaders. */
+  private static List<Class<?>> classesNamedOnTheStack() {
+    List<Class<?>> found = new ArrayList<>();
+    for (StackTraceElement frame : Thread.currentThread().getStackTrace()) {
+      Class<?> resolved = resolveFrame(frame.getClassName());
+      if (resolved != null) {
+        found.add(resolved);
+      }
+    }
+    return found;
+  }
+
+  /** The class {@code name} names, preferring one a plugin loader defined over one an ancestor defines. */
+  private static Class<?> resolveFrame(String name) {
+    Class<?> shared = null;
+    for (ClassLoader loader : new java.util.ArrayList<>(PLUGINS_BY_LOADER.keySet())) {
+      try {
+        Class<?> resolved = Class.forName(name, false, loader);
+        if (resolved.getClassLoader() == loader && !definedByAncestor(name, loader)) {
+          return resolved;
+        }
+        if (shared == null) {
+          shared = resolved;
+        }
+      } catch (ClassNotFoundException ignored) {
+        // This loader cannot see the frame's class.
+      }
+    }
+    if (shared != null) {
+      return shared;
+    }
+    try {
+      return Class.forName(name, false, DefaultInterceptorRegistry.class.getClassLoader());
+    } catch (ClassNotFoundException ignored) {
+      return null;
+    }
+  }
+
+  /**
+   * Whether some ancestor of {@code loader} defines {@code className}. A loader a plugin declares is
+   * usually the parent of its own loader, and every class that parent already defines — the agent's, the
+   * application's — would otherwise be credited to the plugin. Only a class that enters through the
+   * declared loader and no earlier counts.
+   */
+  private static boolean definedByAncestor(String className, ClassLoader loader) {
+    if (loader == null) {
+      return false;
+    }
+    for (ClassLoader ancestor = loader.getParent(); ancestor != null; ancestor = ancestor.getParent()) {
+      try {
+        Class<?> resolved = Class.forName(className, false, ancestor);
+        if (resolved.getClassLoader() == ancestor) {
+          return true;
+        }
+      } catch (ClassNotFoundException ignored) {
+        // This ancestor cannot see the class.
+      }
+    }
+    try {
+      // The bootstrap loader is the end of every parent chain and has no ClassLoader of its own.
+      Class.forName(className, false, null);
+      return true;
+    } catch (ClassNotFoundException ignored) {
+      return false;
+    }
+  }
+
+
+
   @Override
   public void register(InterceptorDefinition definition) {
     if (definition == null) {
@@ -132,6 +432,21 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
         log.warn("SecurityPolicy denied registration of interceptor {} for class {}", definition.getName(), targetClass);
         SecurityAuditLog.recordInterception(definition.getName(), targetClass, false);
         return;
+      }
+    }
+
+    // Whoever is loading a plugin on this thread owns the definition, even when the plugin registered
+    // it through a registry it reached on its own rather than the one it was handed.
+    if (definition.getOwner() == null) {
+      com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin owner = REGISTERING_PLUGIN.get();
+      if (owner == null) {
+        // A plugin can register long after it loaded, and from a thread it started itself, where the
+        // thread-local above is empty. The frame that called register still belongs to a class the
+        // plugin defined, and that class says which plugin it was.
+        owner = pluginOnCallStack();
+      }
+      if (owner != null) {
+        definition.setOwner(owner);
       }
     }
 
@@ -256,7 +571,12 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
     return removed;
   }
 
-  /** Clear all registered definitions. For testing purposes. */
+  /**
+   * Remove every registered definition and reset the registry to its empty state. Part of the
+   * unweave/uninstall path: wiped before the transformer is reset so the advice inlined into
+   * still-woven classes finds nothing while the JVM restores their original bytecode.
+   */
+  @Override
   public void clear() {
     List<InterceptorDefinition> clearedDefinitions;
     synchronized (this) {

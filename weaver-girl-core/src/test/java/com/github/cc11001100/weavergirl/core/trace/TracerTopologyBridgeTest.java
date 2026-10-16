@@ -105,5 +105,39 @@ class TracerTopologyBridgeTest {
     assertEquals("redis", TracerTopologyBridge.inferProtocol("redis GET key"));
     assertEquals("database", TracerTopologyBridge.inferProtocol("jdbc SELECT * FROM users"));
     assertEquals("unknown", TracerTopologyBridge.inferProtocol("custom-operation"));
+    assertEquals("unknown", TracerTopologyBridge.inferProtocol(null));
+    assertEquals("kafka", TracerTopologyBridge.inferProtocol("kafka publish orders"));
+  }
+
+  /** Installing the bridge makes it the tracer's listener, and uninstalling clears it. */
+  @Test
+  void installAndUninstallSwapTheTracersListener() throws Exception {
+    java.lang.reflect.Field holder =
+        com.github.cc11001100.weavergirl.api.tracing.Tracer.class.getDeclaredField(
+            "completionListeners");
+    Object composite =
+        com.github.cc11001100.weavergirl.core.testsupport.Statics.read(holder, null);
+    java.util.List<com.github.cc11001100.weavergirl.api.tracing.SpanCompletionListener> before =
+        new java.util.ArrayList<>();
+    for (Object listener : listeners(composite)) {
+      before.add((com.github.cc11001100.weavergirl.api.tracing.SpanCompletionListener) listener);
+    }
+    try {
+      bridge.install();
+      assertTrue(listeners(composite).contains(bridge), "install did not register the bridge");
+
+      bridge.uninstall();
+      assertFalse(listeners(composite).contains(bridge), "uninstall left the bridge registered");
+    } finally {
+      com.github.cc11001100.weavergirl.api.tracing.Tracer.setCompletionListener(null);
+      for (com.github.cc11001100.weavergirl.api.tracing.SpanCompletionListener listener : before) {
+        com.github.cc11001100.weavergirl.api.tracing.Tracer.addCompletionListener(listener);
+      }
+    }
+  }
+
+  private static java.util.List<?> listeners(Object composite) throws Exception {
+    return new java.util.ArrayList<>(
+        (java.util.Collection<?>) composite.getClass().getMethod("getListeners").invoke(composite));
   }
 }

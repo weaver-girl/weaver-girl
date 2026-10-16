@@ -4,7 +4,6 @@ import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression;
-import com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.interceptor.MethodInvocationPool;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
@@ -78,21 +77,20 @@ public class ConstructorAdvice {
         // Use the two-arg matches() to also check parameter types for
         // CONSTRUCTOR matchers that specify a signature (e.g.
         // byConstructor("java.lang.String,int")).
+        // matchRuntime: static signature matching (constructor name + parameter types) plus any
+        // runtime conditions (cflow/if), including those carried by composed pointcuts
+        // (and/or/not). Constructor matchers that specify a signature (e.g.
+        // byConstructor("java.lang.String,int")) are checked via parameterTypes.
         if (def.getPointcut()
-            .getMethodMatcher()
-            .matches(methodName, constructor.getParameterTypes())) {
+            .matchRuntime(
+                className,
+                methodName,
+                constructor.getParameterTypes(),
+                arguments,
+                null,
+                null)) {
           if (!InterceptorHolder.shouldInvoke(def.getName())) {
             continue; // circuit breaker is open
-          }
-          // Evaluate runtime conditions (cflow/if)
-          PointcutExpression expr = def.getPointcut().getExpression();
-          if (expr != null
-              && (expr.getType() == PointcutExpression.Type.CFLOW
-                  || expr.getType() == PointcutExpression.Type.IF)) {
-            if (!expr.evaluateRuntimeCondition(
-                className, methodName, arguments, null, null)) {
-              continue; // condition not met, skip this interceptor
-            }
           }
           long hookStart = System.nanoTime();
           try {

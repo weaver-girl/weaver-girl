@@ -141,4 +141,74 @@ class InterceptorMetricsTest {
     assertTrue(report.contains("invocations=1"));
     assertTrue(report.contains("slow="));
   }
+
+  @Test
+  void percentileSpansEmptyBucketsAndTheOpenEndedTail() {
+    AgentStatus.InterceptorMetrics m = new AgentStatus.InterceptorMetrics();
+    // One sample in the first bucket and one past the last bound, so the walk crosses buckets that
+    // hold nothing and finishes in the open-ended tail.
+    m.record(true, 100L);
+    m.record(true, 5_000_000_000L);
+    // p10 lands in the first bucket, which is empty at that rank, so it reports the bucket's bound.
+    assertEquals(200.0, m.estimatePercentile(10.0), 1e-6);
+    // p60 and p100 fall in the open-ended tail, which estimates its lower bound.
+    assertEquals(1_000_000_000.0, m.estimatePercentile(60.0), 1e-6);
+    assertEquals(1_000_000_000.0, m.estimatePercentile(100.0), 1e-6);
+    assertEquals(5_000_000_000L, m.getMaxNanos());
+  }
+
+  /** The last bucket's bound is the largest long, so the index search always ends inside the loop. */
+  @Test
+  void theLargestDurationStillLandsInTheLastBucket() {
+    assertEquals(
+        AgentStatus.InterceptorMetrics.BUCKET_BOUNDS_NS.length - 1,
+        AgentStatus.InterceptorMetrics.bucketIndex(Long.MAX_VALUE));
+  }
+
+  /** A target no bucket reaches falls back to the recorded maximum. */
+  @Test
+  void percentileFallsBackToTheMaximumWhenNoBucketReachesIt() {
+    AgentStatus.InterceptorMetrics m = new AgentStatus.InterceptorMetrics();
+    m.record(true, 100L);
+    // The counters now disagree: invocations says 5, but no sample sits in the buckets.
+    m.getLatencyBucketsRef()[0].set(0);
+    try {
+      java.lang.reflect.Field inv =
+          AgentStatus.InterceptorMetrics.class.getDeclaredField("invocations");
+      inv.setAccessible(true);
+      ((java.util.concurrent.atomic.AtomicLong) inv.get(m)).set(5);
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+
+    assertEquals(100.0, m.estimatePercentile(100.0), 1e-6);
+  }
+
+  /** A loaded and a failed plugin are both named in the report, the failed one with its error. */
+  @Test
+  void theReportNamesLoadedAndFailedPlugins() {
+    AgentStatus status = AgentStatus.getInstance();
+    status.reset();
+    status.recordPluginStatus("plugin-up", true, null);
+    status.recordPluginStatus("plugin-down", false, "missing class");
+
+    String report = status.getReport();
+    assertTrue(report.contains("plugin-up"));
+    assertTrue(report.contains("LOADED"));
+    assertTrue(report.contains("plugin-down"));
+    assertTrue(report.contains("FAILED (missing class)"));
+  }
+
+  @Test
+  void histogramRendersEveryBucketAndTheTotals() {
+    AgentStatus.InterceptorMetrics m = new AgentStatus.InterceptorMetrics();
+    m.record(true, 500L);
+    String text = m.renderInterceptorHistogramPrometheus("hook-a");
+    assertTrue(text.contains("weavergirl_interceptor_duration_seconds_bucket"));
+    assertTrue(text.contains("le=\"+Inf\""));
+    assertTrue(text.contains("hook=\"hook-a\""));
+    assertTrue(text.contains("weavergirl_interceptor_duration_seconds_sum"));
+    assertTrue(text.contains("weavergirl_interceptor_duration_seconds_count"));
+    assertNotNull(m.getLatencyBucketsRef());
+  }
 }

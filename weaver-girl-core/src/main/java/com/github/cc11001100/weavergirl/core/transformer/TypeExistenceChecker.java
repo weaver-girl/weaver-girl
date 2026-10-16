@@ -32,6 +32,11 @@ public class TypeExistenceChecker {
   /**
    * Check if a class exists and is loadable.
    *
+   * <p>This must not load the class. It runs while the transformer is being installed, before {@code
+   * installOn} has registered it, so a {@code Class.forName} here would define the target with its
+   * original bytes and the interceptor registered for it would never be woven in. Presence is decided
+   * from classes already loaded and from the class file being visible as a resource.
+   *
    * @param className the fully-qualified class name
    * @return true if the class exists in the JVM
    */
@@ -41,36 +46,12 @@ public class TypeExistenceChecker {
       return true;
     }
 
-    // Slow path: try to load the class
-    try {
-      Class.forName(className, false, Thread.currentThread().getContextClassLoader());
-      loadedClassNames.add(className);
-      return true;
-    } catch (ClassNotFoundException e) {
-      // Fallback for test environments where the context classloader
-      // may not see the target class directly.
-    } catch (NoClassDefFoundError e) {
-      // The class exists but one of its dependencies doesn't
-      log.debug("Class {} found but has missing dependency: {}", className, e.getMessage());
-      return true;
-    }
-
-    // Second attempt: use this class's classloader as fallback.
-    try {
-      Class.forName(className, false, TypeExistenceChecker.class.getClassLoader());
-      loadedClassNames.add(className);
-      return true;
-    } catch (ClassNotFoundException e) {
-      // Fall through to resource probe
-    } catch (NoClassDefFoundError e) {
-      loadedClassNames.add(className);
-      return true;
-    }
-
-    // Last resort: probe classpath by resource path so classes only
-    // loadable via a different classloader are still treated as existing.
+    // Probe the classpath by resource. This sees classes the application will load later without
+    // defining them now, which is what keeps them transformable.
     String resource = className.replace('.', '/') + ".class";
-    if (TypeExistenceChecker.class.getClassLoader().getResource(resource) != null
+    ClassLoader context = Thread.currentThread().getContextClassLoader();
+    if ((context != null && context.getResource(resource) != null)
+        || TypeExistenceChecker.class.getClassLoader().getResource(resource) != null
         || ClassLoader.getSystemClassLoader().getResource(resource) != null) {
       loadedClassNames.add(className);
       return true;
@@ -89,17 +70,21 @@ public class TypeExistenceChecker {
     if (!exists(className)) {
       return false;
     }
-    try {
-      Class<?> clazz =
-          Class.forName(className, false, Thread.currentThread().getContextClassLoader());
-      for (java.lang.reflect.Method method : clazz.getDeclaredMethods()) {
-        if (method.getName().equals(methodName)) {
-          return true;
-        }
-      }
-      return false;
-    } catch (Exception e) {
+    // Only reflect over a class that is already loaded. Loading it here would define it before the
+    // transformer is registered, so it could never be woven.
+    if (!loadedClassNames.contains(className)) {
       return false;
     }
+    for (Class<?> clazz : instrumentation.getAllLoadedClasses()) {
+      if (className.equals(clazz.getName())) {
+        for (java.lang.reflect.Method method : clazz.getDeclaredMethods()) {
+          if (method.getName().equals(methodName)) {
+            return true;
+          }
+        }
+        return false;
+      }
+    }
+    return false;
   }
 }

@@ -138,6 +138,25 @@ class HealthSubsystemTest {
     assertEquals(0, registry.size());
   }
 
+  /** A component that was never registered has no status to give, and one that throws is reported down. */
+  @Test
+  void checkComponent_unknownIsUnknownAndThrowingIsDown() {
+    HealthStatus unknown = registry.checkComponent("never-registered");
+    assertEquals("UNKNOWN", unknown.getStatus());
+
+    registry.register(
+        "fragile",
+        () -> {
+          throw new IllegalStateException("probe failed");
+        });
+    try {
+      HealthStatus down = registry.checkComponent("fragile");
+      assertEquals("DOWN", down.getStatus(), "a throwing check was not reported down");
+    } finally {
+      registry.unregister("fragile");
+    }
+  }
+
   @Test
   void check_noIndicators_returnsEmptyReport() {
     HealthReport report = registry.check();

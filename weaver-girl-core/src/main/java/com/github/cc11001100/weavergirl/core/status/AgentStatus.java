@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import com.github.cc11001100.weavergirl.api.status.AgentStatusView;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -13,10 +14,18 @@ import java.util.concurrent.atomic.AtomicLong;
  * plugins, and custom metrics.
  *
  * <p>All methods are thread-safe. This class is a singleton — obtain via {@link #getInstance()}.
+ * It implements {@link AgentStatusView} so modules that must not depend on core (metrics bridges,
+ * exporters) can read the same counters through the API.
  */
-public class AgentStatus {
+public class AgentStatus implements AgentStatusView {
 
   private static final AgentStatus INSTANCE = new AgentStatus();
+
+  static {
+    // Publish the read-only view so modules that depend only on the API (metrics bridges,
+    // exporters) can observe the same counters without a dependency on core.
+    com.github.cc11001100.weavergirl.api.status.AgentStatusHolder.set(INSTANCE);
+  }
 
   private final AtomicLong transformationCount = new AtomicLong(0);
   private final AtomicLong transformationErrorCount = new AtomicLong(0);

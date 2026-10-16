@@ -13,7 +13,7 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li><strong>Agent version</strong> — plugin requires a minimum agent version
- *   <li><strong>API version</strong> — plugin was compiled against a compatible API version
+ *   <li><strong>API version</strong> — plugin was compiled against a contract this agent provides
  *   <li><strong>Plugin version</strong> — duplicate/older versions of the same plugin
  *   <li><strong>Dependency presence</strong> — all declared plugin dependencies are available
  * </ul>
@@ -63,7 +63,20 @@ public class PluginCompatibilityChecker {
     List<String> errors = new ArrayList<>();
     boolean compatible = true;
 
-    // Check 1: Minimum agent version
+    // Check 1: Plugin contract. A plugin built against a newer weaver-girl-api calls methods this
+    // agent does not have, so loading it would fail deep inside its own code instead of here.
+    if (metadata.getApiVersion() != null
+        && compareVersions(apiVersion, metadata.getApiVersion()) < 0) {
+      String msg =
+          String.format(
+              "Plugin '%s' was built against plugin contract %s, but this agent provides %s",
+              metadata.getName(), metadata.getApiVersion(), apiVersion);
+      errors.add(msg);
+      compatible = false;
+      log.warn("[COMPAT] {}", msg);
+    }
+
+    // Check 2: Minimum agent version
     if (metadata.getMinimumAgentVersion() != null) {
       if (compareVersions(agentVersion, metadata.getMinimumAgentVersion()) < 0) {
         String msg =
@@ -76,17 +89,27 @@ public class PluginCompatibilityChecker {
       }
     }
 
-    // Check 2: Duplicate plugin (same name, potentially different version)
+    // Check 3: Duplicate plugin (same name, potentially different version).
+    // Only an older version is refused. An equal version still loads: two plugins can legitimately
+    // be named alike, and dropping the later one silently is worse than running both. A newer version
+    // loads too, and replaces the recorded one so a following older copy is the one that gets refused.
     PluginMetadata existing = loadedPluginVersions.get(metadata.getName());
     if (existing != null) {
       int cmp = compareVersions(metadata.getVersion(), existing.getVersion());
-      if (cmp <= 0) {
+      if (cmp < 0) {
         String msg =
             String.format(
-                "Plugin '%s' v%s duplicates existing v%s — skipping",
+                "Plugin '%s' v%s is older than the loaded v%s — skipping",
                 metadata.getName(), metadata.getVersion(), existing.getVersion());
         errors.add(msg);
         compatible = false;
+        log.warn("[COMPAT] {}", msg);
+      } else if (cmp == 0) {
+        String msg =
+            String.format(
+                "Plugin '%s' v%s is also provided by another loaded plugin; both load",
+                metadata.getName(), metadata.getVersion());
+        warnings.add(msg);
         log.warn("[COMPAT] {}", msg);
       } else {
         String msg =
@@ -98,7 +121,7 @@ public class PluginCompatibilityChecker {
       }
     }
 
-    // Check 3: Plugin dependencies present
+    // Check 4: Plugin dependencies present
     for (String dep : metadata.getDepends()) {
       if (!availablePluginNames.contains(dep)) {
         String msg =
@@ -110,7 +133,7 @@ public class PluginCompatibilityChecker {
       }
     }
 
-    // Check 4: Version format validity
+    // Check 5: Version format validity
     if (!isValidVersion(metadata.getVersion())) {
       String msg =
           String.format(
@@ -131,7 +154,10 @@ public class PluginCompatibilityChecker {
 
     reports.add(report);
 
-    if (compatible) {
+    // Record the highest version seen. An equal version must not overwrite it: the first loaded copy
+    // is what a later, older copy gets compared against.
+    if (compatible && (existing == null
+        || compareVersions(metadata.getVersion(), existing.getVersion()) > 0)) {
       loadedPluginVersions.put(metadata.getName(), metadata);
       log.debug(
           "[COMPAT] Plugin '{}' v{} is compatible", metadata.getName(), metadata.getVersion());

@@ -1,5 +1,6 @@
 package com.github.cc11001100.weavergirl.core.transformer;
 
+import static net.bytebuddy.matcher.ElementMatchers.hasParameters;
 import static net.bytebuddy.matcher.ElementMatchers.hasSuperType;
 import static net.bytebuddy.matcher.ElementMatchers.isAbstract;
 import static net.bytebuddy.matcher.ElementMatchers.isAnnotatedWith;
@@ -15,6 +16,7 @@ import static net.bytebuddy.matcher.ElementMatchers.named;
 import static net.bytebuddy.matcher.ElementMatchers.not;
 import static net.bytebuddy.matcher.ElementMatchers.takesArgument;
 import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
+import static net.bytebuddy.matcher.ElementMatchers.whereAny;
 
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.introduction.IntroductionDefinition;
@@ -29,6 +31,8 @@ import com.github.cc11001100.weavergirl.core.InterceptAdvice;
 import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
 import com.github.cc11001100.weavergirl.core.management.AgentDiagnostics;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
+import net.bytebuddy.description.annotation.AnnotationDescription;
+import net.bytebuddy.description.method.ParameterDescription;
 import java.lang.instrument.Instrumentation;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -135,6 +139,19 @@ public class WeaverTransformer {
   private WeaverConfig weaverConfig;
   private final AtomicInteger transformationCount = new AtomicInteger(0);
   private int maxTransformations = 10000; // default
+  /**
+   * The {@link net.bytebuddy.agent.builder.ResettableClassFileTransformer} returned by {@code
+   * installOn}. Holds the installed transformer chain so {@link #unweave()} can reset it and
+   * restore already-woven classes to their original bytecode.
+   */
+  private volatile net.bytebuddy.agent.builder.ResettableClassFileTransformer resettable;
+  /**
+   * Class names this transformer actually wove, recorded by the transformation listener. Scoped to
+   * this transformer (unlike the global {@code AgentStatus} transformed list) so {@link #unweave()}
+   * can report exactly how many classes the reset restores.
+   */
+  private final java.util.Set<String> wovenClasses =
+      java.util.concurrent.ConcurrentHashMap.newKeySet();
 
   public WeaverTransformer(InterceptorRegistry registry) {
     this.registry = registry;
@@ -236,6 +253,7 @@ public class WeaverTransformer {
                       DynamicType dynamicType) {
                     AgentStatus.getInstance().incrementTransformationCount();
                     AgentStatus.getInstance().addTransformedClass(typeDescription.getName());
+                    wovenClasses.add(typeDescription.getName());
                     log.info("Transformed class: {}", typeDescription.getName());
                     if (isDebugMode()) {
                       List<String> matchedNames =
@@ -307,7 +325,21 @@ public class WeaverTransformer {
 
     TypeExistenceChecker checker = new TypeExistenceChecker(instrumentation);
 
+    // Group definitions that select the same classes and weave with the same advice. The advice
+    // dispatches to every matching interceptor itself, so weaving it once per method is enough and
+    // weaving it again runs the method body and every callback once per copy. Definitions differ in
+    // which methods they select, so the copies collapse into one visit whose matcher is the union.
+    java.util.Map<String, java.util.List<InterceptorDefinition>> weaveGroups =
+        new java.util.LinkedHashMap<>();
     for (InterceptorDefinition definition : registry.getAllDefinitions()) {
+      ClassMatcher classMatcher = definition.getPointcut().getClassMatcher();
+      String groupKey = classMatcher.getMatchType() + ":" + classMatcher.getPattern()
+          + ":" + definition.getAdviceMode();
+      weaveGroups.computeIfAbsent(groupKey, k -> new java.util.ArrayList<>()).add(definition);
+    }
+
+    for (java.util.List<InterceptorDefinition> group : weaveGroups.values()) {
+      InterceptorDefinition definition = group.get(0);
       ClassMatcher classMatcher = definition.getPointcut().getClassMatcher();
 
       // Before registering the type transformer, check if the target class exists.
@@ -325,6 +357,24 @@ public class WeaverTransformer {
 
       net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> typeMatcher =
           buildTypeMatcher(classMatcher);
+      // A class matcher that accepts every class (@args, handler, cflow, if) would otherwise
+      // retransform every class already loaded in the JVM. For @args only classes that declare a
+      // matching method can ever be advised, so skip the rest while revisiting loaded classes.
+      if (typeMatcher != null
+          && classMatcher.getMatchType() == ClassMatcher.MatchType.ANY
+          && definition.getPointcut().getMethodMatcher().getMatchType()
+              == com.github.cc11001100.weavergirl.api.matcher.MethodMatcher.MatchType.ARGS) {
+        com.github.cc11001100.weavergirl.api.matcher.MethodMatcher argsMatcher =
+            definition.getPointcut().getMethodMatcher();
+        typeMatcher =
+            typeMatcher.and(
+                new net.bytebuddy.matcher.ElementMatcher.Junction.AbstractBase<TypeDescription>() {
+                  @Override
+                  public boolean matches(TypeDescription target) {
+                    return declaresArgsMatch(target, argsMatcher);
+                  }
+                });
+      }
       // If package allowlist is specified, narrow the type matcher to only allowed packages
       if (typeMatcher != null && packageAllowMatcher != null) {
         typeMatcher = typeMatcher.and(packageAllowMatcher);
@@ -391,17 +441,74 @@ public class WeaverTransformer {
                             typeDescription.getName());
                         return builder; // return unmodified builder
                       }
-                      return builder.visit(
-                          net.bytebuddy.asm.Advice.to(adviceClass)
-                              .on(buildMethodMatcher(definition.getPointcut().getMethodMatcher())));
+                      net.bytebuddy.matcher.ElementMatcher.Junction<
+                              net.bytebuddy.description.method.MethodDescription>
+                          woven = null;
+                      for (InterceptorDefinition member : group) {
+                        net.bytebuddy.matcher.ElementMatcher.Junction<
+                                net.bytebuddy.description.method.MethodDescription>
+                            memberMatcher =
+                                buildMethodMatcher(member.getPointcut().getMethodMatcher());
+                        woven = woven == null ? memberMatcher : woven.or(memberMatcher);
+                      }
+                      return builder.visit(net.bytebuddy.asm.Advice.to(adviceClass).on(woven));
                     });
       }
     }
 
-    agentBuilder.installOn(instrumentation);
+    resettable = agentBuilder.installOn(instrumentation);
     log.info(
         "WeaverTransformer installed with {} interceptor definitions",
         registry.getAllDefinitions().size());
+  }
+
+  /**
+   * Unweave: remove every interceptor and reset the transformer so already-woven classes are
+   * retransformed back to their original bytecode.
+   *
+   * <p>Three effects, in order:
+   *
+   * <ol>
+   *   <li>The registry is cleared (each interceptor's {@code destroy()} is invoked), so the advice
+   *       inlined into still-woven classes finds nothing to dispatch while the reset happens.
+   *   <li>Any {@link IntroductionRegistry} is cleared too, so mixins stop resolving.
+   *   <li>{@link net.bytebuddy.agent.builder.ResettableClassFileTransformer#reset(Instrumentation,
+   *       AgentBuilder.RedefinitionStrategy)} removes the installed transformer chain and asks the
+   *       JVM to retransform every class it transformed, restoring the last non-agent definition
+   *       (the original bytecode).
+   * </ol>
+   *
+   * <p>The {@link InterceptorHolder} snapshot is invalidated so the next lookup rebuilds from the
+   * now-empty registry instead of serving stale interceptors.
+   *
+   * @return the number of classes this transformer had woven (and that the JVM therefore
+   *     retransforms back to their original bytecode); 0 when the transformer was never installed
+   *     or had woven nothing
+   */
+  public int unweave() {
+    if (instrumentation == null || resettable == null) {
+      return 0;
+    }
+    registry.clear();
+    if (introductionRegistry != null) {
+      introductionRegistry.clear();
+    }
+    com.github.cc11001100.weavergirl.core.InterceptorHolder.invalidateSnapshot();
+    int woven = wovenClasses.size();
+    boolean resetApplied =
+        resettable.reset(instrumentation, AgentBuilder.RedefinitionStrategy.RETRANSFORMATION);
+    // The reset removes the transformer, so the captured handle is no longer valid.
+    resettable = null;
+    wovenClasses.clear();
+    transformationCount.set(0);
+    if (resetApplied) {
+      log.info(
+          "Unwove: removed all interceptors and retransformed {} classes to original bytecode",
+          woven);
+    } else {
+      log.info("Unwove: removed all interceptors (no classes to retransform)");
+    }
+    return woven;
   }
 
   /**
@@ -482,6 +589,32 @@ public class WeaverTransformer {
     log.warn("Error transforming class {}: {}", typeName, detail);
   }
 
+  /**
+   * Whether {@code type} declares a method the {@code @args} matcher could select: one of its
+   * parameter types at a requested index carries the annotation. Used to keep retransformation of
+   * an any-class pointcut off classes that cannot match.
+   */
+  private static boolean declaresArgsMatch(
+      TypeDescription type, com.github.cc11001100.weavergirl.api.matcher.MethodMatcher methodMatcher) {
+    String annotationName = methodMatcher.getArgumentAnnotationClassName();
+    int[] indexes = methodMatcher.getArgumentIndexes();
+    for (net.bytebuddy.description.method.MethodDescription.InDefinedShape method :
+        type.getDeclaredMethods()) {
+      for (int index : indexes) {
+        if (index < 0 || index >= method.getParameters().size()) {
+          continue;
+        }
+        for (net.bytebuddy.description.annotation.AnnotationDescription annotation :
+            method.getParameters().get(index).getType().asErasure().getDeclaredAnnotations()) {
+          if (annotation.getAnnotationType().getName().equals(annotationName)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   private net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> buildTypeMatcher(
       ClassMatcher classMatcher) {
     switch (classMatcher.getMatchType()) {
@@ -495,6 +628,14 @@ public class WeaverTransformer {
         return hasSuperType(named(classMatcher.getPattern()));
       case INTERFACE:
         return hasSuperType(isInterface().and(named(classMatcher.getPattern())));
+      case ANY:
+        // @args, handler(), cflow() and if() produce a ClassMatcher.any(). Without this branch
+        // the type matcher is null and the definition is silently never woven. The method matcher
+        // still decides which methods are advised, so matching every concrete class is correct —
+        // but retransforming every class already loaded in the JVM is not affordable, so when the
+        // method matcher can only ever hit types that reference something specific, only revisit
+        // those.
+        return not(isInterface());
       default:
         log.warn("Unsupported class match type: {}", classMatcher.getMatchType());
         return null;
@@ -550,6 +691,15 @@ public class WeaverTransformer {
       case ANY:
         userMatcher = isMethod();
         break;
+      case ARGS:
+        // @args: match methods whose parameter type at one of the given indexes carries the
+        // annotation. Without this branch the switch fell through to the default and matched
+        // every method, so an @args pointcut instrumented far more than it selected.
+        userMatcher = isMethod();
+        for (int index : methodMatcher.getArgumentIndexes()) {
+          userMatcher = userMatcher.and(hasParameterTypeAnnotatedAt(index, methodMatcher.getPattern()));
+        }
+        break;
       case CONSTRUCTOR:
         // Match constructors. Pattern is "<init>" for any constructor,
         // or "<init>(param1,param2)" for constructors with specific parameter types.
@@ -598,6 +748,33 @@ public class WeaverTransformer {
         .and(not(isBridge()))
         .and(not(isNative()))
         .and(not(isAbstract()));
+  }
+
+  /**
+   * Matches methods whose parameter at {@code index} has a declared type annotated with {@code
+   * annotationName}. The annotation is read from the parameter type itself (AspectJ {@code @args}
+   * semantics), not from the parameter declaration.
+   */
+  private static net.bytebuddy.matcher.ElementMatcher.Junction<
+          net.bytebuddy.description.method.MethodDescription>
+      hasParameterTypeAnnotatedAt(int index, String annotationName) {
+    return hasParameters(
+        whereAny(
+            new net.bytebuddy.matcher.ElementMatcher<ParameterDescription>() {
+              @Override
+              public boolean matches(ParameterDescription target) {
+                if (target.getIndex() != index) {
+                  return false;
+                }
+                for (AnnotationDescription annotation :
+                    target.getType().asErasure().getDeclaredAnnotations()) {
+                  if (annotation.getAnnotationType().getName().equals(annotationName)) {
+                    return true;
+                  }
+                }
+                return false;
+              }
+            }));
   }
 
 }

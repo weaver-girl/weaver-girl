@@ -25,6 +25,13 @@ public class WeaverTransformerAnnotationTest {
   @Retention(RetentionPolicy.RUNTIME)
   public @interface TestTraced {}
 
+  @Target(ElementType.TYPE)
+  @Retention(RetentionPolicy.RUNTIME)
+  public @interface Sensitive {}
+
+  @Sensitive
+  public static class Secret {}
+
   public static class TargetService {
     @TestTraced
     public String annotatedMethod() {
@@ -41,6 +48,14 @@ public class WeaverTransformerAnnotationTest {
 
     public String process(String input) {
       return input;
+    }
+
+    public String handle(Secret payload) {
+      return payload.toString();
+    }
+
+    public String handlePlain(String payload) {
+      return payload;
     }
   }
 
@@ -190,5 +205,91 @@ public class WeaverTransformerAnnotationTest {
     // process(String) has only 1 param — should NOT match signature(String, int)
     new TargetService().process("test");
     assertFalse(intercepted.get(), "process(String) should NOT match signature(String,int)");
+  }
+
+  @Test
+  void argumentAnnotationMatcher_shouldInterceptMethodWhoseParamTypeIsAnnotated() {
+    AtomicBoolean intercepted = new AtomicBoolean(false);
+
+    InterceptorDefinition def =
+        new InterceptorDefinition(
+            "test-args",
+            new Pointcut(
+                ClassMatcher.byName(TARGET_CLASS),
+                MethodMatcher.byArgumentAnnotation(Sensitive.class.getName(), 0)),
+            new Interceptor() {
+              @Override
+              public void before(
+                  com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation invocation) {
+                intercepted.set(true);
+              }
+            },
+            0);
+    registry.register(def);
+
+    WeaverTransformer transformer = new WeaverTransformer(registry);
+    transformer.setIgnoreAgentClasses(false);
+    transformer.install(instrumentation);
+
+    new TargetService().handle(new Secret());
+    assertTrue(intercepted.get(), "handle(@Sensitive String) should be intercepted by @args");
+  }
+
+  @Test
+  void argumentAnnotationMatcher_shouldNotInterceptMethodWhoseParamTypeIsPlain() {
+    AtomicBoolean intercepted = new AtomicBoolean(false);
+
+    InterceptorDefinition def =
+        new InterceptorDefinition(
+            "test-args-exclude",
+            new Pointcut(
+                ClassMatcher.byName(TARGET_CLASS),
+                MethodMatcher.byArgumentAnnotation(Sensitive.class.getName(), 0)),
+            new Interceptor() {
+              @Override
+              public void before(
+                  com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation invocation) {
+                intercepted.set(true);
+              }
+            },
+            0);
+    registry.register(def);
+
+    WeaverTransformer transformer = new WeaverTransformer(registry);
+    transformer.setIgnoreAgentClasses(false);
+    transformer.install(instrumentation);
+
+    new TargetService().handlePlain("plain");
+    assertFalse(intercepted.get(), "handlePlain(String) should NOT match @args(@Sensitive)");
+  }
+
+  @Test
+  void argumentAnnotationMatcher_withoutClassRestriction_stillSelectsOnlyAnnotatedParamTypes() {
+    AtomicBoolean intercepted = new AtomicBoolean(false);
+
+    InterceptorDefinition def =
+        new InterceptorDefinition(
+            "test-args-any-class",
+            new Pointcut(ClassMatcher.any(), MethodMatcher.byArgumentAnnotation(Sensitive.class.getName(), 0)),
+            new Interceptor() {
+              @Override
+              public void before(
+                  com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation invocation) {
+                intercepted.set(true);
+              }
+            },
+            0);
+    registry.register(def);
+
+    WeaverTransformer transformer = new WeaverTransformer(registry);
+    transformer.setIgnoreAgentClasses(false);
+    transformer.install(instrumentation);
+
+    new TargetService().handle(new Secret());
+    assertTrue(intercepted.get(), "@args without a class restriction must still weave the method");
+
+    intercepted.set(false);
+    new TargetService().handlePlain("plain");
+    assertFalse(intercepted.get(), "a plain parameter type must stay unwoven");
   }
 }

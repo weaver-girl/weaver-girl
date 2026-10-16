@@ -77,4 +77,23 @@ public interface InterceptorRegistry {
    *     never null
    */
   List<InterceptorDefinition> getAllDefinitions();
+
+  /**
+   * Remove every registered definition. Each removed interceptor's {@code destroy()} is invoked and
+   * lifecycle events are published, so the registry returns to the empty state it had before any
+   * definition was registered.
+   *
+   * <p>Used by the unweave/uninstall path: wiping the registry before the transformer is reset
+   * ensures the inlined advice of still-woven classes finds no interceptors while the JVM
+   * retransforms them back to their original bytecode.
+   *
+   * <p>The default implementation unregisters each definition in turn (so implementations built only
+   * on {@link #register}/{@link #unregister} inherit correct destroy/event semantics for free);
+   * implementations may override with a faster bulk clear.
+   */
+  default void clear() {
+    for (InterceptorDefinition def : new java.util.ArrayList<>(getAllDefinitions())) {
+      unregister(def.getName());
+    }
+  }
 }

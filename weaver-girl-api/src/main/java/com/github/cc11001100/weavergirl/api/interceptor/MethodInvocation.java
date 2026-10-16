@@ -620,6 +620,21 @@ public class MethodInvocation {
   }
 
   /**
+   * Returns the current around-advice proceed depth.
+   *
+   * <p>Each successful {@link #proceed()} call increments this counter. The advice uses the delta
+   * between two reads around a single interceptor callback to decide whether <em>that</em>
+   * interceptor called {@code proceed()}, independently of other around interceptors in the same
+   * chain. Interceptors should not call this directly.
+   *
+   * @return the number of proceed calls so far in the current chain
+   * @since 2.0.0
+   */
+  public int getProceedDepth() {
+    return proceedDepth;
+  }
+
+  /**
    * Advance the around-advice chain to the next interceptor or the original method. Each call
    * increments an internal depth counter to guard against infinite around recursion.
    *

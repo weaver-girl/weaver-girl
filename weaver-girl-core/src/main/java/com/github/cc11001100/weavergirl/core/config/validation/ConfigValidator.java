@@ -27,10 +27,12 @@ public class ConfigValidator {
     KNOWN_KEYS.put("circuitBreakerCooldownMs", ConfigType.POSITIVE_LONG);
     KNOWN_KEYS.put("metricsPort", ConfigType.PORT);
     KNOWN_KEYS.put("healthPort", ConfigType.PORT);
+    KNOWN_KEYS.put("diagnosticsPort", ConfigType.PORT);
     KNOWN_KEYS.put("apiPort", ConfigType.PORT);
     KNOWN_KEYS.put("watch", ConfigType.BOOLEAN);
     KNOWN_KEYS.put("jsonEvents", ConfigType.BOOLEAN);
     KNOWN_KEYS.put("disabledPlugins", ConfigType.STRING);
+    KNOWN_KEYS.put("enabledPlugins", ConfigType.STRING);
     KNOWN_KEYS.put("config", ConfigType.STRING);
     KNOWN_KEYS.put("otlpEndpoint", ConfigType.STRING);
     KNOWN_KEYS.put("otlpHeaders", ConfigType.STRING);

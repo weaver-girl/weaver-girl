@@ -1037,6 +1037,69 @@ class InterceptAdviceTest {
   }
 
   @Test
+  void onMethodEnter_multipleAroundInterceptors_oneSkipsProceed_skipsIndependently() throws Exception {
+    // Regression: previously the first around interceptor's proceed() set the chain-wide
+    // proceedCalled flag, so a later interceptor that did NOT proceed was wrongly allowed to
+    // let the method run. Each around interceptor must decide independently.
+    java.util.List<String> order = new java.util.ArrayList<>();
+    Interceptor first =
+        new Interceptor() {
+          @Override
+          public void around(MethodInvocation invocation) {
+            order.add("first");
+            invocation.proceed();
+          }
+
+          @Override
+          public boolean hasAround() {
+            return true;
+          }
+        };
+    Interceptor second =
+        new Interceptor() {
+          @Override
+          public void around(MethodInvocation invocation) {
+            order.add("second");
+            // deliberately does NOT call proceed()
+          }
+
+          @Override
+          public boolean hasAround() {
+            return true;
+          }
+        };
+    registry.register(
+        new InterceptorDefinition(
+            "around-first-proceed",
+            new Pointcut(
+                ClassMatcher.byName(SampleClass.class.getName()), MethodMatcher.byName("greet")),
+            first,
+            0));
+    registry.register(
+        new InterceptorDefinition(
+            "around-second-skip",
+            new Pointcut(
+                ClassMatcher.byName(SampleClass.class.getName()), MethodMatcher.byName("greet")),
+            second,
+            10));
+
+    Method method = SampleClass.class.getMethod("greet");
+    Object result =
+        InterceptAdvice.onMethodEnter(
+            SampleClass.class, method, new SampleClass(), new Object[0]);
+
+    java.util.List<String> expected = new java.util.ArrayList<>();
+    expected.add("first");
+    expected.add("second");
+    assertEquals(expected, order, "Both around interceptors should run in priority order");
+    assertInstanceOf(
+        MethodInvocation.class, result, "Second around interceptor skipping must skip the method");
+    assertTrue(
+        ((MethodInvocation) result).isSkipped(),
+        "The second around interceptor's decision to skip must be honored even though the first proceeded");
+  }
+
+  @Test
   void onMethodEnter_aroundInterceptor_setsReturnValueAndSkipsMethod() throws Exception {
     Interceptor aroundInterceptor =
         new Interceptor() {
@@ -1120,5 +1183,111 @@ class InterceptAdviceTest {
         () -> invocation.proceed(),
         "proceed() should throw when depth limit is exceeded");
     assertFalse(invocation.isProceedable(), "Invocation should not be proceedable at max depth");
+  }
+
+  @Test
+  void composedPointcut_retainsIfRuntimeCondition_acrossAnd() throws Exception {
+    // T2 regression: and()-composed pointcuts must keep the if() runtime condition of their
+    // operands. Before the fix, and()/or()/negate() dropped the expression entirely, so the
+    // if-condition below was silently ignored and before() always ran.
+    boolean[] beforeCalled = {false};
+    Pointcut base =
+        new Pointcut(
+            ClassMatcher.byName(SampleClass.class.getName()), MethodMatcher.byName("echo"));
+    Pointcut guard =
+        new Pointcut(
+            ClassMatcher.any(),
+            MethodMatcher.any(),
+            PointcutExpression.ifCondition("args != null"));
+    registry.register(
+        new InterceptorDefinition(
+            "composed-and-if",
+            base.and(guard),
+            new Interceptor() {
+              @Override
+              public void before(MethodInvocation invocation) {
+                beforeCalled[0] = true;
+              }
+            }));
+
+    Method method = SampleClass.class.getMethod("echo", String.class);
+    // guard fails: args is null → before() must NOT run
+    InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), null);
+    assertFalse(beforeCalled[0], "and() must retain + enforce the if() condition of its operand");
+  }
+
+  @Test
+  void composedPointcut_or_keepsOperandsIndependent() throws Exception {
+    // T2 regression: or() must evaluate each operand self-containedly as (m1 && r1) || (m2 && r2).
+    // A naive lift to (m1 || m2) && (r1 || r2) would make the guarded left operand's condition
+    // contaminate the static-only right operand, blocking legitimately matching methods.
+    boolean[] beforeCalled = {false};
+    Pointcut guarded =
+        new Pointcut(
+            ClassMatcher.any(),
+            MethodMatcher.byName("greet"),
+            PointcutExpression.ifCondition("args != null"));
+    Pointcut staticOther =
+        new Pointcut(
+            ClassMatcher.byName(SampleClass.class.getName()), MethodMatcher.byName("greet"));
+    registry.register(
+        new InterceptorDefinition(
+            "composed-or-guarded",
+            guarded.or(staticOther),
+            new Interceptor() {
+              @Override
+              public void before(MethodInvocation invocation) {
+                beforeCalled[0] = true;
+              }
+            }));
+
+    // guarded.greet() with null args fails its if() condition; staticOther.greet() has no runtime
+    // condition and matches — the OR must still fire.
+    Method method = SampleClass.class.getMethod("greet");
+    InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), null);
+    assertTrue(
+        beforeCalled[0],
+        "or() right operand (no runtime condition) must not be blocked by the guarded left operand");
+  }
+
+  @Test
+  void composedPointcut_and_staticAndCflowTogether() throws Exception {
+    // cflow-conditioned operand AND a static operand: the cflow frame must be honored through the
+    // composition (matches the AND() branch of PointcutExpression.toPointcut()).
+    boolean[] beforeCalled = {false};
+    Pointcut staticPc =
+        new Pointcut(
+            ClassMatcher.byName(SampleClass.class.getName()), MethodMatcher.byName("greet"));
+    Pointcut cflowPc =
+        new Pointcut(
+            ClassMatcher.any(),
+            MethodMatcher.any(),
+            PointcutExpression.cflow(
+                PointcutExpression.execution(
+                    null, SampleClass.class.getName(), "outer", null)));
+    registry.register(
+        new InterceptorDefinition(
+            "composed-and-cflow",
+            staticPc.and(cflowPc),
+            new Interceptor() {
+              @Override
+              public void before(MethodInvocation invocation) {
+                beforeCalled[0] = true;
+              }
+            }));
+
+    // Without a pushing "outer" caller frame on the cflow stack, the cflow operand fails → skip.
+    // Simulate being outside outer()'s control flow first.
+    PointcutExpression.enterCflow(SampleClass.class.getName(), "greet");
+    try {
+      Method method = SampleClass.class.getMethod("greet");
+      InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
+      assertFalse(
+          beforeCalled[0],
+          "cflow() inside an and() composition must be evaluated: alone in the stack, greet() has "
+              + "no matching caller frame");
+    } finally {
+      PointcutExpression.exitCflow(SampleClass.class.getName(), "greet");
+    }
   }
 }

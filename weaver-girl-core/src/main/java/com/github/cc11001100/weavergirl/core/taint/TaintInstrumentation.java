@@ -126,80 +126,88 @@ public final class TaintInstrumentation {
     builder =
         builder
             .type(named("java.lang.String"))
-            .transform(
-                new AgentBuilder.Transformer() {
-                  @Override
-                  public net.bytebuddy.dynamic.DynamicType.Builder<?> transform(
-                      net.bytebuddy.dynamic.DynamicType.Builder<?> typeBuilder,
-                      net.bytebuddy.description.type.TypeDescription typeDescription,
-                      ClassLoader classLoader,
-                      net.bytebuddy.utility.JavaModule module,
-                      java.security.ProtectionDomain protectionDomain) {
-                    return typeBuilder
-                        .visit(
-                            Advice.to(StringConcatAdvice.class)
-                                .on(named("concat").and(takesArguments(String.class))))
-                        .visit(
-                            Advice.to(StringSubstringAdvice.class)
-                                .on(named("substring").and(takesArguments(int.class, int.class))))
-                        .visit(
-                            Advice.to(StringSubstringBeginAdvice.class)
-                                .on(named("substring").and(takesArguments(int.class))));
-                  }
-                })
+            .transform(new StringTransformer())
             .type(named("java.lang.StringBuilder"))
-            .transform(
-                new AgentBuilder.Transformer() {
-                  @Override
-                  public net.bytebuddy.dynamic.DynamicType.Builder<?> transform(
-                      net.bytebuddy.dynamic.DynamicType.Builder<?> typeBuilder,
-                      net.bytebuddy.description.type.TypeDescription typeDescription,
-                      ClassLoader classLoader,
-                      net.bytebuddy.utility.JavaModule module,
-                      java.security.ProtectionDomain protectionDomain) {
-                    return typeBuilder
-                        .visit(
-                            Advice.to(StringBuilderAppendStringAdvice.class)
-                                .on(named("append").and(takesArguments(String.class))))
-                        .visit(
-                            Advice.to(StringBuilderAppendCharSequenceAdvice.class)
-                                .on(named("append").and(takesArguments(CharSequence.class))))
-                        .visit(
-                            Advice.to(StringBuilderToStringAdvice.class)
-                                .on(named("toString").and(takesArguments(0))));
-                  }
-                })
+            .transform(new StringBuilderTransformer())
             .type(named("java.lang.ProcessBuilder"))
-            .transform(
-                new AgentBuilder.Transformer() {
-                  @Override
-                  public net.bytebuddy.dynamic.DynamicType.Builder<?> transform(
-                      net.bytebuddy.dynamic.DynamicType.Builder<?> typeBuilder,
-                      net.bytebuddy.description.type.TypeDescription typeDescription,
-                      ClassLoader classLoader,
-                      net.bytebuddy.utility.JavaModule module,
-                      java.security.ProtectionDomain protectionDomain) {
-                    return typeBuilder.visit(
-                        Advice.to(ProcessBuilderStartAdvice.class)
-                            .on(named("start").and(takesArguments(0))));
-                  }
-                })
+            .transform(new ProcessBuilderTransformer())
             .type(named("java.lang.Runtime"))
-            .transform(
-                new AgentBuilder.Transformer() {
-                  @Override
-                  public net.bytebuddy.dynamic.DynamicType.Builder<?> transform(
-                      net.bytebuddy.dynamic.DynamicType.Builder<?> typeBuilder,
-                      net.bytebuddy.description.type.TypeDescription typeDescription,
-                      ClassLoader classLoader,
-                      net.bytebuddy.utility.JavaModule module,
-                      java.security.ProtectionDomain protectionDomain) {
-                    return typeBuilder.visit(
-                        Advice.to(RuntimeExecAdvice.class).on(named("exec")));
-                  }
-                });
+            .transform(new RuntimeTransformer());
 
     builder.installOn(instrumentation);
+  }
+
+  /** Transformer for java.lang.String methods. */
+  public static class StringTransformer implements AgentBuilder.Transformer {
+    @Override
+    public net.bytebuddy.dynamic.DynamicType.Builder<?> transform(
+        net.bytebuddy.dynamic.DynamicType.Builder<?> typeBuilder,
+        net.bytebuddy.description.type.TypeDescription typeDescription,
+        ClassLoader classLoader,
+        net.bytebuddy.utility.JavaModule module,
+        java.security.ProtectionDomain protectionDomain) {
+      return typeBuilder
+          .visit(
+              Advice.to(StringConcatAdvice.class)
+                  .on(named("concat").and(takesArguments(String.class))))
+          .visit(
+              Advice.to(StringSubstringAdvice.class)
+                  .on(named("substring").and(takesArguments(int.class, int.class))))
+          .visit(
+              Advice.to(StringSubstringBeginAdvice.class)
+                  .on(named("substring").and(takesArguments(int.class))));
+    }
+  }
+
+  /** Transformer for java.lang.StringBuilder methods. */
+  public static class StringBuilderTransformer implements AgentBuilder.Transformer {
+    @Override
+    public net.bytebuddy.dynamic.DynamicType.Builder<?> transform(
+        net.bytebuddy.dynamic.DynamicType.Builder<?> typeBuilder,
+        net.bytebuddy.description.type.TypeDescription typeDescription,
+        ClassLoader classLoader,
+        net.bytebuddy.utility.JavaModule module,
+        java.security.ProtectionDomain protectionDomain) {
+      return typeBuilder
+          .visit(
+              Advice.to(StringBuilderAppendStringAdvice.class)
+                  .on(named("append").and(takesArguments(String.class))))
+          .visit(
+              Advice.to(StringBuilderAppendCharSequenceAdvice.class)
+                  .on(named("append").and(takesArguments(CharSequence.class))))
+          .visit(
+              Advice.to(StringBuilderToStringAdvice.class)
+                  .on(named("toString").and(takesArguments(0))));
+    }
+  }
+
+  /** Transformer for java.lang.ProcessBuilder methods. */
+  public static class ProcessBuilderTransformer implements AgentBuilder.Transformer {
+    @Override
+    public net.bytebuddy.dynamic.DynamicType.Builder<?> transform(
+        net.bytebuddy.dynamic.DynamicType.Builder<?> typeBuilder,
+        net.bytebuddy.description.type.TypeDescription typeDescription,
+        ClassLoader classLoader,
+        net.bytebuddy.utility.JavaModule module,
+        java.security.ProtectionDomain protectionDomain) {
+      return typeBuilder.visit(
+          Advice.to(ProcessBuilderStartAdvice.class)
+              .on(named("start").and(takesArguments(0))));
+    }
+  }
+
+  /** Transformer for java.lang.Runtime methods. */
+  public static class RuntimeTransformer implements AgentBuilder.Transformer {
+    @Override
+    public net.bytebuddy.dynamic.DynamicType.Builder<?> transform(
+        net.bytebuddy.dynamic.DynamicType.Builder<?> typeBuilder,
+        net.bytebuddy.description.type.TypeDescription typeDescription,
+        ClassLoader classLoader,
+        net.bytebuddy.utility.JavaModule module,
+        java.security.ProtectionDomain protectionDomain) {
+      return typeBuilder.visit(
+          Advice.to(RuntimeExecAdvice.class).on(named("exec")));
+    }
   }
 
   /** {@code String.concat(String)}. */

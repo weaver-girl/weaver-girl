@@ -29,14 +29,11 @@ import com.github.cc11001100.weavergirl.api.introduction.IntroductionRegistry;
 import com.github.cc11001100.weavergirl.core.plugin.DefaultPluginManager;
 import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
 import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
-import com.github.cc11001100.weavergirl.core.release.AgentUpdater;
-import com.github.cc11001100.weavergirl.core.release.UpdateChecker;
-import com.github.cc11001100.weavergirl.core.release.VersionInfo;
 import com.github.cc11001100.weavergirl.core.graceful.GracefulDegradationManager;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingMonitor;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
-import com.github.cc11001100.weavergirl.core.status.JmxRegistrar;
+import com.github.cc11001100.weavergirl.core.exporter.SpanExport;
 import com.github.cc11001100.weavergirl.core.trace.TracerSpanExporterBridge;
 import com.github.cc11001100.weavergirl.core.transformer.WeaverTransformer;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
@@ -66,6 +63,7 @@ public class WeaverGirl {
 
   private final InterceptorRegistry registry;
   private final PluginLoader pluginLoader;
+  private com.github.cc11001100.weavergirl.core.plugin.PluginDirectoryWatcher pluginDirectoryWatcher;
   private final IntroductionRegistry introductionRegistry;
   private Instrumentation instrumentation;
   private WeaverTransformer transformer;
@@ -83,10 +81,9 @@ public class WeaverGirl {
 
   private SpanExporter spanExporter;
   private TracerSpanExporterBridge spanExportBridge;
-  private UpdateChecker updateChecker;
+  private SpanExport spanExport;
   private volatile long dynamicRefreshIntervalSeconds = 0;
   private java.util.concurrent.ScheduledExecutorService refreshScheduler;
-  private com.github.cc11001100.weavergirl.core.management.AgentApiServer agentApiServer;
 
   private WeaverGirl() {
     this.registry = new DefaultInterceptorRegistry();
@@ -163,7 +160,10 @@ public class WeaverGirl {
     com.github.cc11001100.weavergirl.core.management.StartupMetrics.begin();
     try {
       ValidationUtils.requireNonNull(instrumentation, "instrumentation");
-      com.github.cc11001100.weavergirl.core.taint.TaintInstrumentation.install(instrumentation);
+      // Published before plugins load, so the taint plugin can instrument JDK classes from its init.
+      // Taint tracking is that plugin's job (taint=true); installing it here would instrument String on
+      // every launch whether or not anything reads the taint.
+      AgentInstrumentation.set(instrumentation);
       log.info("WeaverGirl agent starting...");
       WeaverGirl weaverGirl = new WeaverGirl();
       weaverGirl.instrumentation = instrumentation;
@@ -186,10 +186,40 @@ public class WeaverGirl {
         pluginConfig.put("disabledPlugins", disabledStr);
         log.info("Disabled plugins from config: {}", disabledStr);
       }
+      if (weaverConfig != null
+          && weaverConfig.getEnabledPlugins() != null
+          && !weaverConfig.getEnabledPlugins().isEmpty()) {
+        String enabledStr = String.join(",", weaverConfig.getEnabledPlugins());
+        pluginConfig.put("enabledPlugins", enabledStr);
+        log.info("Enabled plugins from config (exclusive): {}", enabledStr);
+      }
 
       long pluginLoadStart = System.nanoTime();
+      // The loader that defined this class, not the thread context loader. Under the isolated
+      // AgentClassLoader the context loader is the system loader, which cannot see the capability
+      // jars — only the isolated loader, which this class was loaded from, has them.
       weaverGirl.pluginLoader.loadPlugins(
           WeaverGirl.class.getClassLoader(), weaverGirl.registry, pluginConfig);
+
+      // Drop-in plugins (agent arg plugins=<dir>) have to be loaded here, before the transformer is
+      // installed. Loading them afterwards registers their interceptors into a transformer that is
+      // already installed, and at premain nothing revisits classes loaded after that, so the plugin
+      // would be reported as loaded while weaving nothing. The same disabledPlugins/enabledPlugins
+      // selection applies, so a capability jar dropped in the directory is still gated.
+      String pluginDir = pluginConfig.get("plugins");
+      if (pluginDir != null && !pluginDir.isEmpty()) {
+        weaverGirl.pluginLoader.loadPluginsFromDirectory(
+            pluginDir, weaverGirl.registry, pluginConfig);
+        log.info("Plugins loaded from directory: {}", pluginDir);
+        // A jar copied in after startup is loaded too, without restarting the process. The loader
+        // remembers which jars it already loaded, so the rescan only activates the new ones.
+        weaverGirl.pluginDirectoryWatcher =
+            new com.github.cc11001100.weavergirl.core.plugin.PluginDirectoryWatcher(
+                java.nio.file.Paths.get(pluginDir),
+                () -> weaverGirl.reloadPluginDirectory(pluginDir, pluginConfig));
+        weaverGirl.pluginDirectoryWatcher.start();
+      }
+
       com.github.cc11001100.weavergirl.core.management.StartupMetrics.recordPhase(
           "pluginLoad", System.nanoTime() - pluginLoadStart);
 
@@ -247,26 +277,24 @@ public class WeaverGirl {
       // Apply configuration to core components
       applyCoreConfig(pluginConfig);
 
-      // P79: wire span batch export (opt-in via otlpEndpoint / spanExport).
-      weaverGirl.initSpanExport(pluginConfig);
-
-      // P80: wire periodic update check (opt-in via updateCheckEndpoint).
-      weaverGirl.initUpdateCheck(pluginConfig);
+      // Span export (otlpEndpoint / spanExport) and the version check (updateCheckEndpoint) are
+      // runtime plugins. They start themselves when their config key is set and stop themselves in
+      // destroy(), so starting them here too would run a second exporter and a second checker.
 
       // Initialize DynamicConfigManager with initial config and runtime listener
       weaverGirl.dynamicConfigManager.loadFromSource(pluginConfig, "bootstrap");
       weaverGirl.dynamicConfigManager.addListener(weaverGirl.new DynamicCoreConfigListener());
       weaverGirl.dynamicConfigManager.snapshot("initial-bootstrap");
 
-      // P103: optional periodic dynamic refresh of interceptor registry
-      weaverGirl.initDynamicRefresh(pluginConfig);
+      // Periodic registry refresh (refreshIntervalSeconds) is the dynamic-refresh plugin, and the agent
+      // status MBean is the jmx plugin. Both are loaded above with the other plugins.
 
       long mgmtStart = System.nanoTime();
-      JmxRegistrar.register();
 
-      // Register JMX monitoring MBean
+      // The counters are collected here regardless, but the MBean is published by the jmx plugin, so
+      // jmx=false leaves nothing registered. Publishing it here too meant the switch could not turn it
+      // off: this runs before the plugin and claims the same object name.
       AgentMonitor monitor = AgentMonitor.getInstance();
-      monitor.register();
       monitor.setInterceptorDefinitionCount(weaverGirl.registry.getAllDefinitions().size());
       monitor.setPluginCount(weaverGirl.pluginLoader.getLoadedPlugins().size());
 
@@ -275,18 +303,8 @@ public class WeaverGirl {
       com.github.cc11001100.weavergirl.core.management.StartupMetrics.recordPhase(
           "managementInit", System.nanoTime() - mgmtStart);
 
-      // P103: optional REST API server for observability/managing endpoints
-      String apiPortStr = pluginConfig.getOrDefault("apiPort", "0");
-      if (!"0".equals(apiPortStr) && !apiPortStr.isEmpty()) {
-        try {
-          int apiPort = Integer.parseInt(apiPortStr);
-          weaverGirl.agentApiServer = new com.github.cc11001100.weavergirl.core.management.AgentApiServer(apiPort);
-          weaverGirl.agentApiServer.start();
-          log.info("Agent API server started on port {}", apiPort);
-        } catch (Exception e) {
-          log.warn("Failed to start AgentApiServer on port {}: {}", apiPortStr, e.getMessage());
-        }
-      }
+      // The management REST API (apiPort) is no longer started here. It is the management-api
+      // plugin, loaded above with the other plugins and only when apiPort is set.
 
       log.info(
           "WeaverGirl agent started with {} interceptor definitions",
@@ -344,8 +362,8 @@ public class WeaverGirl {
    */
   public void shutdown() {
     log.info("WeaverGirl agent shutting down...");
-    stopSpanExport();
-    stopUpdateCheck();
+    // Span export and the version check stop with their plugins, inside destroyAll() below. Stopping
+    // them here would only reach a copy bootstrap no longer starts.
 
     ConfigWatcher localConfigWatcher = this.configWatcher;
     if (localConfigWatcher != null) {
@@ -360,7 +378,10 @@ public class WeaverGirl {
     if (dynamicConfigManager != null) {
       dynamicConfigManager.shutdown();
     }
-    stopDynamicRefresh();
+    // The dynamic refresh scheduler stops with its plugin, inside destroyAll() below.
+    if (pluginDirectoryWatcher != null) {
+      pluginDirectoryWatcher.stop();
+    }
     pluginLoader.destroyAll();
 
     DefaultPluginManager localPluginManager = this.pluginManager;
@@ -378,13 +399,10 @@ public class WeaverGirl {
       }
     }
 
-    AgentMonitor.getInstance().unregister();
-    JmxRegistrar.unregister();
+    // The agent status MBean is removed by the jmx plugin, inside destroyAll() above.
+    AgentInstrumentation.set(null);
     InterceptorHolder.setRegistry(null);
-    com.github.cc11001100.weavergirl.core.management.AgentApiServer localApiServer = this.agentApiServer;
-    if (localApiServer != null) {
-      localApiServer.stop();
-    }
+    // The management API stops itself: it is a plugin, and destroyAll() above calls its destroy().
     try {
       InterceptorEventPublisher.getInstance()
           .publish(LifecycleEvents.registry(LifecycleEvents.PHASE_SHUTDOWN, "shutdown", true, null));
@@ -556,10 +574,13 @@ public class WeaverGirl {
   }
 
   /**
-   * Wire span batch export (P79).
-   * {@link OtlpHttpExporter}; {@code spanExport=true} without an endpoint enables log-only export
-   * via {@link SpanFormatter.LoggingSpanFormatter}. Without either key nothing is created (zero
-   * overhead, no background thread).
+   * Wire span batch export (P79). Delegates to {@link SpanExport}, which the span-export runtime
+   * plugin drives. Bootstrap does not call this: the plugin starts the exporter when {@code
+   * otlpEndpoint} or {@code spanExport=true} is set and stops it on destroy, so calling it here too
+   * would run a second exporter. It remains for callers that wire an exporter themselves. {@code
+   * otlpEndpoint} sends spans to a
+   * collector; {@code spanExport=true} without an endpoint enables log-only export. Without either
+   * key nothing is created (zero overhead, no background thread).
    *
    * <p>The bridge registers with {@link Tracer#addCompletionListener} (additive, so it coexists
    * with other consumers such as the topology bridge) and the exporter is stopped on {@link
@@ -569,68 +590,25 @@ public class WeaverGirl {
    * spanExportIntervalMs} (default 5000), {@code spanExportBufferSize} (default 10000).
    */
   void initSpanExport(java.util.Map<String, String> config) {
-    if (config == null) {
-      return;
-    }
-    String endpoint = config.get("otlpEndpoint");
-    boolean logOnly = "true".equalsIgnoreCase(config.get("spanExport"));
-    if ((endpoint == null || endpoint.trim().isEmpty()) && !logOnly) {
-      return;
-    }
-    try {
-      SpanExporter exporter =
-          new SpanExporter(
-              parsePositiveInt(config.get("spanExportBatchSize"), 100),
-              parsePositiveLong(config.get("spanExportIntervalMs"), 5_000L),
-              parsePositiveInt(config.get("spanExportBufferSize"), 10_000));
-      if (endpoint != null && !endpoint.trim().isEmpty()) {
-        OtlpHttpExporter.Builder builder = OtlpHttpExporter.builder().endpoint(endpoint.trim());
-        String headers = config.get("otlpHeaders");
-        if (headers != null && !headers.trim().isEmpty()) {
-          for (String pair : headers.split(";")) {
-            int eq = pair.indexOf('=');
-            if (eq > 0) {
-              builder.header(pair.substring(0, eq).trim(), pair.substring(eq + 1).trim());
-            }
-          }
-        }
-        exporter.addFormatter(builder.build());
-        log.info("Span export: OTLP HTTP -> {}", endpoint.trim());
-      } else {
-        exporter.addFormatter(new SpanFormatter.LoggingSpanFormatter());
-        log.info("Span export: log-only (no otlpEndpoint configured)");
-      }
-      exporter.start();
-      spanExportBridge = new TracerSpanExporterBridge(exporter);
-      Tracer.addCompletionListener(spanExportBridge);
-      spanExporter = exporter;
-    } catch (Exception e) {
-      log.warn("Failed to initialize span export: {}", e.getMessage());
+    SpanExport export = new SpanExport();
+    if (export.start(config)) {
+      spanExport = export;
+      spanExportBridge = null;
+      spanExporter = export.exporter();
     }
   }
 
-  private static int parsePositiveInt(String value, int defaultValue) {
-    if (value == null) {
-      return defaultValue;
-    }
-    try {
-      int parsed = Integer.parseInt(value.trim());
-      return parsed > 0 ? parsed : defaultValue;
-    } catch (NumberFormatException e) {
-      return defaultValue;
-    }
+  /**
+   * A positive integer from config text, or the default when it is missing, blank, not a number, or
+   * not positive. Parsing lives in {@link SpanExport}; this stays so existing callers keep working.
+   */
+  static int parsePositiveInt(String value, int defaultValue) {
+    return SpanExport.parsePositiveInt(value, defaultValue);
   }
 
-  private static long parsePositiveLong(String value, long defaultValue) {
-    if (value == null) {
-      return defaultValue;
-    }
-    try {
-      long parsed = Long.parseLong(value.trim());
-      return parsed > 0 ? parsed : defaultValue;
-    } catch (NumberFormatException e) {
-      return defaultValue;
-    }
+  /** A positive long from config text, or the default. See {@link #parsePositiveInt}. */
+  static long parsePositiveLong(String value, long defaultValue) {
+    return SpanExport.parsePositiveLong(value, defaultValue);
   }
 
   /**
@@ -648,134 +626,10 @@ public class WeaverGirl {
    * package-visible for tests.
    */
   void stopSpanExport() {
-    if (spanExportBridge != null) {
-      try {
-        Tracer.removeCompletionListener(spanExportBridge);
-      } catch (Exception e) {
-        log.warn("Failed to detach span export bridge: {}", e.getMessage());
-      }
-      spanExportBridge = null;
-    }
-    if (spanExporter != null) {
-      try {
-        spanExporter.stop();
-      } catch (Exception e) {
-        log.warn("Failed to stop span exporter: {}", e.getMessage());
-      }
+    if (spanExport != null) {
+      spanExport.stop();
+      spanExport = null;
       spanExporter = null;
-    }
-  }
-
-  /**
-   * Wire periodic remote version checks (P80).
-   *
-   * <p>Opt-in via {@code updateCheckEndpoint=https://.../version.json}: polls the endpoint and logs
-   * when a newer version is available. Without the key nothing is created (zero overhead, no
-   * background thread).
-   *
-   * <p>Optional tuning keys: {@code updateCheckIntervalMs} (default 24h), {@code updateStagingDir}
-   * (default {@code java.io.tmpdir/weaver-girl-updates}). When {@code updateAutoStage=true} and the
-   * remote descriptor carries a download URL + checksum, the new artifact is downloaded and
-   * verified into the staging dir, ready for an operator-driven swap + restart (a loaded agent JAR
-   * cannot replace itself).
-   */
-  void initUpdateCheck(java.util.Map<String, String> config) {
-    if (config == null) {
-      return;
-    }
-    String endpoint = config.get("updateCheckEndpoint");
-    if (endpoint == null || endpoint.trim().isEmpty()) {
-      return;
-    }
-    try {
-      UpdateChecker.Builder builder = UpdateChecker.builder().endpoint(endpoint.trim());
-      String interval = config.get("updateCheckIntervalMs");
-      if (interval != null) {
-        try {
-          builder.checkIntervalMs(Long.parseLong(interval.trim()));
-        } catch (NumberFormatException e) {
-          log.warn("Invalid updateCheckIntervalMs '{}', using default", interval);
-        }
-      }
-      UpdateChecker checker = builder.build();
-      final boolean autoStage = "true".equalsIgnoreCase(config.get("updateAutoStage"));
-      final String stagingDir = config.get("updateStagingDir");
-      final String headers = config.get("updateHeaders");
-      checker.addListener(remote -> onNewVersionAvailable(remote, autoStage, stagingDir, headers));
-      checker.start();
-      updateChecker = checker;
-      log.info("Update check enabled (endpoint={})", endpoint.trim());
-    } catch (Exception e) {
-      log.warn("Failed to initialize update check: {}", e.getMessage());
-    }
-  }
-
-  private static void onNewVersionAvailable(
-      VersionInfo remote, boolean autoStage, String stagingDir, String headers) {
-    String notes = remote.getReleaseNotes();
-    log.warn(
-        "[Update] New agent version available: {}{} — see release notes{}",
-        remote.getVersion(),
-        remote.isMandatory() ? " (MANDATORY)" : "",
-        notes != null ? ": " + notes : " (none provided)");
-    if (!autoStage) {
-      if (remote.isDownloadable()) {
-        log.warn(
-            "[Update] Download manually: {} (set updateAutoStage=true to stage automatically)",
-            remote.getDownloadUrl());
-      }
-      return;
-    }
-    if (!remote.isDownloadable()) {
-      log.warn(
-          "[Update] updateAutoStage=true but v{} has no downloadUrl — manual upgrade required",
-          remote.getVersion());
-      return;
-    }
-    try {
-      java.io.File dir =
-          stagingDir != null && !stagingDir.trim().isEmpty()
-              ? new java.io.File(stagingDir.trim())
-              : new java.io.File(System.getProperty("java.io.tmpdir"), "weaver-girl-updates");
-      AgentUpdater updater = new AgentUpdater(dir);
-      java.util.Map<String, String> extraHeaders = null;
-      if (headers != null && !headers.trim().isEmpty()) {
-        extraHeaders = new java.util.LinkedHashMap<>();
-        for (String pair : headers.split(";")) {
-          int eq = pair.indexOf('=');
-          if (eq > 0) {
-            extraHeaders.put(pair.substring(0, eq).trim(), pair.substring(eq + 1).trim());
-          }
-        }
-      }
-      AgentUpdater.UpdateResult result = updater.stageUpdate(remote, extraHeaders);
-      if (!result.isSuccess()) {
-        log.warn("[Update] Auto-stage failed: {}", result.getMessage());
-      }
-    } catch (Exception e) {
-      log.warn("[Update] Auto-stage failed: {}", e.getMessage());
-    }
-  }
-
-  /**
-   * Returns the update checker created by {@link #initUpdateCheck}, or null when update checks are
-   * not enabled. Primarily for tests and diagnostics.
-   *
-   * @return the active update checker, or null
-   */
-  public UpdateChecker getUpdateChecker() {
-    return updateChecker;
-  }
-
-  /** Stop the update checker. Called from {@link #shutdown()}; package-visible for tests. */
-  void stopUpdateCheck() {
-    if (updateChecker != null) {
-      try {
-        updateChecker.stop();
-      } catch (Exception e) {
-        log.warn("Failed to stop update checker: {}", e.getMessage());
-      }
-      updateChecker = null;
     }
   }
 
@@ -789,6 +643,37 @@ public class WeaverGirl {
    * <p>Also triggers retransformation of already-loaded classes so new/removed interceptors are
    * applied to already-loaded classes.
    */
+  /**
+   * Load jars added to the plugin directory since the last scan, reload a jar whose content changed,
+   * and unload plugins whose jar has been removed. Classes already loaded are retransformed afterwards,
+   * so a plugin added or removed at runtime applies to them too and not only to classes loaded later.
+   *
+   * <p>The retransform goes through this engine's own transformer. The hook on {@link InterceptorHolder}
+   * is only a fallback for a reload that has no transformer of its own — a plugin-side watcher reaching
+   * the agent through the shared holder.
+   */
+  void reloadPluginDirectory(String pluginDir, java.util.Map<String, String> pluginConfig) {
+    int before = pluginLoader.getLoadedPlugins().size();
+    pluginLoader.loadPluginsFromDirectory(pluginDir, registry, pluginConfig);
+    java.util.List<com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin> removed =
+        pluginLoader.unloadMissingJars(pluginDir);
+    if (pluginLoader.getLoadedPlugins().size() != before || !removed.isEmpty()) {
+      if (transformer != null) {
+        retransformLoadedClasses();
+      } else {
+        Runnable retransform =
+            com.github.cc11001100.weavergirl.core.InterceptorHolder.getRetransformHook();
+        if (retransform != null) {
+          retransform.run();
+        }
+      }
+      log.info(
+          "Plugin directory changed: {} loaded, {} removed",
+          pluginLoader.getLoadedPlugins().size(),
+          removed.size());
+    }
+  }
+
   public void refresh() {
     InterceptorHolder.invalidateSnapshot();
     if (transformer != null) {
@@ -871,6 +756,27 @@ public class WeaverGirl {
   }
 
   /**
+   * Unweave: remove every registered interceptor and restore already-woven classes to their
+   * original bytecode.
+   *
+   * <p>Clears the interceptor registry (invoking each interceptor's {@code destroy()}), invalidates
+   * the dispatch snapshot, and resets the ByteBuddy transformer so the JVM retransforms every class
+   * it had woven. After this call the classes behave exactly as they did before the agent attached.
+   *
+   * <p>Not reversible without re-registering interceptors and weaving again; do not call while
+   * interception is actively expected on this JVM.
+   *
+   * @return the number of classes retransformed to restore their original bytecode; 0 when no
+   *     transformer was installed
+   */
+  public int unweave() {
+    if (transformer == null) {
+      return 0;
+    }
+    return transformer.unweave();
+  }
+
+  /**
    * Fluent builder for programmatic interceptor registration.
    *
    * <p>Supports all 5 ClassMatcher types and 5 MethodMatcher types, matching the expressiveness of
@@ -934,99 +840,25 @@ public class WeaverGirl {
 
     public InterceptBuilder before(final Consumer<MethodInvocation> callback) {
       Interceptor existing = this.interceptor;
-      this.interceptor =
-          new Interceptor() {
-            @Override
-            public void before(MethodInvocation invocation) {
-              callback.accept(invocation);
-            }
-
-            @Override
-            public void after(MethodInvocation invocation) {
-              if (existing != null) existing.after(invocation);
-            }
-
-            @Override
-            public void onException(MethodInvocation invocation) {
-              if (existing != null) existing.onException(invocation);
-            }
-          };
+      this.interceptor = new BuilderInterceptors.BeforeCallbackInterceptor(callback, existing);
       return this;
     }
 
     public InterceptBuilder after(final Consumer<MethodInvocation> callback) {
       Interceptor existing = this.interceptor;
-      this.interceptor =
-          new Interceptor() {
-            @Override
-            public void before(MethodInvocation invocation) {
-              if (existing != null) existing.before(invocation);
-            }
-
-            @Override
-            public void after(MethodInvocation invocation) {
-              callback.accept(invocation);
-            }
-
-            @Override
-            public void onException(MethodInvocation invocation) {
-              if (existing != null) existing.onException(invocation);
-            }
-          };
+      this.interceptor = new BuilderInterceptors.AfterCallbackInterceptor(callback, existing);
       return this;
     }
 
     public InterceptBuilder onException(final Consumer<MethodInvocation> callback) {
       Interceptor existing = this.interceptor;
-      this.interceptor =
-          new Interceptor() {
-            @Override
-            public void before(MethodInvocation invocation) {
-              if (existing != null) existing.before(invocation);
-            }
-
-            @Override
-            public void after(MethodInvocation invocation) {
-              if (existing != null) existing.after(invocation);
-            }
-
-            @Override
-            public void onException(MethodInvocation invocation) {
-              callback.accept(invocation);
-            }
-
-            @Override
-            public void afterFinally(MethodInvocation invocation) {
-              if (existing != null) existing.afterFinally(invocation);
-            }
-          };
+      this.interceptor = new BuilderInterceptors.OnExceptionCallbackInterceptor(callback, existing);
       return this;
     }
 
     public InterceptBuilder finallyCallback(final Consumer<MethodInvocation> callback) {
       Interceptor existing = this.interceptor;
-      this.interceptor =
-          new Interceptor() {
-            @Override
-            public void before(MethodInvocation invocation) {
-              if (existing != null) existing.before(invocation);
-            }
-
-            @Override
-            public void after(MethodInvocation invocation) {
-              if (existing != null) existing.after(invocation);
-            }
-
-            @Override
-            public void onException(MethodInvocation invocation) {
-              if (existing != null) existing.onException(invocation);
-            }
-
-            @Override
-            public void afterFinally(MethodInvocation invocation) {
-              callback.accept(invocation);
-            }
-          };
+      this.interceptor = new BuilderInterceptors.FinallyCallbackInterceptor(callback, existing);
       return this;
     }
 

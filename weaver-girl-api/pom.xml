@@ -16,6 +16,10 @@
     <name>Weaver Girl - API</name>
     <description>Plugin SDK: interfaces and types for building weaver-girl plugins. External developers depend on this.</description>
 
+    <properties>
+        <moduleinfo.skip>false</moduleinfo.skip>
+    </properties>
+
     <dependencies>
         <!-- api layer only depends on annotation, NOT on ByteBuddy/SnakeYAML -->
         <dependency>

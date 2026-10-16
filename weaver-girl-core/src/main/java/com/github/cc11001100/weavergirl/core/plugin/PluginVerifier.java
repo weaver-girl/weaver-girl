@@ -4,6 +4,10 @@ import com.github.cc11001100.weavergirl.api.plugin.PluginMetadata;
 import java.io.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Enumeration;
+import java.util.List;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import org.slf4j.Logger;
@@ -101,11 +105,13 @@ public class PluginVerifier {
         log.debug("[PluginVerifier] No metadata file in {}", jarPath);
       }
 
-      // 3. Verify SHA-256 if metadata specifies one
+      // 3. Verify SHA-256 if metadata specifies one. The digest covers the jar entry
+      // contents, not the file bytes, and leaves the metadata entry itself out: the
+      // declared value lives there, so hashing the whole file could never match it.
       if (metadata != null
           && metadata.getExpectedSha256() != null
           && !metadata.getExpectedSha256().isEmpty()) {
-        String actualSha256 = computeSha256(jarFile);
+        String actualSha256 = computeContentSha256(jar);
         if (!metadata.getExpectedSha256().equalsIgnoreCase(actualSha256)) {
           return VerificationResult.fail(
               "SHA-256 mismatch: expected "
@@ -121,6 +127,40 @@ public class PluginVerifier {
 
     } catch (IOException e) {
       return VerificationResult.fail("Failed to read JAR: " + e.getMessage());
+    }
+  }
+
+  /**
+   * SHA-256 of the jar's entry contents, excluding the metadata entry that declares the expected
+   * value. Entries are fed in name order, each as its name, a zero byte, then its bytes, so two
+   * jars with the same files in a different order still agree.
+   */
+  static String computeContentSha256(JarFile jar) throws IOException {
+    List<String> names = new ArrayList<>();
+    Enumeration<JarEntry> entries = jar.entries();
+    while (entries.hasMoreElements()) {
+      JarEntry entry = entries.nextElement();
+      if (!entry.isDirectory() && !PluginMetadata.METADATA_PATH.equals(entry.getName())) {
+        names.add(entry.getName());
+      }
+    }
+    Collections.sort(names);
+    try {
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      byte[] buffer = new byte[8192];
+      for (String name : names) {
+        digest.update(name.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        digest.update((byte) 0);
+        try (InputStream is = jar.getInputStream(jar.getJarEntry(name))) {
+          int read;
+          while ((read = is.read(buffer)) != -1) {
+            digest.update(buffer, 0, read);
+          }
+        }
+      }
+      return bytesToHex(digest.digest());
+    } catch (NoSuchAlgorithmException e) {
+      throw new RuntimeException("SHA-256 computation failed", e);
     }
   }
 

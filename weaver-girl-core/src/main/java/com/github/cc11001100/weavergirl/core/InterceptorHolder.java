@@ -59,6 +59,25 @@ public class InterceptorHolder {
     InterceptorHolder.registry = registry;
   }
 
+  /**
+   * Callback run after a config reload so already-loaded classes pick up the new interceptors.
+   *
+   * <p>This lives here, and not on {@code ConfigWatcher}, because the watcher is loaded inside the
+   * agent's isolated ClassLoader while the code that installs the callback may be loaded outside it.
+   * This class is resolved parent-first, so both sides share the one field.
+   */
+  private static volatile Runnable retransformHook;
+
+  /** Install the callback a config reload runs to retransform loaded classes. {@code null} clears it. */
+  public static void setRetransformHook(Runnable hook) {
+    retransformHook = hook;
+  }
+
+  /** The installed retransform callback, or {@code null} when none is installed. */
+  public static Runnable getRetransformHook() {
+    return retransformHook;
+  }
+
   public static InterceptorRegistry getRegistry() {
     return registry;
   }

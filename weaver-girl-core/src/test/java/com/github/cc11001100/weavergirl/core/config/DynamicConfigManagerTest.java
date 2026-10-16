@@ -447,4 +447,40 @@ class DynamicConfigManagerTest {
     assertNotNull(instance);
     assertSame(manager, instance);
   }
+
+  /** Removing a listener drops it from the global list and from every key it was bound to. */
+  @Test
+  void removingAListenerDropsItEverywhere() {
+    ConfigChangeListener global = event -> {};
+    ConfigChangeListener keyed = event -> {};
+    manager.addListener(global);
+    manager.addListener("one", keyed);
+    manager.addListener("two", keyed);
+
+    manager.removeListener(keyed);
+    manager.removeListener(global);
+
+    assertTrue(manager.getListeners().isEmpty(), "a removed listener was still reported");
+  }
+
+  /** The listener list names both the global listeners and the ones bound to a key. */
+  @Test
+  void theListenerListIncludesKeyListeners() {
+    ConfigChangeListener global = event -> {};
+    ConfigChangeListener keyed = event -> {};
+    manager.addListener(global);
+    manager.addListener("rate", keyed);
+
+    assertTrue(manager.getListeners().contains(global));
+    assertTrue(manager.getListeners().contains(keyed));
+  }
+
+  /** Only the newest snapshots are kept once the history passes its limit. */
+  @Test
+  void oldSnapshotsAreForgottenOnceTheLimitIsPassed() {
+    for (int i = 0; i < 55; i++) {
+      manager.snapshot("snap-" + i);
+    }
+    assertTrue(manager.getSnapshots().size() <= 50, "the snapshot history grew past its limit");
+  }
 }

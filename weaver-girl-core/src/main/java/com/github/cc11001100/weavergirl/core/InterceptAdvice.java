@@ -91,19 +91,9 @@ public class InterceptAdvice {
         if (def.getAdviceMode() == InterceptorDefinition.AdviceMode.ARGUMENT_REWRITE) {
           continue; // before-only mode, dispatched by AsyncArgumentAdvice on entry
         }
-        if (def.getPointcut().getMethodMatcher().matches(methodName)) {
+        if (def.getPointcut().matchRuntime(className, methodName, null, arguments, null, null)) {
           if (!InterceptorHolder.shouldInvoke(def.getName())) {
             continue; // circuit breaker is open
-          }
-          // Evaluate runtime conditions (cflow/if)
-          PointcutExpression expr = def.getPointcut().getExpression();
-          if (expr != null
-              && (expr.getType() == PointcutExpression.Type.CFLOW
-                  || expr.getType() == PointcutExpression.Type.IF)) {
-            if (!expr.evaluateRuntimeCondition(
-                className, methodName, arguments, null, null)) {
-              continue; // condition not met, skip this interceptor
-            }
           }
           if (def.getInterceptor().hasAround()) {
             aroundDefs.add(def);
@@ -135,14 +125,20 @@ public class InterceptAdvice {
       // Execute around-advice callbacks in priority order. Each around interceptor
       // may call proceed() to continue, or skip the method entirely. If any
       // around interceptor skips, the original method body does not execute.
+      //
+      // proceedCalled is a chain-wide flag: once one interceptor calls proceed(), it
+      // stays true for the rest of the chain, so it cannot tell whether THIS interceptor
+      // proceeded. The depth delta does — a callback that advanced the depth proceeded,
+      // a callback that left it unchanged did not and short-circuits the call.
       boolean proceedAllowed = true;
       for (InterceptorDefinition def : aroundDefs) {
         long hookStart = System.nanoTime();
         try {
           // Mark invocation as proceedable before invoking around advice
           invocation.setProceedable(true);
+          int depthBefore = invocation.getProceedDepth();
           def.getInterceptor().around(invocation);
-          if (!invocation.isProceedCalled()) {
+          if (invocation.getProceedDepth() == depthBefore) {
             proceedAllowed = false;
             invocation.setSkipMethod(true);
           }
@@ -250,20 +246,10 @@ public class InterceptAdvice {
         if (def.getAdviceMode() == InterceptorDefinition.AdviceMode.ARGUMENT_REWRITE) {
           continue; // before-only mode, dispatched by AsyncArgumentAdvice on entry
         }
-        if (def.getPointcut().getMethodMatcher().matches(methodName)) {
+        if (def.getPointcut().matchRuntime(
+            className, methodName, null, arguments, returnValue, throwable)) {
           if (!InterceptorHolder.shouldInvoke(def.getName())) {
             continue; // circuit breaker is open
-          }
-          PointcutExpression expr = def.getPointcut().getExpression();
-          if (expr != null
-              && (expr.getType() == PointcutExpression.Type.CFLOW
-                  || expr.getType() == PointcutExpression.Type.IF)) {
-            boolean matched =
-                expr.evaluateRuntimeCondition(
-                    className, methodName, arguments, returnValue, throwable);
-            if (!matched) {
-              continue;
-            }
           }
           long hookStart = System.nanoTime();
           try {

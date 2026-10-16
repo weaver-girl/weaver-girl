@@ -161,4 +161,43 @@ class AgentDiagnosticsTest {
     assertEquals(0.0, hotspot.getAverageTimeMs(), 0.001);
     assertEquals(0.0, hotspot.getTotalTimeMs(), 0.001);
   }
+
+  /**
+   * Only the twenty most expensive interceptors are kept. Once a twenty-first arrives, the one that
+   * has cost the least time so far is dropped.
+   */
+  @Test
+  void theCheapestHotspotIsDroppedOnceTheLimitIsPassed() {
+    String prefix = "trim-" + System.nanoTime() + "-";
+    for (int i = 0; i < 21; i++) {
+      diagnostics.recordInterceptorInvocation(prefix + i, (i + 1) * 1_000L);
+    }
+
+    // The hotspot map is shared with every other test, so the report only shows the twenty most
+    // expensive overall. What this batch can prove is that its own cheapest entry was the one evicted.
+    java.util.Set<String> kept = new java.util.HashSet<>();
+    for (AgentDiagnostics.InterceptorHotspot hotspot : diagnostics.getAllHotspots()) {
+      if (hotspot.name.startsWith(prefix)) {
+        kept.add(hotspot.name);
+      }
+    }
+    assertFalse(kept.contains(prefix + 0), "the cheapest interceptor was kept");
+    assertFalse(kept.isEmpty(), "every interceptor from this batch was evicted");
+  }
+
+  /** The fault log keeps the newest hundred and forgets the oldest. */
+  @Test
+  void theFaultLogDropsTheOldestOnceItIsFull() {
+    String prefix = "overflow-" + System.nanoTime() + "-";
+    for (int i = 0; i < 101; i++) {
+      diagnostics.recordFault(prefix + i, "msg");
+    }
+
+    long kept =
+        diagnostics.getFaults().stream().filter(fault -> fault.type.startsWith(prefix)).count();
+    assertTrue(kept <= 100, "the fault log kept " + kept + " of one batch");
+    assertTrue(
+        diagnostics.getFaults().stream().noneMatch(fault -> fault.type.equals(prefix + 0)),
+        "the oldest fault was kept");
+  }
 }

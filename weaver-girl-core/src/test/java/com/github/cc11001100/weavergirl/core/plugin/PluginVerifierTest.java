@@ -1,183 +1,145 @@
 package com.github.cc11001100.weavergirl.core.plugin;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.github.cc11001100.weavergirl.api.plugin.PluginMetadata;
-import java.io.*;
-import java.util.List;
-import java.util.jar.*;
-import org.junit.jupiter.api.*;
+import com.github.cc11001100.weavergirl.core.plugin.PluginVerifier.VerificationResult;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.jar.JarOutputStream;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
-/** Tests for Plugin Verifier and Metadata (P51). */
+/** A jar that declares a checksum is refused when its bytes do not match. */
 class PluginVerifierTest {
 
-  private File tempJar;
-  private PluginVerifier verifier;
+  private static final String SPI =
+      "META-INF/services/com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin";
 
-  @BeforeEach
-  void setUp() throws Exception {
-    verifier = new PluginVerifier();
-  }
+  @TempDir java.nio.file.Path tempDir;
 
-  @AfterEach
-  void tearDown() {
-    if (tempJar != null && tempJar.exists()) {
-      tempJar.delete();
+  @Test
+  void matchingChecksumPasses() throws Exception {
+    // The digest ignores the metadata entry, so any placeholder yields the same content hash.
+    File placeholder = jar("placeholder");
+    String hash;
+    JarFile open = new JarFile(placeholder);
+    try {
+      hash = PluginVerifier.computeContentSha256(open);
+    } finally {
+      open.close();
     }
-  }
 
-  // ===== PluginMetadata =====
+    VerificationResult result = new PluginVerifier().verify(jar(hash).getAbsolutePath());
 
-  @Test
-  void metadata_fromProperties() throws Exception {
-    String props =
-        "plugin.name=test-plugin\n"
-            + "plugin.version=1.2.0\n"
-            + "plugin.description=A test plugin\n"
-            + "plugin.author=Test Author\n"
-            + "plugin.depends=jdbc,redis\n"
-            + "plugin.targetFrameworks=spring,quarkus\n"
-            + "plugin.minimumAgentVersion=1.0.0\n"
-            + "plugin.sha256=abc123\n";
-
-    PluginMetadata meta = PluginMetadata.fromProperties(new ByteArrayInputStream(props.getBytes()));
-
-    assertEquals("test-plugin", meta.getName());
-    assertEquals("1.2.0", meta.getVersion());
-    assertEquals("A test plugin", meta.getDescription());
-    assertEquals("Test Author", meta.getAuthor());
-    assertEquals(List.of("jdbc", "redis"), meta.getDepends());
-    assertEquals(List.of("spring", "quarkus"), meta.getTargetFrameworks());
-    assertEquals("1.0.0", meta.getMinimumAgentVersion());
-    assertEquals("abc123", meta.getExpectedSha256());
+    assertTrue(result.isValid(), result.getError());
   }
 
   @Test
-  void metadata_defaultValues() throws Exception {
-    String props = "plugin.name=minimal\n";
-    PluginMetadata meta = PluginMetadata.fromProperties(new ByteArrayInputStream(props.getBytes()));
+  void wrongChecksumIsRejected() throws Exception {
+    File jar = jar("0000000000000000000000000000000000000000000000000000000000000000");
 
-    assertEquals("minimal", meta.getName());
-    assertEquals("0.0.0", meta.getVersion());
-    assertEquals("", meta.getDescription());
-    assertTrue(meta.getDepends().isEmpty());
-    assertTrue(meta.getTargetFrameworks().isEmpty());
-    assertNull(meta.getMinimumAgentVersion());
-    assertNull(meta.getExpectedSha256());
-  }
+    VerificationResult result = new PluginVerifier().verify(jar.getAbsolutePath());
 
-  @Test
-  void metadata_builder() {
-    PluginMetadata meta =
-        PluginMetadata.builder()
-            .name("builder-test")
-            .version("2.0.0")
-            .description("Built with builder")
-            .author("Author")
-            .depend("dep1")
-            .depend("dep2")
-            .targetFramework("fw1")
-            .minimumAgentVersion("1.1.0")
-            .expectedSha256("sha256hex")
-            .build();
-
-    assertEquals("builder-test", meta.getName());
-    assertEquals("2.0.0", meta.getVersion());
-    assertEquals(2, meta.getDepends().size());
-    assertEquals(1, meta.getTargetFrameworks().size());
-  }
-
-  @Test
-  void metadata_dependsAreImmutable() {
-    PluginMetadata meta = PluginMetadata.builder().name("t").depend("d").build();
-    assertThrows(UnsupportedOperationException.class, () -> meta.getDepends().add("extra"));
-  }
-
-  @Test
-  void metadata_toString() {
-    PluginMetadata meta = PluginMetadata.builder().name("str-test").version("1.0").build();
-    String str = meta.toString();
-    assertTrue(str.contains("str-test"));
-    assertTrue(str.contains("1.0"));
-  }
-
-  // ===== PluginVerifier =====
-
-  @Test
-  void verify_nonExistentFile_returnsFail() {
-    PluginVerifier.VerificationResult result = verifier.verify("/nonexistent/plugin.jar");
     assertFalse(result.isValid());
-    assertTrue(result.getError().contains("not found"));
+    assertTrue(result.getError().contains("SHA-256 mismatch"));
   }
 
   @Test
-  void verify_jarWithoutSPI_returnsFail() throws Exception {
-    tempJar = createTestJar(false, false);
-    PluginVerifier.VerificationResult result = verifier.verify(tempJar.getAbsolutePath());
+  void noDeclaredChecksumPasses() throws Exception {
+    File jar = jar(null);
+
+    assertTrue(new PluginVerifier().verify(jar.getAbsolutePath()).isValid());
+  }
+
+  @Test
+  void missingSpiIsRejected() throws Exception {
+    File jar = tempDir.resolve("empty.jar").toFile();
+    JarOutputStream out = new JarOutputStream(new FileOutputStream(jar));
+    out.close();
+
+    assertFalse(new PluginVerifier().verify(jar.getAbsolutePath()).isValid());
+  }
+
+  /** A path that names nothing, and one that names a directory, are both reported as missing. */
+  @Test
+  void aMissingOrNonFilePathIsRejected() {
+    VerificationResult missing =
+        new PluginVerifier().verify(tempDir.resolve("absent.jar").toString());
+    assertFalse(missing.isValid());
+    assertTrue(missing.getError().contains("not found"));
+
+    VerificationResult directory = new PluginVerifier().verify(tempDir.toString());
+    assertFalse(directory.isValid());
+    assertTrue(directory.getError().contains("not found"));
+  }
+
+  /** A file that is not a jar cannot be read, and that is reported rather than thrown. */
+  @Test
+  void aFileThatIsNotAJarIsRejected() throws Exception {
+    File garbage = tempDir.resolve("garbage.jar").toFile();
+    java.nio.file.Files.write(garbage.toPath(), new byte[] {1, 2, 3, 4});
+
+    VerificationResult result = new PluginVerifier().verify(garbage.getAbsolutePath());
+
     assertFalse(result.isValid());
-    assertTrue(result.getError().contains("SPI"));
+    assertTrue(result.getError().contains("Failed to read JAR"), result.getError());
   }
 
+  /** A directory entry is skipped by the digest, and an entry larger than the buffer is hashed whole. */
   @Test
-  void verify_jarWithSPI_returnsOk() throws Exception {
-    tempJar = createTestJar(true, false);
-    PluginVerifier.VerificationResult result = verifier.verify(tempJar.getAbsolutePath());
-    assertTrue(result.isValid(), "Should be valid: " + result.getError());
-    assertNull(result.getMetadata()); // No metadata file in this JAR
-  }
-
-  @Test
-  void verify_jarWithSPIAndMetadata_returnsOk() throws Exception {
-    tempJar = createTestJar(true, true);
-    PluginVerifier.VerificationResult result = verifier.verify(tempJar.getAbsolutePath());
-    assertTrue(result.isValid(), "Should be valid: " + result.getError());
-    assertNotNull(result.getMetadata());
-    assertEquals("test-plugin", result.getMetadata().getName());
-  }
-
-  // ===== SHA-256 computation =====
-
-  @Test
-  void computeSha256_returnsHexDigest() throws Exception {
-    tempJar = createTestJar(true, false);
-    String sha256 = PluginVerifier.computeSha256(tempJar);
-    assertNotNull(sha256);
-    assertEquals(64, sha256.length()); // SHA-256 = 32 bytes = 64 hex chars
-    assertTrue(sha256.matches("[0-9a-f]+"));
-  }
-
-  @Test
-  void computeSha256_sameFileSameHash() throws Exception {
-    tempJar = createTestJar(true, false);
-    String hash1 = PluginVerifier.computeSha256(tempJar);
-    String hash2 = PluginVerifier.computeSha256(tempJar);
-    assertEquals(hash1, hash2);
-  }
-
-  // ===== Helper methods =====
-
-  private File createTestJar(boolean includeSPI, boolean includeMetadata) throws Exception {
-    File jarFile = File.createTempFile("test-plugin-", ".jar");
-    Manifest manifest = new Manifest();
-    JarOutputStream jos = new JarOutputStream(new FileOutputStream(jarFile), manifest);
-
-    if (includeSPI) {
-      JarEntry spiEntry =
-          new JarEntry(
-              "META-INF/services/com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin");
-      jos.putNextEntry(spiEntry);
-      jos.write("com.example.TestPlugin\n".getBytes());
-      jos.closeEntry();
+  void aDirectoryEntryAndALargeEntryStillHash() throws Exception {
+    File jar = tempDir.resolve("large.jar").toFile();
+    JarOutputStream out = new JarOutputStream(new FileOutputStream(jar));
+    try {
+      out.putNextEntry(new JarEntry("com/"));
+      out.closeEntry();
+      put(out, SPI, new String(new char[20_000]).replace('\0', 'x'));
+    } finally {
+      out.close();
     }
 
-    if (includeMetadata) {
-      JarEntry metaEntry = new JarEntry("META-INF/weaver-girl-plugin.properties");
-      jos.putNextEntry(metaEntry);
-      jos.write("plugin.name=test-plugin\nplugin.version=1.0.0\n".getBytes());
-      jos.closeEntry();
+    JarFile open = new JarFile(jar);
+    try {
+      String hash = PluginVerifier.computeContentSha256(open);
+      assertTrue(hash.matches("[0-9a-f]{64}"), hash);
+    } finally {
+      open.close();
     }
+    assertTrue(PluginVerifier.computeSha256(jar).matches("[0-9a-f]{64}"));
+  }
 
-    jos.close();
-    return jarFile;
+  /** Hashing a file that cannot be read fails loudly rather than returning a partial digest. */
+  @Test
+  void hashingAnUnreadableFileFails() {
+    RuntimeException ex =
+        org.junit.jupiter.api.Assertions.assertThrows(
+            RuntimeException.class,
+            () -> PluginVerifier.computeSha256(tempDir.resolve("absent.jar").toFile()));
+    assertTrue(ex.getMessage().contains("SHA-256"), ex.getMessage());
+  }
+
+  /** A jar with the SPI entry and, when {@code sha256} is set, a metadata file declaring it. */
+  private File jar(String sha256) throws Exception {
+    File jar = tempDir.resolve("plugin-" + System.nanoTime() + ".jar").toFile();
+    JarOutputStream out = new JarOutputStream(new FileOutputStream(jar));
+    try {
+      put(out, SPI, "com.example.Plugin\n");
+      if (sha256 != null) {
+        put(out, "META-INF/weaver-girl-plugin.properties", "plugin.name=demo\nplugin.sha256=" + sha256 + "\n");
+      }
+    } finally {
+      out.close();
+    }
+    return jar;
+  }
+
+  private static void put(JarOutputStream out, String name, String content) throws Exception {
+    out.putNextEntry(new JarEntry(name));
+    out.write(content.getBytes(StandardCharsets.UTF_8));
+    out.closeEntry();
   }
 }

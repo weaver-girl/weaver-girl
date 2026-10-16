@@ -17,6 +17,7 @@ public class WeaverConfig {
   private Integer maxTransformations; // max number of classes to transform
   private List<String> onlyInterceptPackages; // limit instrumentation to these packages
   private List<String> disabledPlugins; // plugin names to skip during loading
+  private List<String> enabledPlugins; // if set, ONLY these capabilities are loaded
 
   /** Alert rule configurations. */
   private List<AlertRuleConfig> alertRules = new ArrayList<>();
@@ -91,6 +92,18 @@ public class WeaverConfig {
 
   public void setDisabledPlugins(List<String> disabledPlugins) {
     this.disabledPlugins = disabledPlugins;
+  }
+
+  /**
+   * Capabilities to load exclusively. When non-empty only these are loaded and {@link
+   * #getDisabledPlugins()} is ignored; when empty every capability that is not disabled is loaded.
+   */
+  public List<String> getEnabledPlugins() {
+    return enabledPlugins;
+  }
+
+  public void setEnabledPlugins(List<String> enabledPlugins) {
+    this.enabledPlugins = enabledPlugins;
   }
 
   public List<AlertRuleConfig> getAlertRules() {

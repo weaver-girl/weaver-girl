@@ -174,7 +174,19 @@ class AgentStateSnapshotTest {
     assertNull(snapshot.getCustom("nonexistent"));
   }
 
+  /** A null status or value is stored as a placeholder, and a null custom key is ignored. */
   @Test
+  void nullStatusAndValueAreStoredAsPlaceholders() {
+    AgentStateSnapshot snapshot = new AgentStateSnapshot();
+    snapshot.setHealth("memory", null);
+    snapshot.setCustom(null, "ignored");
+    snapshot.setCustom("note", null);
+
+    assertEquals("UNKNOWN", snapshot.getHealth("memory"));
+    assertEquals("", snapshot.getCustom("note"));
+    assertNull(snapshot.getCustom(null));
+  }
+
   void setCustom_ignoresAgentPrefix() {
     AgentStateSnapshot snapshot = new AgentStateSnapshot();
     snapshot.setCustom("agent.should-be-ignored", "val");
@@ -297,6 +309,53 @@ class AgentStateSnapshotTest {
     AgentStateSnapshot snapshot = new AgentStateSnapshot();
     snapshot.save(stateDir);
     assertTrue(AgentStateSnapshot.exists(stateDir));
+  }
+
+  /**
+   * The no-argument forms use the default directory. They save, find, reload and remove a snapshot, and
+   * the directory is removed again afterwards so nothing is left in the working tree.
+   */
+  @Test
+  void theDefaultLocationRoundTrips() throws IOException {
+    java.nio.file.Path defaults = java.nio.file.Paths.get("weaver-girl-state");
+    try {
+      AgentStateSnapshot.delete();
+      assertFalse(AgentStateSnapshot.exists());
+
+      new AgentStateSnapshot().setInterceptorCount(4).save();
+
+      assertTrue(AgentStateSnapshot.exists());
+      assertEquals(4, AgentStateSnapshot.load().getInterceptorCount());
+      assertTrue(AgentStateSnapshot.delete());
+      assertNull(AgentStateSnapshot.load());
+    } finally {
+      AgentStateSnapshot.delete();
+      java.nio.file.Files.deleteIfExists(defaults);
+    }
+  }
+
+  /** A stored count that is not a number reads back as zero rather than failing the load. */
+  @Test
+  void aNonNumericCountReadsBackAsZero() throws IOException {
+    java.nio.file.Files.createDirectories(stateDir);
+    java.nio.file.Files.write(
+        stateDir.resolve("agent-state.properties"),
+        "interceptor.count=not-a-number\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+    assertEquals(0, AgentStateSnapshot.load(stateDir).getInterceptorCount());
+  }
+
+  /** A snapshot that cannot be deleted is reported as not deleted rather than thrown. */
+  @Test
+  void aSnapshotThatCannotBeDeletedIsReported() throws IOException {
+    java.nio.file.Path blocked = stateDir.resolve("blocked");
+    java.nio.file.Files.createDirectories(blocked);
+    // A non-empty directory where the snapshot file should be cannot be deleted as a file.
+    java.nio.file.Path obstacle = blocked.resolve("agent-state.properties");
+    java.nio.file.Files.createDirectory(obstacle);
+    java.nio.file.Files.write(obstacle.resolve("held"), new byte[] {1});
+
+    assertFalse(AgentStateSnapshot.delete(blocked));
   }
 
   @Test

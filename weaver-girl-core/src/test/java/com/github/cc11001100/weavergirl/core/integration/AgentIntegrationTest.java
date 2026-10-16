@@ -361,6 +361,50 @@ class AgentIntegrationTest {
     assertEquals("Original: test", result, "Original return value should be preserved");
   }
 
+  /**
+   * The production agent installs the transformer with {@code eagerRetransform=false} and never
+   * revisits classes afterwards, so a class must be woven on the load that happens after install.
+   * The existence check used to resolve the target with {@code Class.forName} while building the
+   * transformer, which defined it before the transformer was registered and left it unwoven.
+   */
+  @Test
+  void classNotYetLoadedIsWovenOnFirstLoad() {
+    AtomicBoolean beforeCalled = new AtomicBoolean(false);
+
+    registry.register(
+        new InterceptorDefinition(
+            "test-first-load",
+            new Pointcut(
+                ClassMatcher.byName(
+                    "com.github.cc11001100.weavergirl.core.integration.NotYetLoadedTarget"),
+                MethodMatcher.byName("ping")),
+            new Interceptor() {
+              @Override
+              public void before(MethodInvocation inv) {
+                beforeCalled.set(true);
+              }
+            }));
+
+    WeaverTransformer transformer = new WeaverTransformer(registry);
+    transformer.setIgnoreAgentClasses(false);
+    // The production premain path: no eager retransform, and nothing retransforms later.
+    transformer.install(instrumentation, false);
+
+    // Loaded by name, not by a reference in this class. A constant-pool reference would resolve the
+    // class while this test class loads, which is before the transformer exists.
+    Object result;
+    try {
+      Class<?> target =
+          Class.forName("com.github.cc11001100.weavergirl.core.integration.NotYetLoadedTarget");
+      result =
+          target.getDeclaredMethod("ping").invoke(target.getDeclaredConstructor().newInstance());
+    } catch (ReflectiveOperationException e) {
+      throw new AssertionError(e);
+    }
+    assertEquals("pong", result);
+    assertTrue(beforeCalled.get(), "a class first loaded after install must be woven");
+  }
+
   private void installTransformer() {
     WeaverTransformer transformer = new WeaverTransformer(registry);
     transformer.setIgnoreAgentClasses(false);

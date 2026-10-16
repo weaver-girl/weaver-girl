@@ -91,9 +91,18 @@ public class ConfigWatcher {
                         log.info(
                             "Config reloaded with {} interceptors",
                             registry.getAllDefinitions().size());
-                        // Trigger retransform after reload
-                        if (afterReloadCallback != null) {
-                          afterReloadCallback.run();
+                        // Trigger retransform after reload. The per-watcher callback wins; otherwise fall
+                        // back to the hook the agent installed on InterceptorHolder. That hook lives
+                        // on a parent-first class, so a reload started from a plugin — which has no
+                        // agent instance of its own — still reaches the agent's transformer.
+                        Runnable callback = afterReloadCallback;
+                        if (callback == null) {
+                          callback =
+                              com.github.cc11001100.weavergirl.core.InterceptorHolder
+                                  .getRetransformHook();
+                        }
+                        if (callback != null) {
+                          callback.run();
                         }
                       } catch (Exception e) {
                         log.error("Failed to reload config: {}", e.getMessage());

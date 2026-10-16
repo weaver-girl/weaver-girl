@@ -136,6 +136,10 @@ public class Pointcut {
    *
    * <p>Both the class matcher and method matcher must match for this method to return {@code true}.
    *
+   * <p>This performs <strong>static</strong> matching only. Runtime conditions such as {@code
+   * cflow()} or {@code if()} are evaluated by {@link #matchRuntime(String, String, Class[],
+   * Object[], Object, Throwable)}.
+   *
    * @param className the fully-qualified class name to test
    * @param methodName the method name to test
    * @return true if both the class and method matchers match
@@ -145,15 +149,74 @@ public class Pointcut {
   }
 
   /**
+   * Full join-point matching: static method matcher AND any runtime condition (e.g. {@code
+   * cflow()}/{@code if()}) evaluated together.
+   *
+   * <p><strong>Class matching is intentionally not re-checked here.</strong> The core engine
+   * (ByteBuddy) has already selected the class at instrumentation time, so a method that was woven
+   * necessarily passed its {@link ClassMatcher}. Re-checking it at dispatch time would wrongly
+   * reject {@code SUPER_CLASS}/{@code INTERFACE}/{@code ANNOTATION} matchers, which cannot be
+   * decided from a bare class name. {@code className} is still passed through for runtime
+   * expressions (e.g. {@code cflow()} frame matching) to use.
+   *
+   * <p>When {@code parameterTypes} is non-null, methods are matched by name <em>and</em> signature
+   * (used by constructor interception); otherwise only the method name is matched.
+   *
+   * <p>Composed pointcuts built via {@link #and(Pointcut)}, {@link #or(Pointcut)} and {@link
+   * #negate()} override this method to evaluate each operand self-containedly (method match plus
+   * its own runtime conditions). This keeps the decomposition exact: {@code (m1 && r1) || (m2 &&
+   * r2)} is evaluated as such, rather than as the unsound {@code (m1 || m2) && (r1 || r2)}.
+   *
+   * <p>The base implementation returns {@code true} when the pointcut carries no runtime condition
+   * (the common case), so there is no evaluation cost beyond the static {@link
+   * MethodMatcher#matches(String)} check.
+   *
+   * @param className the fully-qualified class name (used by runtime expressions only)
+   * @param methodName the method name
+   * @param parameterTypes the parameter types for signature matching, or null to match by name only
+   * @param arguments the method arguments
+   * @param returnValue the return value (may be null, e.g. on method entry)
+   * @param throwable the thrown exception (may be null)
+   * @return true if this pointcut matches the method and any runtime condition is satisfied
+   * @since 2.0.0
+   */
+  public boolean matchRuntime(
+      String className,
+      String methodName,
+      Class<?>[] parameterTypes,
+      Object[] arguments,
+      Object returnValue,
+      Throwable throwable) {
+    if (parameterTypes != null) {
+      if (!methodMatcher.matches(methodName, parameterTypes)) {
+        return false;
+      }
+    } else if (!methodMatcher.matches(methodName)) {
+      return false;
+    }
+    com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression expr = expression;
+    return expr == null
+        || expr.evaluateRuntimeCondition(className, methodName, arguments, returnValue, throwable);
+  }
+
+  /**
    * Creates a pointcut that matches if and only if <em>both</em> this pointcut and the other
    * pointcut match.
    *
    * <p>The returned pointcut overrides {@link #matches(String, String)} to evaluate both pointcuts
-   * and return their logical AND.
+   * and return their logical AND, and {@link #matchRuntime(String, String, Class[], Object[],
+   * Object, Throwable)} to evaluate <em>both operands self-containedly</em> (static match plus any
+   * {@code cflow()}/{@code if()} runtime conditions each may carry).
    *
    * <p>When combining matchers, if one side uses {@link MethodMatcher.MatchType#ANY}, the composite
    * inherits the other side's matcher. This preserves specific matchers like {@link
    * MethodMatcher.MatchType#ARGS} across composition.
+   *
+   * <p>Runtime conditions are <strong>not</strong> combined into a single {@link
+   * PointcutExpression}: each operand keeps its own expression and is evaluated independently via
+   * {@link #matchRuntime(String, String, Class[], Object[], Object, Throwable)}. This keeps the
+   * decomposition {@code (m1 && r1) && (m2 && r2)} exact even when one operand is a pure static
+   * matcher and the other carries {@code cflow()}/{@code if()}.
    *
    * @param other the pointcut to AND with this one
    * @return a new composite pointcut
@@ -166,6 +229,20 @@ public class Pointcut {
       public boolean matches(String className, String methodName) {
         return Pointcut.this.matches(className, methodName) && other.matches(className, methodName);
       }
+
+      @Override
+      public boolean matchRuntime(
+          String className,
+          String methodName,
+          Class<?>[] parameterTypes,
+          Object[] arguments,
+          Object returnValue,
+          Throwable throwable) {
+        return Pointcut.this.matchRuntime(
+                className, methodName, parameterTypes, arguments, returnValue, throwable)
+            && other.matchRuntime(
+                className, methodName, parameterTypes, arguments, returnValue, throwable);
+      }
     };
   }
 
@@ -173,10 +250,17 @@ public class Pointcut {
    * Creates a pointcut that matches if <em>either</em> this pointcut or the other pointcut matches.
    *
    * <p>The returned pointcut overrides {@link #matches(String, String)} to evaluate both pointcuts
-   * and return their logical OR.
+   * and return their logical OR, and {@link #matchRuntime(String, String, Class[], Object[],
+   * Object, Throwable)} to evaluate <em>both operands self-containedly</em> as {@code (m1 && r1) ||
+   * (m2 && r2)}.
    *
    * <p>When combining matchers, if one side uses {@link MethodMatcher.MatchType#ANY}, the composite
    * inherits the other side's matcher.
+   *
+   * <p>Runtime conditions are <strong>not</strong> combined into a single {@link
+   * PointcutExpression}: each operand keeps its own expression and is evaluated independently via
+   * {@link #matchRuntime(String, String, Class[], Object[], Object, Throwable)}, so the OR
+   * decomposition stays exact.
    *
    * @param other the pointcut to OR with this one
    * @return a new composite pointcut
@@ -188,6 +272,20 @@ public class Pointcut {
       @Override
       public boolean matches(String className, String methodName) {
         return Pointcut.this.matches(className, methodName) || other.matches(className, methodName);
+      }
+
+      @Override
+      public boolean matchRuntime(
+          String className,
+          String methodName,
+          Class<?>[] parameterTypes,
+          Object[] arguments,
+          Object returnValue,
+          Throwable throwable) {
+        return Pointcut.this.matchRuntime(
+                className, methodName, parameterTypes, arguments, returnValue, throwable)
+            || other.matchRuntime(
+                className, methodName, parameterTypes, arguments, returnValue, throwable);
       }
     };
   }
@@ -207,6 +305,10 @@ public class Pointcut {
   /**
    * Creates a negated version of this pointcut. Matches when this pointcut does NOT match.
    *
+   * <p>The returned pointcut overrides {@link #matches(String, String)} and {@link
+   * #matchRuntime(String, String, Class[], Object[], Object, Throwable)} to negate the operand's
+   * evaluation.
+   *
    * @return a new Pointcut that negates this one
    */
   public Pointcut negate() {
@@ -214,6 +316,18 @@ public class Pointcut {
       @Override
       public boolean matches(String className, String methodName) {
         return !Pointcut.this.matches(className, methodName);
+      }
+
+      @Override
+      public boolean matchRuntime(
+          String className,
+          String methodName,
+          Class<?>[] parameterTypes,
+          Object[] arguments,
+          Object returnValue,
+          Throwable throwable) {
+        return !Pointcut.this.matchRuntime(
+            className, methodName, parameterTypes, arguments, returnValue, throwable);
       }
     };
   }

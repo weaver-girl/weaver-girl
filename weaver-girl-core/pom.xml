@@ -16,6 +16,10 @@
     <name>Weaver Girl - Core</name>
     <description>Core instrumentation engine based on Byte Buddy</description>
 
+    <properties>
+        <moduleinfo.skip>false</moduleinfo.skip>
+    </properties>
+
     <dependencies>
         <!-- Byte Buddy -->
         <dependency>
@@ -35,18 +39,9 @@
             <artifactId>snakeyaml</artifactId>
         </dependency>
 
-        <!-- Micrometer bridge -->
-        <dependency>
-            <groupId>io.micrometer</groupId>
-            <artifactId>micrometer-core</artifactId>
-        </dependency>
-
-        <!-- AOP Alliance compatibility -->
-        <dependency>
-            <groupId>aopalliance</groupId>
-            <artifactId>aopalliance</artifactId>
-            <optional>true</optional>
-        </dependency>
+        <!-- Micrometer and AOP Alliance bridges used to live here. They are now their own modules
+             (weaver-girl-bridge-micrometer, weaver-girl-bridge-aopalliance) so the engine jar
+             carries neither dependency. -->
 
         <!-- Internal — core depends on api (api transitively depends on annotation) -->
         <dependency>

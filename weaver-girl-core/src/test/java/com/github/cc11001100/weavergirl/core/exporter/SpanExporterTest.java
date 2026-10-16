@@ -2,6 +2,10 @@ package com.github.cc11001100.weavergirl.core.exporter;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.github.cc11001100.weavergirl.core.testsupport.Statics;
+import java.util.List;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -104,5 +108,105 @@ class SpanExporterTest {
     assertEquals(1, exporter.getExportBatchCount());
     assertEquals(0, exporter.getDroppedCount());
     assertEquals(0, exporter.getFailedExportCount());
+  }
+
+  /** A zero or negative size falls back to the built-in default rather than a broken buffer. */
+  @Test
+  void nonPositiveSizesFallBackToDefaults() {
+    SpanExporter defaults = new SpanExporter(0, 0, -1);
+    assertEquals(100, defaults.getBatchSize());
+    assertEquals(5_000, defaults.getExportIntervalMs());
+    assertEquals(10_000, defaults.getBufferSize());
+  }
+
+  /** A formatter can be taken back out, and then it no longer receives spans. */
+  @Test
+  void aRemovedFormatterStopsReceivingSpans() {
+    assertEquals(1, exporter.getFormatterCount());
+    assertSame(exporter, exporter.removeFormatter(inMemory));
+    assertEquals(0, exporter.getFormatterCount());
+
+    exporter.submit(createSpan("t1", "s1", "op1", 10));
+    assertEquals(1, exporter.flush());
+    assertEquals(0, inMemory.size(), "a removed formatter still received the batch");
+  }
+
+  /** A formatter that throws is counted as a failed export and does not stop the next one. */
+  @Test
+  void aFormatterThatThrowsIsCountedAndSurvived() {
+    exporter.addFormatter(
+        spans -> {
+          throw new IllegalStateException("backend down");
+        });
+
+    exporter.submit(createSpan("t1", "s1", "op1", 10));
+    assertEquals(1, exporter.flush());
+
+    assertEquals(1, exporter.getFailedExportCount(), "the failing formatter was not counted");
+    assertEquals(1, inMemory.size(), "the formatter after the failing one was skipped");
+    assertEquals(1, exporter.getExportedCount());
+  }
+
+  /** A scheduler that ignores the shutdown wait is forced to stop. */
+  @Test
+  void stopForcesASchedulerThatWillNotFinish() throws Exception {
+    java.util.concurrent.atomic.AtomicInteger forced = new java.util.concurrent.atomic.AtomicInteger();
+    ScheduledExecutorService stubborn =
+        new java.util.concurrent.ScheduledThreadPoolExecutor(1) {
+          @Override
+          public boolean awaitTermination(long timeout, TimeUnit unit) {
+            return false;
+          }
+
+          @Override
+          public List<Runnable> shutdownNow() {
+            forced.incrementAndGet();
+            return super.shutdownNow();
+          }
+        };
+    withScheduler(
+        stubborn,
+        () -> {
+          exporter.start();
+          exporter.stop();
+        });
+    assertEquals(1, forced.get(), "a scheduler that ignored the wait was not forced to stop");
+  }
+
+  /** An interrupted wait while stopping forces the scheduler down and restores the interrupt. */
+  @Test
+  void anInterruptedStopRestoresTheInterrupt() throws Exception {
+    ScheduledExecutorService blocking =
+        new java.util.concurrent.ScheduledThreadPoolExecutor(1) {
+          @Override
+          public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
+            throw new InterruptedException("stopping");
+          }
+        };
+    Thread.interrupted();
+    try {
+      withScheduler(
+          blocking,
+          () -> {
+            exporter.start();
+            exporter.stop();
+          });
+      assertTrue(Thread.currentThread().isInterrupted(), "the interrupt was swallowed");
+    } finally {
+      Thread.interrupted();
+    }
+  }
+
+  /** Runs {@code body} with the exporter's scheduler replaced, and puts the original back after. */
+  private void withScheduler(ScheduledExecutorService replacement, Runnable body) throws Exception {
+    java.lang.reflect.Field field = SpanExporter.class.getDeclaredField("scheduler");
+    ScheduledExecutorService original = (ScheduledExecutorService) Statics.read(field, exporter);
+    Statics.write(field, exporter, replacement);
+    try {
+      body.run();
+    } finally {
+      Statics.write(field, exporter, original);
+      original.shutdownNow();
+    }
   }
 }

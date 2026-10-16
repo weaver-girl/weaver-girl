@@ -239,8 +239,10 @@ class MethodMatcherTest {
 
   @Test
   void byArgumentAnnotation_matches_delegatesFromSingleArgOverload() {
+    // The name-only overload cannot see parameter types. @args selection happens at
+    // instrumentation time, so a method that reached dispatch has already matched.
     MethodMatcher m = MethodMatcher.byArgumentAnnotation(Traced.class.getName(), 0);
-    assertFalse(m.matches("run"));
+    assertTrue(m.matches("run"));
   }
 
   @Test
@@ -292,12 +294,12 @@ class MethodMatcherTest {
     assertFalse(m.matches("run"));
   }
 
-  // --- default branch: ARGS not handled by matches(String) ---
+  // --- ARGS is resolved at instrumentation time, so the name-only check lets it through ---
 
   @Test
-  void argsMatcher_matchesStringOnly_returnsFalse() {
+  void argsMatcher_matchesStringOnly_passesThrough() {
     MethodMatcher m = MethodMatcher.byArgumentAnnotation(Traced.class.getName(), 0);
-    assertFalse(m.matches("run"));
+    assertTrue(m.matches("run"));
   }
 
   // --- equals edge cases ---

@@ -44,6 +44,45 @@ class TopologyJsonExporterTest {
     assertTrue(json.contains("\"errorCount\":0"));
   }
 
+  /** Node metadata is included, and characters that would break the JSON are escaped. */
+  @Test
+  void export_includesMetadataAndEscapesIt() {
+    java.util.Map<String, String> metadata = new java.util.LinkedHashMap<>();
+    metadata.put("zone", "east");
+    metadata.put("note \"quoted\"", "line1\nline2\\tail");
+    TopologyGraph.addNode(new ServiceNode("svc-a", "service", metadata));
+    TopologyGraph.addNode(new ServiceNode("svc-b", "service"));
+
+    String json = TopologyJsonExporter.export();
+
+    assertTrue(json.contains("\"metadata\":{"));
+    assertTrue(json.contains("\"zone\":\"east\""));
+    assertTrue(json.contains("note \\\"quoted\\\""));
+    assertTrue(json.contains("line1\\nline2\\\\tail"));
+    // The second node has no metadata, so exactly one metadata object appears.
+    assertEquals(json.indexOf("\"metadata\""), json.lastIndexOf("\"metadata\""));
+
+    // A call recorded without a protocol renders that field as empty rather than the word null.
+    TopologyGraph.recordCall("svc-a", "svc-b", null, 5, false);
+    assertTrue(TopologyJsonExporter.export().contains("\"protocol\":\"\""));
+  }
+
+  /** Two edges need a separator between them. */
+  @Test
+  void export_separatesMultipleEdges() {
+    TopologyGraph.addNode(new ServiceNode("a", "service"));
+    TopologyGraph.addNode(new ServiceNode("b", "service"));
+    TopologyGraph.addNode(new ServiceNode("c", "service"));
+    TopologyGraph.recordCall("a", "b", "http", 10, false);
+    TopologyGraph.recordCall("b", "c", "grpc", 20, false);
+
+    String json = TopologyJsonExporter.export();
+
+    assertTrue(json.contains("\"source\":\"a\""));
+    assertTrue(json.contains("\"source\":\"b\""));
+    assertTrue(json.contains("},{\"source\""));
+  }
+
   @Test
   void export_multipleEdges_aggregatesCorrectly() {
     TopologyGraph.addNode(new ServiceNode("a", "service"));

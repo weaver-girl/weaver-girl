@@ -155,6 +155,28 @@ class ConfigValidatorTest {
     assertEquals(2, result.getErrors().size());
   }
 
+  /** A long that parses but is not positive is rejected on its own, apart from one that is not a number. */
+  @Test
+  void aNonPositiveLongIsRejected() {
+    Map<String, String> config = new LinkedHashMap<>();
+    config.put("samplingThreshold", "0");
+
+    ConfigValidationResult result = ConfigValidator.validate(config);
+
+    assertFalse(result.isValid());
+    assertTrue(result.getErrors().get(0).contains("samplingThreshold"));
+  }
+
+  /** Warnings and a clean result both have something to say when printed. */
+  @Test
+  void theReportDescribesWarningsAndACleanResult() {
+    ConfigValidationResult warned =
+        new ConfigValidationResult(java.util.Collections.emptyList(), java.util.Collections.singletonList("odd"));
+    assertTrue(warned.toString().contains("WARNINGS"));
+
+    assertTrue(ConfigValidationResult.ok().toString().contains("valid"));
+  }
+
   @Test
   void getKnownKeys_notEmpty() {
     assertFalse(ConfigValidator.getKnownKeys().isEmpty());

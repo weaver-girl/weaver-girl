@@ -1,22 +1,94 @@
 package com.github.cc11001100.weavergirl.core.plugin;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
-import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
+/**
+ * Dependency resolution decides which plugins load and in what order, so losing a plugin here means
+ * it silently never loads.
+ */
 class PluginDependencyResolverTest {
 
-  private final PluginDependencyResolver resolver = new PluginDependencyResolver();
+  @Test
+  void ordersPluginsSoDependenciesComeFirst() {
+    WeaverPlugin storage = plugin("storage");
+    WeaverPlugin audit = plugin("audit", "storage");
 
-  // --- Helper to create mock plugins ---
+    List<WeaverPlugin> resolved =
+        new PluginDependencyResolver().resolve(Arrays.asList(audit, storage));
 
-  private static WeaverPlugin plugin(String name, String... depends) {
+    assertEquals(Arrays.asList("storage", "audit"), names(resolved));
+  }
+
+  @Test
+  void keepsEveryPluginWhenTwoShareAName() {
+    // Two plugins can legitimately be named alike: a built-in and a drop-in that replaces it, or
+    // two jars that both forgot to pick a distinct name. The resolver indexes by name, and a map
+    // keeps one entry per key, so the second used to erase the first and it never loaded.
+    WeaverPlugin first = plugin("metrics");
+    WeaverPlugin second = plugin("metrics");
+
+    List<WeaverPlugin> resolved =
+        new PluginDependencyResolver().resolve(Arrays.asList(first, second));
+
+    assertEquals(2, resolved.size(), "a duplicate name dropped a plugin from the load");
+    assertTrue(resolved.contains(first));
+    assertTrue(resolved.contains(second));
+  }
+
+  @Test
+  void loadsWhatItCanWhenADependencyIsMissing() {
+    WeaverPlugin lone = plugin("audit", "storage");
+
+    List<WeaverPlugin> resolved =
+        new PluginDependencyResolver().resolve(Collections.singletonList(lone));
+
+    assertEquals(Collections.singletonList(lone), resolved);
+  }
+
+  @Test
+  void leavesOutAPluginThatRequiresSomethingNotLoaded() {
+    WeaverPlugin audit = requiring("audit", "storage");
+    WeaverPlugin report = requiring("report", "audit");
+
+    PluginDependencyResolver resolver = new PluginDependencyResolver();
+    List<WeaverPlugin> resolved = resolver.resolve(Arrays.asList(report, audit));
+
+    assertTrue(resolved.isEmpty(), "a plugin loaded without the plugin it requires: " + names(resolved));
+    assertEquals("storage", resolver.unsatisfied().get(audit));
+    assertEquals("audit", resolver.unsatisfied().get(report));
+  }
+
+  @Test
+  void stillLoadsAPluginThatOnlyDependsOnSomethingMissing() {
+    WeaverPlugin audit = plugin("audit", "storage");
+    WeaverPlugin report = requiring("report", "audit");
+
+    PluginDependencyResolver resolver = new PluginDependencyResolver();
+    List<WeaverPlugin> resolved = resolver.resolve(Arrays.asList(report, audit));
+
+    assertEquals(Arrays.asList("audit", "report"), names(resolved));
+    assertTrue(resolver.unsatisfied().isEmpty());
+  }
+
+  private static List<String> names(List<WeaverPlugin> plugins) {
+    List<String> names = new java.util.ArrayList<>();
+    for (WeaverPlugin plugin : plugins) {
+      names.add(plugin.name());
+    }
+    return names;
+  }
+
+  /** A plugin that refuses to load unless every named plugin loaded too. */
+  private static WeaverPlugin requiring(String name, String... requirements) {
     return new WeaverPlugin() {
       @Override
       public String name() {
@@ -24,104 +96,41 @@ class PluginDependencyResolverTest {
       }
 
       @Override
+      public String[] requires() {
+        return requirements;
+      }
+
+      @Override
+      public void init(PluginContext context) {}
+
+      @Override
       public void registerInterceptors(InterceptorRegistry registry) {}
 
       @Override
-      public String[] depends() {
-        return depends;
-      }
+      public void destroy() {}
     };
   }
 
-  private List<String> names(List<WeaverPlugin> plugins) {
-    return plugins.stream().map(WeaverPlugin::name).collect(Collectors.toList());
-  }
+  private static WeaverPlugin plugin(String name, String... dependencies) {
+    return new WeaverPlugin() {
+      @Override
+      public String name() {
+        return name;
+      }
 
-  // --- Tests ---
+      @Override
+      public String[] depends() {
+        return dependencies;
+      }
 
-  @Test
-  void noDependencies_preservesOriginalOrder() {
-    WeaverPlugin a = plugin("a");
-    WeaverPlugin b = plugin("b");
-    WeaverPlugin c = plugin("c");
+      @Override
+      public void init(PluginContext context) {}
 
-    List<WeaverPlugin> result = resolver.resolve(Arrays.asList(a, b, c));
+      @Override
+      public void registerInterceptors(InterceptorRegistry registry) {}
 
-    assertEquals(Arrays.asList("a", "b", "c"), names(result));
-  }
-
-  @Test
-  void aDependsOnB_bLoadsBeforeA() {
-    WeaverPlugin a = plugin("a", "b");
-    WeaverPlugin b = plugin("b");
-
-    List<WeaverPlugin> result = resolver.resolve(Arrays.asList(a, b));
-
-    assertEquals(Arrays.asList("b", "a"), names(result));
-  }
-
-  @Test
-  void diamondDependency_bothDependOnB() {
-    WeaverPlugin a = plugin("a", "b");
-    WeaverPlugin c = plugin("c", "b");
-    WeaverPlugin b = plugin("b");
-
-    List<WeaverPlugin> result = resolver.resolve(Arrays.asList(a, c, b));
-
-    List<String> resolved = names(result);
-    // b must come before both a and c
-    assertTrue(resolved.indexOf("b") < resolved.indexOf("a"));
-    assertTrue(resolved.indexOf("b") < resolved.indexOf("c"));
-    assertEquals(3, resolved.size());
-  }
-
-  @Test
-  void circularDependency_loggedAsWarning_doesNotThrow() {
-    WeaverPlugin a = plugin("a", "b");
-    WeaverPlugin b = plugin("b", "a");
-
-    // Should not throw
-    List<WeaverPlugin> result = resolver.resolve(Arrays.asList(a, b));
-
-    // Both plugins should still be present
-    assertEquals(2, result.size());
-    assertTrue(names(result).contains("a"));
-    assertTrue(names(result).contains("b"));
-  }
-
-  @Test
-  void missingDependency_loggedAsWarning_continues() {
-    WeaverPlugin a = plugin("a", "nonexistent");
-
-    List<WeaverPlugin> result = resolver.resolve(Arrays.asList(a));
-
-    assertEquals(Arrays.asList("a"), names(result));
-  }
-
-  @Test
-  void singlePlugin_returnedAsIs() {
-    WeaverPlugin a = plugin("a");
-
-    List<WeaverPlugin> result = resolver.resolve(Arrays.asList(a));
-
-    assertEquals(Arrays.asList("a"), names(result));
-  }
-
-  @Test
-  void transitiveDependency_aDependsOnB_bDependsOnC() {
-    WeaverPlugin a = plugin("a", "b");
-    WeaverPlugin b = plugin("b", "c");
-    WeaverPlugin c = plugin("c");
-
-    List<WeaverPlugin> result = resolver.resolve(Arrays.asList(a, b, c));
-
-    assertEquals(Arrays.asList("c", "b", "a"), names(result));
-  }
-
-  @Test
-  void emptyList_returnsEmptyList() {
-    List<WeaverPlugin> result = resolver.resolve(new ArrayList<>());
-
-    assertTrue(result.isEmpty());
+      @Override
+      public void destroy() {}
+    };
   }
 }

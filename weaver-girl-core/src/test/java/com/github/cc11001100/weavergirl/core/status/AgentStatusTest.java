@@ -166,6 +166,18 @@ class AgentStatusTest {
     assertEquals(0.9, status.getPressureFactor(), 0.0);
   }
 
+  /** A call slower than a second lands past every bounded bucket, in the open-ended last one. */
+  @Test
+  void aCallSlowerThanASecondLandsInTheLastBucket() {
+    status.recordInterceptorInvocation("glacial", true, 2_000_000_000L);
+
+    AgentStatus.InterceptorMetrics metrics = status.getInterceptorMetrics().get("glacial");
+    double percentile = metrics.estimatePercentile(100.0);
+
+    assertTrue(
+        percentile >= 1_000_000_000L, "a call over a second was estimated at " + percentile + "ns");
+  }
+
   @Test
   void getPressureFactor_returnsZeroWhenBelowThresholds() {
     status.incrementInterceptorInvocationCount();

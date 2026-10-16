@@ -188,4 +188,85 @@ class AlertEngineTest {
     assertTrue(result.isEmpty());
     assertTrue(capturedAlerts.isEmpty());
   }
+
+  /** A channel that throws must not stop the others, and removing one stops it being called. */
+  @Test
+  void aChannelThatThrowsDoesNotStopTheOthers() {
+    com.github.cc11001100.weavergirl.api.alert.AlertChannel broken =
+        event -> {
+          throw new IllegalStateException("channel down");
+        };
+    engine.addChannel(null);
+    engine.addChannel(broken);
+
+    engine.addRule(rule("high-cpu", "cpu_usage", null));
+    assertEquals(1, engine.evaluate("cpu_usage", 150).size());
+    assertEquals(1, capturedAlerts.size(), "the healthy channel was skipped");
+
+    engine.removeChannel(broken);
+    capturedAlerts.clear();
+    engine.setDedupWindowMs(0);
+    engine.evaluate("cpu_usage", 150);
+    assertEquals(1, capturedAlerts.size(), "removing the broken channel dropped the healthy one");
+  }
+
+  /** With no message of its own, the alert describes the rule that fired. */
+  @Test
+  void anAlertWithoutAMessageDescribesTheRule() {
+    engine.addRule(rule("high-cpu", "cpu_usage", null));
+
+    AlertEvent event = engine.evaluate("cpu_usage", 150).get(0);
+
+    assertEquals("cpu_usage gt 100.0", event.getMessage());
+  }
+
+  /** Once the history is full the oldest entry makes room for the newest. */
+  @Test
+  void historyDropsTheOldestEntryOnceItIsFull() {
+    engine.setDedupWindowMs(0);
+    for (int i = 0; i < 1001; i++) {
+      engine.addRule(rule("rule-" + i, "metric-" + i, "fired"));
+    }
+    for (int i = 0; i < 1001; i++) {
+      engine.evaluate("metric-" + i, 150);
+    }
+
+    List<AlertEvent> history = engine.getHistory();
+    assertEquals(1000, history.size());
+    assertEquals("rule-1", history.get(0).getRuleName(), "the oldest alert was kept");
+    assertEquals("rule-1000", history.get(history.size() - 1).getRuleName());
+  }
+
+  /** Clearing forgets the rules, so a value that used to alert no longer does. */
+  @Test
+  void clearForgetsRulesAndHistory() {
+    engine.addRule(rule("high-cpu", "cpu_usage", "busy"));
+    engine.evaluate("cpu_usage", 150);
+    assertFalse(engine.getHistory().isEmpty());
+
+    engine.clear();
+
+    assertTrue(engine.getRules().isEmpty());
+    assertTrue(engine.getHistory().isEmpty());
+    assertTrue(engine.evaluate("cpu_usage", 150).isEmpty());
+  }
+
+  /** Null names and null rules are ignored rather than stored. */
+  @Test
+  void nullRulesAndNamesAreIgnored() {
+    engine.addRule(null);
+    engine.removeRule(null);
+    assertTrue(engine.getRules().isEmpty());
+  }
+
+  private static AlertRule rule(String name, String metric, String message) {
+    return AlertRule.builder()
+        .name(name)
+        .metric(metric)
+        .operator("gt")
+        .threshold(100)
+        .message(message)
+        .build();
+  }
+
 }

@@ -206,4 +206,21 @@ class OtlpHttpExporterTest {
       server.stop(0);
     }
   }
+
+  /** The settings a caller configured are the settings the exporter reports. */
+  @Test
+  void theConfiguredSettingsAreReportedBack() {
+    OtlpHttpExporter exporter =
+        OtlpHttpExporter.builder()
+            .endpoint("http://127.0.0.1:1/v1/traces")
+            .header("Authorization", "Bearer test-token")
+            .connectTimeout(1500)
+            .readTimeout(2500)
+            .build();
+
+    assertEquals("http://127.0.0.1:1/v1/traces", exporter.getEndpoint());
+    assertEquals("Bearer test-token", exporter.getHeaders().get("Authorization"));
+    assertEquals(1500, exporter.getConnectTimeoutMs());
+    assertEquals(2500, exporter.getReadTimeoutMs());
+  }
 }

@@ -40,6 +40,17 @@ class AgentMessagesTest {
     assertTrue(msg.contains("2"));
   }
 
+  /** A locale with no bundle of its own falls back to English, and a key in neither comes back marked. */
+  @Test
+  void msg_localeWithoutItsOwnBundle_fallsBackToEnglish() {
+    String english = AgentMessages.msg("agent.shutdown.started", Locale.ENGLISH);
+    String chinese = AgentMessages.msg("agent.shutdown.started", Locale.CHINESE);
+
+    assertEquals(english, chinese, "a language with no bundle did not fall back to English");
+    assertEquals("!missing.key!", AgentMessages.msg("missing.key", Locale.CHINESE));
+    assertEquals("!missing.key!", AgentMessages.msg("missing.key", Locale.ENGLISH));
+  }
+
   @Test
   void msg_unknownKey_returnsKeyWithMarkers() {
     String msg = AgentMessages.msg("nonexistent.key");
@@ -238,6 +249,49 @@ class AgentMessagesTest {
     try {
       AgentMessages.initializeFromSystem();
       assertEquals("zh", AgentMessages.getLocale().getLanguage());
+    } finally {
+      System.clearProperty("weaver-girl.messages");
+    }
+  }
+
+  /**
+   * A locale that has no bundle of its own, and a key that no bundle has, both fall back rather than
+   * fail. The locale falls back to English, and the key falls back to its own name between markers.
+   */
+  @Test
+  void aLocaleWithoutABundleFallsBackAndAMissingKeyIsMarked() {
+    // French has no bundle, so the message comes from the English one.
+    String message = AgentMessages.msg("agent.bootstrap.started", Locale.FRANCE, "1.0");
+    assertFalse(message.startsWith("!"), "a known key was not found in the fallback bundle");
+
+    // A key that exists nowhere is returned marked, for a locale with a bundle and one without.
+    assertEquals("!no.such.key!", AgentMessages.msg("no.such.key", Locale.CHINA));
+    assertEquals("!no.such.key!", AgentMessages.msg("no.such.key", Locale.ENGLISH));
+
+    // A language that has no bundle of its own still answers the keys it inherited.
+    assertFalse(AgentMessages.getKeys(Locale.FRANCE).isEmpty());
+    assertTrue(AgentMessages.hasKey("agent.bootstrap.started", Locale.FRANCE));
+    assertFalse(AgentMessages.hasKey("no.such.key", Locale.FRANCE));
+  }
+
+  /** An empty property is ignored, so initialization follows the JVM locale instead. */
+  @Test
+  void anEmptyLocalePropertyFollowsTheJvm() {
+    System.setProperty("weaver-girl.messages", "");
+    try {
+      assertDoesNotThrow(AgentMessages::initializeFromSystem);
+    } finally {
+      System.clearProperty("weaver-girl.messages");
+    }
+  }
+
+  /** A property that names nothing is passed over, so initialization follows the JVM locale. */
+  @Test
+  void aBlankLocalePropertyFallsThroughToTheJvm() {
+    System.setProperty("weaver-girl.messages", "   ");
+    try {
+      AgentMessages.initializeFromSystem();
+      assertNotNull(AgentMessages.getLocale());
     } finally {
       System.clearProperty("weaver-girl.messages");
     }

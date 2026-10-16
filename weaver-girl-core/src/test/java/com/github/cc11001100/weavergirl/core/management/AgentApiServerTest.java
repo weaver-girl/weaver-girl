@@ -180,6 +180,100 @@ class AgentApiServerTest {
     assertTrue(response.contains("\"success\":\"true\""));
   }
 
+  /** With a plugin manager installed the endpoint lists each plugin, separated when there are two. */
+  @Test
+  void pluginsEndpoint_listsInstalledPlugins() throws Exception {
+    com.github.cc11001100.weavergirl.api.plugin.PluginManager manager =
+        new com.github.cc11001100.weavergirl.api.plugin.PluginManager() {
+          public boolean disablePlugin(String name) {
+            return false;
+          }
+
+          public boolean enablePlugin(String name) {
+            return false;
+          }
+
+          public boolean unloadPlugin(String name) {
+            return false;
+          }
+
+          public java.util.Optional<com.github.cc11001100.weavergirl.api.plugin.PluginInfo>
+              getPluginInfo(String name) {
+            return java.util.Optional.empty();
+          }
+
+          public java.util.List<com.github.cc11001100.weavergirl.api.plugin.PluginInfo>
+              getAllPluginInfo() {
+            return java.util.Arrays.asList(pluginInfo("alpha", 2), pluginInfo("beta", 0));
+          }
+
+          public boolean isPluginActive(String name) {
+            return false;
+          }
+
+          public int getActivePluginCount() {
+            return 2;
+          }
+        };
+    com.github.cc11001100.weavergirl.api.plugin.PluginManagerHolder.setInstance(manager);
+    try {
+      String response = get("/plugins");
+      assertTrue(response.contains("\"name\":\"alpha\""));
+      assertTrue(response.contains("\"name\":\"beta\""));
+      assertTrue(response.contains("\"activeCount\":2"));
+    } finally {
+      com.github.cc11001100.weavergirl.api.plugin.PluginManagerHolder.setInstance(null);
+    }
+  }
+
+  /** Two alerts in the history need a separator between them. */
+  @Test
+  void alertsEndpoint_separatesMultipleAlerts() throws Exception {
+    AlertEngine.addRule(
+        AlertRule.builder().name("first").metric("m1").operator("gt").threshold(1).build());
+    AlertEngine.addRule(
+        AlertRule.builder().name("second").metric("m2").operator("gt").threshold(1).build());
+    AlertEngine.evaluate("m1", 2);
+    AlertEngine.evaluate("m2", 2);
+
+    String response = get("/alerts");
+    assertTrue(response.contains("first"));
+    assertTrue(response.contains("second"));
+    assertTrue(response.contains("},{"), "two alerts were not separated");
+  }
+
+  /** Allow and deny patterns are listed, with a separator once there is more than one. */
+  @Test
+  void securityPolicyEndpoint_listsPatterns() throws Exception {
+    com.github.cc11001100.weavergirl.api.security.SecurityPolicy previous =
+        SecurityAuditLog.getPolicy();
+    SecurityAuditLog.setPolicy(
+        com.github.cc11001100.weavergirl.api.security.SecurityPolicy.builder()
+            .allowPattern("com.example.*")
+            .allowPattern("com.other.*")
+            .denyPattern("com.secret.*")
+            .build());
+    try {
+      String response = get("/security/policy");
+      assertTrue(response.contains("com.example.*"));
+      assertTrue(response.contains("com.other.*"));
+      assertTrue(response.contains("com.secret.*"));
+    } finally {
+      SecurityAuditLog.setPolicy(previous);
+    }
+  }
+
+  private static com.github.cc11001100.weavergirl.api.plugin.PluginInfo pluginInfo(
+      String name, int interceptors) {
+    return new com.github.cc11001100.weavergirl.api.plugin.PluginInfo(
+        name,
+        com.github.cc11001100.weavergirl.api.plugin.PluginState.ACTIVE,
+        "1.0",
+        interceptors,
+        System.currentTimeMillis(),
+        System.currentTimeMillis());
+  }
+
   @Test
   void securityPolicyEndpoint_returnsCurrentPolicy() throws Exception {
     String response = get("/security/policy");

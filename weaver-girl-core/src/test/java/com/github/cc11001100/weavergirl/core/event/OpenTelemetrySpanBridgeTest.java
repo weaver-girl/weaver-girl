@@ -109,6 +109,38 @@ class OpenTelemetrySpanBridgeTest {
     assertTrue(json.contains("\"SELECT 1\""));
   }
 
+  /** A field an event never set is rendered as unknown rather than dropped. */
+  @Test
+  void aMissingFieldIsRenderedAsUnknown() {
+    OpenTelemetrySpanBridge def = new OpenTelemetrySpanBridge();
+    def.onEvent(InterceptorEvent.builder().build());
+
+    Map<String, Object> span = def.getRecentSpans().get(0);
+    assertEquals("unknown", span.get("name"));
+    @SuppressWarnings("unchecked")
+    Map<String, Object> attrs = (Map<String, Object>) span.get("attributes");
+    assertEquals("unknown", attrs.get("weaver.plugin"));
+    assertEquals("unknown", attrs.get("weaver.class"));
+    assertEquals("unknown", attrs.get("weaver.method"));
+
+    assertTrue(def.renderOtelJson().startsWith("{\"resourceSpans\":["));
+  }
+
+  /** A quote, a backslash and a line break in a value are escaped so the JSON stays valid. */
+  @Test
+  void charactersThatBreakJsonAreEscaped() {
+    bridge.onEvent(
+        InterceptorEvent.builder()
+            .type("a\"b\\c\nd")
+            .plugin("p")
+            .className("c")
+            .methodName("m")
+            .build());
+
+    String json = bridge.renderOtelJson();
+    assertTrue(json.contains("a\\\"b\\\\c\\nd"), json);
+  }
+
   @Test
   void clearRemovesAllSpans() {
     bridge.onEvent(InterceptorEvent.builder().type("test").plugin("test").build());

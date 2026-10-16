@@ -137,4 +137,101 @@ class AgentMonitorTest {
     assertEquals("unknown", monitor.getAgentVersion());
     assertEquals("", monitor.getPluginNames());
   }
+
+  /**
+   * A startup that was never finished has no duration to report, so the gauge answers with the sentinel
+   * rather than a time.
+   */
+  @Test
+  void aStartupThatNeverFinishedReportsNoDuration() throws Exception {
+    java.lang.reflect.Field start = StartupMetrics.class.getDeclaredField("startNanos");
+    java.lang.reflect.Field end = StartupMetrics.class.getDeclaredField("endNanos");
+    Object savedStart = com.github.cc11001100.weavergirl.core.testsupport.Statics.read(start, null);
+    Object savedEnd = com.github.cc11001100.weavergirl.core.testsupport.Statics.read(end, null);
+    try {
+      com.github.cc11001100.weavergirl.core.testsupport.Statics.write(start, null, Long.valueOf(0L));
+      com.github.cc11001100.weavergirl.core.testsupport.Statics.write(end, null, Long.valueOf(0L));
+      assertEquals(-1L, monitor.getStartupMillis(), "an unfinished startup reported a duration");
+    } finally {
+      com.github.cc11001100.weavergirl.core.testsupport.Statics.write(start, null, savedStart);
+      com.github.cc11001100.weavergirl.core.testsupport.Statics.write(end, null, savedEnd);
+    }
+  }
+
+  /** The runtime gauges answer through the monitor, and a completed startup reports a duration. */
+  @Test
+  void theRuntimeGaugesAnswer() {
+    StartupMetrics.begin();
+    StartupMetrics.end();
+
+    assertTrue(monitor.getStartupMillis() >= 0, "a completed startup reported no duration");
+    assertTrue(monitor.getCpuUsage() >= 0.0);
+    assertTrue(monitor.getThreadCount() > 0);
+    assertTrue(monitor.getDaemonThreadCount() >= 0);
+    assertTrue(monitor.getHeapMemoryUsed() > 0);
+    assertTrue(monitor.getNonHeapMemoryUsed() >= 0);
+  }
+
+  /**
+   * The MBean server reports the name as free and then rejects the registration. Both registering and
+   * unregistering log the failure and leave the monitor usable.
+   */
+  @Test
+  void aServerThatRejectsTheRegistrationIsSurvived() throws Exception {
+    java.lang.reflect.Field server =
+        java.lang.management.ManagementFactory.class.getDeclaredField("platformMBeanServer");
+    Object real = com.github.cc11001100.weavergirl.core.testsupport.Statics.read(server, null);
+    try {
+      com.github.cc11001100.weavergirl.core.testsupport.Statics.write(
+          server, null, rejectingServer(false));
+      assertDoesNotThrow(monitor::register);
+
+      // The name reports as registered, so unregistering reaches the call that throws.
+      com.github.cc11001100.weavergirl.core.testsupport.Statics.write(
+          server, null, rejectingServer(true));
+      java.lang.reflect.Field registered = AgentMonitor.class.getDeclaredField("registered");
+      registered.setAccessible(true);
+      registered.set(monitor, true);
+      assertDoesNotThrow(monitor::unregister);
+      registered.set(monitor, false);
+    } finally {
+      com.github.cc11001100.weavergirl.core.testsupport.Statics.write(server, null, real);
+    }
+  }
+
+  /**
+   * An MBean server that says nothing is registered and then fails every registration and removal.
+   * Everything else is answered by a real, empty server.
+   */
+  private static javax.management.MBeanServer rejectingServer(final boolean reportsRegistered) {
+    final javax.management.MBeanServer delegate = javax.management.MBeanServerFactory.newMBeanServer();
+    return (javax.management.MBeanServer)
+        java.lang.reflect.Proxy.newProxyInstance(
+            javax.management.MBeanServer.class.getClassLoader(),
+            new Class<?>[] {javax.management.MBeanServer.class},
+            new java.lang.reflect.InvocationHandler() {
+              public Object invoke(Object proxy, java.lang.reflect.Method method, Object[] args)
+                  throws Throwable {
+                String called = method.getName();
+                if ("isRegistered".equals(called)) {
+                  return Boolean.valueOf(reportsRegistered);
+                }
+                if ("registerMBean".equals(called)) {
+                  throw new javax.management.InstanceAlreadyExistsException(String.valueOf(args[1]));
+                }
+                if ("unregisterMBean".equals(called)) {
+                  throw new javax.management.InstanceNotFoundException(String.valueOf(args[0]));
+                }
+                return method.invoke(delegate, args);
+              }
+            });
+  }
+
+
+  /** Unregistering a monitor that was never registered changes nothing. */
+  @Test
+  void unregisteringOneThatWasNeverRegisteredDoesNothing() {
+    monitor.unregister();
+    assertDoesNotThrow(monitor::unregister);
+  }
 }

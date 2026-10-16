@@ -71,6 +71,18 @@ import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 public interface WeaverPlugin {
 
   /**
+   * Version of this plugin contract.
+   *
+   * <p>Bumped only when a change breaks plugins compiled against an older {@code weaver-girl-api}. A
+   * plugin declares the contract it was built for with {@code plugin.apiVersion} in {@code
+   * META-INF/weaver-girl-plugin.properties}, and the loader refuses to activate it when that version
+   * is newer than this one — so a plugin never runs against an agent that lacks the API it calls.
+   *
+   * @since 1.0.0
+   */
+  String API_VERSION = "1.0.0";
+
+  /**
    * Returns the unique name of this plugin.
    *
    * <p>The name is used for logging, configuration scoping, and identification. It should be a
@@ -119,6 +131,21 @@ public interface WeaverPlugin {
   }
 
   /**
+   * Plugins this one cannot run without. Unlike {@link #depends()}, which only orders initialization and
+   * tolerates a dependency that was never loaded, a plugin is not activated at all when something it requires
+   * is missing: starting half set up leaves it intercepting calls it cannot handle.
+   *
+   * <p>Default implementation returns an empty array, so a plugin that declares nothing behaves exactly as
+   * before.
+   *
+   * @return the names of plugins this one refuses to load without
+   * @since 1.0.0
+   */
+  default String[] requires() {
+    return new String[0];
+  }
+
+  /**
    * Destroy the plugin and release resources.
    *
    * <p>Called once during agent shutdown. Use this method to perform cleanup such as closing
@@ -153,5 +180,45 @@ public interface WeaverPlugin {
    */
   default boolean isEnabled(PluginContext context) {
     return true;
+  }
+
+  /**
+   * The class whose presence means the library this plugin instruments is on the classpath, or null when the
+   * plugin does not target a third-party library.
+   *
+   * <p>The loader checks this before registering interceptors and leaves the plugin inactive when the class
+   * cannot be seen, so a plugin never weaves against a library the application does not use. The check looks
+   * for the class file without loading it: loading it would define the class before the transformer is
+   * installed, and the interceptor registered for it would never be woven in.
+   *
+   * <p>A plugin that instruments more than one library overrides {@link #instrumentedLibraries()} instead, and
+   * this method is ignored. Default implementation returns null, so a plugin that declares nothing is
+   * activated exactly as before.
+   *
+   * @return a fully-qualified class name, for example {@code "io.grpc.Server"}, or null
+   * @since 1.0.0
+   */
+  default String instrumentedLibrary() {
+    return null;
+  }
+
+  /**
+   * The classes that stand for the libraries this plugin instruments, when it instruments more than one.
+   *
+   * <p>The loader activates the plugin when any one of them can be seen, and leaves it inactive only when
+   * none can. A plugin that covers two clients of the same kind — a Redis plugin that weaves both Jedis and
+   * Lettuce — would otherwise be switched off for an application that uses only the second. Which of the two
+   * it actually registers interceptors for is the plugin's own decision, made from {@link
+   * PluginContext#classPresent}; this list only decides whether the plugin runs at all.
+   *
+   * <p>Default implementation wraps {@link #instrumentedLibrary()}, so a plugin that names a single library
+   * declares nothing here.
+   *
+   * @return fully-qualified class names, none of them null; empty when the plugin targets no library
+   * @since 1.0.0
+   */
+  default String[] instrumentedLibraries() {
+    String library = instrumentedLibrary();
+    return library == null ? new String[0] : new String[] {library};
   }
 }

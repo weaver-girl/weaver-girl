@@ -47,6 +47,50 @@ public class PluginClassLoader extends URLClassLoader {
     super(urls, parent);
   }
 
+  /**
+   * What another plugin exports, loaded by that plugin's class loader. A plugin that depends on the exporter
+   * can see exactly these classes and no others the exporter defines, so one plugin can publish a service
+   * interface another consumes without it having to live in the shared API.
+   *
+   * <p>An entry is either a package or one class. A package exposes every class directly in it and nothing in
+   * a subpackage; a class exposes that one class, so an implementation that sits next to an exported interface
+   * stays hidden.
+   */
+  private final java.util.concurrent.ConcurrentHashMap<String, PluginClassLoader> exportedPackages =
+      new java.util.concurrent.ConcurrentHashMap<>();
+
+  private final java.util.concurrent.ConcurrentHashMap<String, PluginClassLoader> exportedClasses =
+      new java.util.concurrent.ConcurrentHashMap<>();
+
+  /**
+   * See {@code name} through {@code exporter}. {@code className} says which it is, because a package and a class
+   * are written the same way: {@code com.example.clock} is the package, {@code com.example.clock.Clock} is the
+   * one class. A package is matched exactly, so a class in a subpackage the exporter did not name stays hidden,
+   * and a class export exposes that one class and not the one sitting next to it.
+   */
+  public void addExport(String name, PluginClassLoader exporter, boolean className) {
+    if (name == null || exporter == null || exporter == this) {
+      return;
+    }
+    (className ? exportedClasses : exportedPackages).put(name, exporter);
+  }
+
+  /**
+   * The class loader a plugin exported {@code className} through, or {@code null}. A class named on its own
+   * wins over the package it sits in, so a plugin can export one class of a package and keep the rest.
+   */
+  private PluginClassLoader exporterOf(String className) {
+    PluginClassLoader named = exportedClasses.get(className);
+    if (named != null) {
+      return named;
+    }
+    int dot = className.lastIndexOf('.');
+    if (dot < 0) {
+      return null;
+    }
+    return exportedPackages.get(className.substring(0, dot));
+  }
+
   @Override
   protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
     // Java 8 compatible: use synchronized(this) instead of getClassLoadingLock()
@@ -65,7 +109,18 @@ public class PluginClassLoader extends URLClassLoader {
         return loaded;
       }
 
-      // 3. Try child-first (load from plugin JAR and its dependencies)
+      // 3. A package another plugin exported. It is asked before this jar, so a plugin cannot shadow a
+      // class it consumes by shipping one of the same name.
+      PluginClassLoader exporter = exporterOf(name);
+      if (exporter != null) {
+        Class<?> exported = exporter.loadClass(name);
+        if (resolve) {
+          resolveClass(exported);
+        }
+        return exported;
+      }
+
+      // 4. Try child-first (load from plugin JAR and its dependencies)
       try {
         Class<?> clazz = findClass(name);
         if (resolve) {
@@ -73,7 +128,7 @@ public class PluginClassLoader extends URLClassLoader {
         }
         return clazz;
       } catch (ClassNotFoundException e) {
-        // 4. Fall back to parent
+        // 5. Fall back to parent
         return super.loadClass(name, resolve);
       }
     }

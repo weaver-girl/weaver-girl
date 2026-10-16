@@ -235,4 +235,51 @@ class AdaptiveRateLimiterTest {
     assertEquals(0, fresh.getAllowedCount());
     assertEquals(1, fresh.getRejectedCount());
   }
+
+  /**
+   * A caller that is willing to wait still has to give up once the deadline passes, and the time it
+   * spent waiting is what the limiter reports. Asking for no permits should not wait at all.
+   */
+  @Test
+  void tryAcquire_withTimeout_givesUpAndCountsTheWait() {
+    AdaptiveRateLimiter tight = new AdaptiveRateLimiter(1, 1, 0.8);
+    assertTrue(tight.tryAcquire(), "the single token should be taken");
+
+    assertTrue(tight.tryAcquire(0, 1_000), "zero permits is never a request");
+    assertFalse(tight.tryAcquire(5L), "waiting for a token that will not come should time out");
+
+    assertTrue(tight.getTotalWaitTimeMs() >= 5, "the wait was not recorded");
+    assertTrue(tight.getRejectedCount() > 0);
+    assertEquals(1, tight.getAdaptiveRate());
+  }
+
+  /**
+   * Tokens come back as time passes. A limiter drained to nothing must allow again once a refill has
+   * had time to run, which is the only way the refill itself is exercised.
+   */
+  @Test
+  void tokensRefillAfterTheyAreSpent() throws Exception {
+    AdaptiveRateLimiter tight = new AdaptiveRateLimiter(1_000, 1, 0.8);
+    assertTrue(tight.tryAcquire(), "the only token should be taken");
+    assertFalse(tight.tryAcquire(), "nothing should be left immediately");
+
+    Thread.sleep(20);
+
+    assertTrue(tight.tryAcquire(), "a refill should have restored a token");
+  }
+
+  /** Giving up because the thread was interrupted is not the same as running out of time. */
+  @Test
+  void tryAcquire_withTimeout_stopsWhenInterrupted() {
+    AdaptiveRateLimiter tight = new AdaptiveRateLimiter(1, 1, 0.8);
+    assertTrue(tight.tryAcquire());
+
+    Thread.currentThread().interrupt();
+    try {
+      assertFalse(tight.tryAcquire(1, 1_000));
+      assertTrue(Thread.currentThread().isInterrupted(), "the interrupt was swallowed");
+    } finally {
+      Thread.interrupted();
+    }
+  }
 }

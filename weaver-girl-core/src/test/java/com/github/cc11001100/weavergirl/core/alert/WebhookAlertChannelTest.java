@@ -71,6 +71,33 @@ class WebhookAlertChannelTest {
     assertDoesNotThrow(() -> channel.onAlert(null));
   }
 
+  /** A webhook that answers with an error is logged and does not throw. */
+  @Test
+  void onAlert_errorResponse_isLogged() throws Exception {
+    server.removeContext("/webhook");
+    server.createContext(
+        "/webhook",
+        exchange -> {
+          exchange.sendResponseHeaders(500, -1);
+          exchange.close();
+        });
+    WebhookAlertChannel channel = new WebhookAlertChannel("http://127.0.0.1:" + port + "/webhook");
+
+    assertDoesNotThrow(() -> channel.onAlert(sampleEvent()));
+    Thread.sleep(500);
+  }
+
+  /** A quote, a backslash and a line break in a field are escaped. */
+  @Test
+  void onAlert_escapesCharactersThatBreakJson() throws Exception {
+    WebhookAlertChannel channel = new WebhookAlertChannel("http://127.0.0.1:" + port + "/webhook");
+    AlertEvent event =
+        new AlertEvent(1L, "a\"b\\c", "warning", "line1\nline2", 1.0, 2.0);
+
+    assertDoesNotThrow(() -> channel.onAlert(event));
+    Thread.sleep(500);
+  }
+
   @Test
   void onAlert_invalidUrl_logsWarningDoesNotThrow() {
     WebhookAlertChannel channel =

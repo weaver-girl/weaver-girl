@@ -38,6 +38,8 @@ class AnnotationEnhancedIntegrationTest {
     @Around("process")
     public void aroundProcess(MethodInvocation inv) {
       callOrder.add("around");
+      // @Around owns the invocation and reaches the target method only through proceed().
+      inv.proceed();
     }
 
     @OnException("process")
@@ -72,15 +74,16 @@ class AnnotationEnhancedIntegrationTest {
     assertEquals(10, defs.get(0).getPriority());
 
     Interceptor interceptor = defs.get(0).getInterceptor();
+    assertTrue(interceptor.hasAround(), "@Around advice is dispatched through around()");
 
-    // Simulate success path: before -> after
+    // Enter: the around chain runs @Around once and @Before inside proceed().
     MethodInvocation successInv =
         new MethodInvocation(String.class, "process", "target", new Object[] {"data"});
-    interceptor.before(successInv);
+    successInv.setProceedable(true);
+    interceptor.around(successInv);
+    // Exit: the engine reports the outcome through after().
     interceptor.after(successInv);
 
-    // On success: around is called in both before and after phases
-    // @AfterReturning is called in after (not onException)
     assertTrue(FullAdviceInterceptor.callOrder.contains("before"), "before should be called");
     assertTrue(FullAdviceInterceptor.callOrder.contains("after"), "after should be called");
     assertTrue(
@@ -90,9 +93,9 @@ class AnnotationEnhancedIntegrationTest {
         FullAdviceInterceptor.callOrder.contains("onException"),
         "onException should NOT be called on success");
 
-    // Verify around is called (it's invoked in both before and after phases)
     long aroundCount = FullAdviceInterceptor.callOrder.stream().filter("around"::equals).count();
-    assertEquals(2, aroundCount, "around should be called twice (before + after phases)");
+    assertEquals(1, aroundCount, "around should run once, wrapping the target method");
+    assertTrue(successInv.isProceedCalled(), "proceed() must reach the target method");
   }
 
   @Test
@@ -103,11 +106,12 @@ class AnnotationEnhancedIntegrationTest {
 
     Interceptor interceptor = registry.getAllDefinitions().get(0).getInterceptor();
 
-    // Simulate exception path
+    // The target method failed; the engine reports that at exit through onException().
     MethodInvocation exInv =
         new MethodInvocation(String.class, "process", "target", new Object[] {"data"});
+    exInv.setProceedable(true);
+    interceptor.around(exInv);
     exInv.setThrowable(new RuntimeException("test failure"));
-    interceptor.before(exInv);
     interceptor.onException(exInv);
 
     assertTrue(
@@ -127,19 +131,18 @@ class AnnotationEnhancedIntegrationTest {
     Interceptor interceptor = registry.getAllDefinitions().get(0).getInterceptor();
 
     MethodInvocation inv = new MethodInvocation(String.class, "process", "target", new Object[0]);
-    interceptor.before(inv);
+    inv.setProceedable(true);
+    interceptor.around(inv);
     interceptor.after(inv);
 
     List<String> order = new ArrayList<>(FullAdviceInterceptor.callOrder);
 
-    // before phase: around -> before
-    // after phase: around -> after -> afterReturning
-    assertEquals("around", order.get(0), "First call in before phase should be around");
-    assertEquals("before", order.get(1), "Second call in before phase should be before");
-    assertEquals("around", order.get(2), "First call in after phase should be around");
-    assertEquals("after", order.get(3), "Second call in after phase should be after");
-    assertEquals(
-        "afterReturning", order.get(4), "Third call in after phase should be afterReturning");
+    // around wraps the target method, with @Before inside the chain and the after-phase
+    // advice running once the method has exited.
+    assertEquals("around", order.get(0), "around runs first and owns the invocation");
+    assertEquals("before", order.get(1), "before runs inside the chain, before the target");
+    assertEquals("after", order.get(2), "after runs at method exit");
+    assertEquals("afterReturning", order.get(3), "afterReturning runs at method exit");
   }
 
   @Test

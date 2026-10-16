@@ -3,6 +3,7 @@ package com.github.cc11001100.weavergirl.core.config;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
@@ -245,6 +246,124 @@ class YamlConfigLoaderTest {
       assertNotNull(loader.parseFromFile(file.toString()));
     } finally {
       Files.deleteIfExists(file);
+    }
+  }
+
+  @Test
+  void loadFromFile_readsARealFileAndRejectsBrokenRegexes() throws Exception {
+    Path file = Files.createTempFile("weaver-girl", ".yml");
+    try {
+      Files.write(
+          file,
+          ("interceptors:\n  - className: com.example.Svc\n    before: '" + VALID_ADVICE + "'\n")
+              .getBytes(StandardCharsets.UTF_8));
+      assertEquals(1, loader.loadFromFile(file.toString(), registry).getInterceptors().size());
+
+      // A file with no read permission fails while it is being opened, which is the path a
+      // missing or malformed file does not take.
+      Path unreadable = Files.createTempFile("weaver-girl-unreadable", ".yml");
+      Files.write(unreadable, "interceptors: []\n".getBytes(StandardCharsets.UTF_8));
+      assertTrue(unreadable.toFile().setReadable(false));
+      try {
+        assertNotNull(loader.parseFromFile(unreadable.toString()));
+        assertNotNull(loader.loadFromFile(unreadable.toString(), registry));
+      } finally {
+        unreadable.toFile().setReadable(true);
+        Files.deleteIfExists(unreadable);
+      }
+    } finally {
+      Files.deleteIfExists(file);
+    }
+
+    String yaml =
+        "interceptors:\n"
+            + "  - classPattern: '['\n"
+            + "    methodPattern: '['\n"
+            + "    before: '"
+            + VALID_ADVICE
+            + "'\n"
+            + "  - className: com.example.Other\n"
+            + "    method: run\n"
+            + "    before: 'java.lang.String'\n"
+            + "  - className: com.example.Broken\n"
+            + "    method: run\n"
+            + "    before: 'com.example.DoesNotExist'\n";
+    InterceptorRegistry fresh = new DefaultInterceptorRegistry();
+    loader.loadFromReader(new StringReader(yaml), fresh);
+
+    // The broken regex is dropped. The other two register, and invoking them exercises an advice
+    // class that is not an interceptor and one that cannot be loaded.
+    assertEquals(2, fresh.getAllDefinitions().size());
+    MethodInvocation invocation = new MethodInvocation(getClass(), "run", null, null);
+    for (InterceptorDefinition definition : fresh.getAllDefinitions()) {
+      definition.getInterceptor().before(invocation);
+      definition.getInterceptor().before(invocation);
+    }
+  }
+
+  /** An empty file and a file that is not there both yield an empty config rather than a failure. */
+  @Test
+  void anEmptyOrMissingFileYieldsAnEmptyConfig() throws Exception {
+    Path file = Files.createTempFile("weaver-girl", ".yml");
+    try {
+      assertTrue(loader.parseFromFile(file.toString()).getInterceptors().isEmpty());
+    } finally {
+      Files.deleteIfExists(file);
+    }
+
+    assertTrue(
+        loader.parseFromFile(file.resolveSibling("never-written.yml").toString())
+            .getInterceptors()
+            .isEmpty());
+    assertTrue(
+        loader.loadFromFile(file.resolveSibling("never-written.yml").toString(), registry)
+            .getInterceptors()
+            .isEmpty());
+  }
+
+  /** A config with no interceptor section registers nothing. */
+  @Test
+  void aConfigWithoutInterceptorsRegistersNothing() {
+    assertTrue(loader.loadFromString("samplingThreshold: 50\n", registry).getInterceptors().isEmpty());
+    assertEquals(0, registry.getAllDefinitions().size());
+  }
+
+  /** An interceptor aimed at an interface is named after that interface and still registers. */
+  @Test
+  void anInterceptorAimedAtAnInterfaceIsNamedAfterIt() {
+    String yaml =
+        "interceptors:\n"
+            + "  - interfaceName: com.example.Api\n"
+            + "    before: '"
+            + VALID_ADVICE
+            + "'\n";
+
+    loader.loadFromString(yaml, registry);
+
+    assertEquals(1, registry.getAllDefinitions().size());
+    assertTrue(registry.getAllDefinitions().get(0).getName().contains("implements:com.example.Api"));
+  }
+
+  /** Advice whose own method throws is logged and swallowed, so the invocation still finishes. */
+  @Test
+  void adviceThatThrowsIsSwallowed() {
+    String yaml =
+        "interceptors:\n"
+            + "  - className: com.example.Svc\n"
+            + "    before: '"
+            + ThrowingAdvice.class.getName()
+            + "'\n";
+    loader.loadFromString(yaml, registry);
+    MethodInvocation invocation = new MethodInvocation(getClass(), "run", null, null);
+
+    assertDoesNotThrow(() -> registry.getAllDefinitions().get(0).getInterceptor().before(invocation));
+  }
+
+  /** An advice used to exercise the path where the advice method itself fails. */
+  public static final class ThrowingAdvice implements Interceptor {
+    @Override
+    public void before(MethodInvocation invocation) {
+      throw new IllegalStateException("advice failed");
     }
   }
 }

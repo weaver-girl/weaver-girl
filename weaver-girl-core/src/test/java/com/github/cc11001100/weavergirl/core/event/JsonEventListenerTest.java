@@ -73,6 +73,29 @@ class JsonEventListenerTest {
     assertTrue(json.contains("\\\"quoted\\\""));
   }
 
+  /** A backslash, a carriage return, a control character and a null value each escape differently. */
+  @Test
+  void everyEscapeAndANullValueAreRendered() {
+    JsonEventListener listener = new JsonEventListener();
+    InterceptorEvent event =
+        InterceptorEvent.builder()
+            .type("error")
+            .plugin("test")
+            .className("Service")
+            .methodName("process")
+            .attribute("path", "C:\\tmp")
+            .attribute("text", "a\rb\u0001c")
+            .attribute("empty", null)
+            .build();
+
+    String json = listener.toJson(event);
+
+    assertTrue(json.contains("C:\\\\tmp"), "a backslash was not escaped");
+    assertTrue(json.contains("\\r"), "a carriage return was not escaped");
+    assertTrue(json.contains("\\u0001"), "a control character was not escaped");
+    assertTrue(json.contains("\"empty\":null"), "a null value was not rendered as null");
+  }
+
   @Test
   void toJson_noAttributes_noAttributesKey() {
     JsonEventListener listener = new JsonEventListener();

@@ -198,6 +198,21 @@ class LockFreeObjectPoolTest {
     assertEquals(threadCount * opsPerThread, pool.getBorrowCount());
   }
 
+  /** Every counter the snapshot exposes reads back what was recorded. */
+  @Test
+  void theSnapshotReportsEveryCounter() {
+    StringBuilder first = pool.borrow();
+    pool.release(first);
+    pool.borrow();
+
+    LockFreeObjectPool.PoolStats stats = pool.getStats();
+    assertEquals(100, stats.getMaxSize());
+    assertEquals(0, stats.getPoolSize());
+    assertEquals(1, stats.getReturnCount());
+    assertEquals(1, stats.getMissCount());
+    assertEquals(0, stats.getEvictionCount());
+  }
+
   @Test
   void poolStaysWithinMaxSize_underContention() throws Exception {
     LockFreeObjectPool<StringBuilder> smallPool = new LockFreeObjectPool<>(StringBuilder::new, 10);

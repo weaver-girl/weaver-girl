@@ -193,6 +193,29 @@ public class InterceptorDefinition {
   }
 
   /**
+   * The plugin that registered this definition, when the registration happened while a plugin was
+   * loading.
+   *
+   * <p>A plugin can register through any registry it can reach, not only the one its context handed it,
+   * so the definition name is not a reliable way back to the plugin. The registry records the plugin
+   * here as the definition is registered. It is not part of the definition's identity: two definitions
+   * compare equal on their other fields whether or not it is set.
+   *
+   * @since 1.0.0
+   */
+  private transient Object owner;
+
+  /** The plugin that registered this definition, or {@code null} when none was recorded. */
+  public Object getOwner() {
+    return owner;
+  }
+
+  /** Record the plugin that registered this definition. */
+  public void setOwner(Object owner) {
+    this.owner = owner;
+  }
+
+  /**
    * Returns the aspect class name associated with this definition, if any.
    *
    * <p>This is used for {@code @DeclarePrecedence} resolution. For definitions created by

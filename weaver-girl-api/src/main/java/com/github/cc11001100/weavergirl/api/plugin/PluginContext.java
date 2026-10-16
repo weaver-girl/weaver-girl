@@ -86,6 +86,97 @@ public interface PluginContext {
   Map<String, String> getAllConfig();
 
   /**
+   * A logger named after this plugin, writing through the agent's logging.
+   *
+   * <p>A drop-in plugin is loaded by its own class loader, so a logger it builds itself resolves
+   * against the application's logging and can end up silent or bound to a different configuration
+   * than the agent's. This logger is created by the agent, so it always reaches the agent's log.
+   *
+   * <p>Default implementation returns a logger that writes to standard error, which is what a test
+   * double of this interface gets. The agent's own implementation returns its real logger.
+   *
+   * @return a logger for this plugin, never null
+   * @since 1.0.0
+   */
+  default PluginLogger getLogger() {
+    return new PluginLogger() {
+      @Override
+      public void info(String message) {
+        System.err.println("[weaver-girl] [" + getPluginName() + "] " + message);
+      }
+
+      @Override
+      public void warn(String message) {
+        System.err.println("[weaver-girl] [" + getPluginName() + "] WARN " + message);
+      }
+
+      @Override
+      public void error(String message, Throwable error) {
+        System.err.println("[weaver-girl] [" + getPluginName() + "] ERROR " + message);
+        if (error != null) {
+          error.printStackTrace(System.err);
+        }
+      }
+    };
+  }
+
+  /**
+   * Publish {@code implementation} as this plugin's provider of {@code service}, so other plugins can find
+   * it through {@link PluginServices#get}. The implementation is withdrawn automatically when this plugin
+   * is unloaded or destroyed, which a registration made on {@link PluginServices} directly is not.
+   *
+   * <p>Default implementation delegates to {@link PluginServices#register} without remembering the plugin,
+   * which is all a test double of this interface can do. The agent's implementation tracks the
+   * registration and removes it at unload.
+   *
+   * @param service the interface other plugins look up
+   * @param implementation this plugin's implementation of it
+   * @since 1.0.0
+   */
+  default void registerService(Class<?> service, Object implementation) {
+    PluginServices.register(service, implementation);
+  }
+
+  /**
+   * Whether {@code className} can be seen from {@code classLoader} without loading it.
+   *
+   * <p>A plugin decides from this whether the library it instruments is on the classpath. Loading the class
+   * to find out would define it before the transformer is installed, so the interceptor registered for it
+   * would never be woven in. Presence is decided from the class file being visible as a resource.
+   *
+   * <p>Default implementation looks through {@code classLoader}, then the context loader, then the loader
+   * that defined this interface. An agent supplies the loader its plugins were loaded by, which is the one
+   * that can see both the agent and the application.
+   *
+   * @param classLoader the loader to look through, or null to look only through the context and system loaders
+   * @param className a fully-qualified class name, for example {@code "io.grpc.Server"}
+   * @return true when the class file is visible
+   * @since 1.0.0
+   */
+  default boolean classPresent(ClassLoader classLoader, String className) {
+    if (className == null || className.isEmpty()) {
+      return false;
+    }
+    String resource = className.replace('.', '/') + ".class";
+    // The loader that defined the plugin is child-first and only carries the agent, so the library it
+    // instruments is visible through its parent — the application loader — and not through it. Walk the
+    // whole chain. A loader is only asked once; a child-first loader delegates getResource to its parent
+    // anyway, and asking twice would report the same class twice.
+    java.util.Set<ClassLoader> seen = new java.util.HashSet<ClassLoader>();
+    for (ClassLoader current = classLoader; current != null; current = current.getParent()) {
+      if (seen.add(current) && current.getResource(resource) != null) {
+        return true;
+      }
+    }
+    ClassLoader context = Thread.currentThread().getContextClassLoader();
+    if (context != null && seen.add(context) && context.getResource(resource) != null) {
+      return true;
+    }
+    ClassLoader api = PluginContext.class.getClassLoader();
+    return api != null && seen.add(api) && api.getResource(resource) != null;
+  }
+
+  /**
    * Returns the plugin's own name (same as {@link WeaverPlugin#name()}).
    *
    * <p>This is useful for scoping configuration keys or logging messages with the plugin identity.

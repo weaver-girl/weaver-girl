@@ -366,6 +366,28 @@ public class PointcutExpression {
         null);
   }
 
+  /**
+   * Creates a {@code call(...)} pointcut expression.
+   *
+   * <p><b>Semantics note (honest description):</b> this DSL keyword is currently an alias for
+   * {@link #execution(String, String, String, String)}. In AspectJ, {@code call()} matches the
+   * <i>call site</i> (the caller's invocation instruction) while {@code execution()} matches the
+   * <i>callee's method body</i>. This framework weaves through {@code AgentBuilder} class/method
+   * matchers, which operate on the method that is being executed — there is no call-site
+   * interception, so {@code call(...)} is rewritten into the same execution-side matcher as
+   * {@code execution(...)}.
+   *
+   * <p>Only {@code classPattern} and {@code methodPattern} participate in matching; {@code
+   * returnType} and {@code paramPattern} are retained for display fidelity ({@link #toString()})
+   * but are not validated against the target method.
+   *
+   * @param returnType the declared return type (retained for display only)
+   * @param classPattern the class name pattern of the callee
+   * @param methodPattern the method name pattern
+   * @param paramPattern the parameter signature (retained for display only)
+   * @return a CALL pointcut expression
+   * @since 2.0.0
+   */
   public static PointcutExpression call(
       String returnType, String classPattern, String methodPattern, String paramPattern) {
     return new PointcutExpression(
@@ -392,6 +414,20 @@ public class PointcutExpression {
         null);
   }
 
+  /**
+   * Creates a {@code handler(...)} pointcut expression.
+   *
+   * <p><b>Semantics note (honest description):</b> this DSL keyword is a placeholder. In AspectJ,
+   * {@code handler(TypePattern)} matches exception-handler join points (catch blocks). This
+   * framework has no catch-block weaving strategy yet, so {@code handler(...)} does <b>not</b>
+   * match exception handlers. The current implementation matches any method literally named
+   * {@code "handler"} in any class; {@code exceptionType} is retained for display fidelity
+   * ({@link #toString()}) but does not participate in matching.
+   *
+   * @param exceptionType the exception type (retained for display only)
+   * @return a HANDLER pointcut expression
+   * @since 2.0.0
+   */
   public static PointcutExpression handler(String exceptionType) {
     return new PointcutExpression(
         Type.HANDLER,
@@ -786,11 +822,15 @@ public class PointcutExpression {
         return new Pointcut(
             ClassMatcher.byAnnotation(targetAnnotationClassName), MethodMatcher.any(), this);
       case CALL:
+        // call() is an alias for execution() in this framework (see the call() factory javadoc):
+        // there is no call-site weaving, so we build the same exact/pattern matchers as
+        // execution() from the callee's class and method patterns.
         return new Pointcut(
-            ClassMatcher.byNamePattern(convertToRegex(callClassPattern)),
-            MethodMatcher.byNamePattern(convertToRegex(callMethodPattern)),
-            this);
+            buildClassMatcher(callClassPattern), buildMethodMatcher(callMethodPattern), this);
       case HANDLER:
+        // Placeholder semantics (see the handler() factory javadoc): no catch-block weaving
+        // exists yet, so this matches any method literally named "handler"; exceptionType is
+        // not consulted.
         return new Pointcut(ClassMatcher.any(), MethodMatcher.byName("handler"), this);
       case CFLOW:
         // cflow is a runtime condition, not a static class/method matcher.
@@ -834,11 +874,15 @@ public class PointcutExpression {
         return new Pointcut(
             ClassMatcher.byAnnotation(targetAnnotationClassName), MethodMatcher.any(), this);
       case CALL:
+        // call() is an alias for execution() in this framework (see the call() factory javadoc):
+        // there is no call-site weaving, so we build the same exact/pattern matchers as
+        // execution() from the callee's class and method patterns.
         return new Pointcut(
-            ClassMatcher.byNamePattern(convertToRegex(callClassPattern)),
-            MethodMatcher.byNamePattern(convertToRegex(callMethodPattern)),
-            this);
+            buildClassMatcher(callClassPattern), buildMethodMatcher(callMethodPattern), this);
       case HANDLER:
+        // Placeholder semantics (see the handler() factory javadoc): no catch-block weaving
+        // exists yet, so this matches any method literally named "handler"; exceptionType is
+        // not consulted.
         return new Pointcut(ClassMatcher.any(), MethodMatcher.byName("handler"), this);
       case CFLOW:
       case IF:
@@ -857,23 +901,31 @@ public class PointcutExpression {
   }
 
   private ClassMatcher buildClassMatcher() {
-    if (classPattern == null || classPattern.isEmpty()) {
+    return buildClassMatcher(classPattern);
+  }
+
+  private ClassMatcher buildClassMatcher(String pattern) {
+    if (pattern == null || pattern.isEmpty()) {
       return ClassMatcher.byNamePattern(".*");
     }
-    if (containsWildcard(classPattern)) {
-      return ClassMatcher.byNamePattern(convertToRegex(classPattern));
+    if (containsWildcard(pattern)) {
+      return ClassMatcher.byNamePattern(convertToRegex(pattern));
     }
-    return ClassMatcher.byName(classPattern);
+    return ClassMatcher.byName(pattern);
   }
 
   private MethodMatcher buildMethodMatcher() {
-    if (methodPattern == null || methodPattern.isEmpty()) {
+    return buildMethodMatcher(methodPattern);
+  }
+
+  private MethodMatcher buildMethodMatcher(String pattern) {
+    if (pattern == null || pattern.isEmpty()) {
       return MethodMatcher.any();
     }
-    if (containsWildcard(methodPattern)) {
-      return MethodMatcher.byNamePattern(convertToRegex(methodPattern));
+    if (containsWildcard(pattern)) {
+      return MethodMatcher.byNamePattern(convertToRegex(pattern));
     }
-    return MethodMatcher.byName(methodPattern);
+    return MethodMatcher.byName(pattern);
   }
 
   static String convertToRegex(String pattern) {

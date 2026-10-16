@@ -46,6 +46,12 @@ class ConfigWatcherTest {
     // Clean up
   }
 
+  /** Named static inner class to avoid anonymous class ClassNotFoundError during reload. */
+  static class DummyInterceptor implements Interceptor {
+    @Override
+    public void before(MethodInvocation invocation) {}
+  }
+
   private void writeConfig(String content) throws IOException {
     try (FileWriter writer = new FileWriter(configFile)) {
       writer.write(content);
@@ -108,11 +114,7 @@ class ConfigWatcherTest {
   @Test
   void yamlInterceptorsAreUnregisteredBeforeReload() throws Exception {
     // Register an existing YAML interceptor manually
-    Interceptor dummyInterceptor =
-        new Interceptor() {
-          @Override
-          public void before(MethodInvocation invocation) {}
-        };
+    Interceptor dummyInterceptor = new DummyInterceptor();
     InterceptorDefinition yamlDef =
         new InterceptorDefinition(
             "yaml-test-interceptor",
@@ -188,6 +190,37 @@ class ConfigWatcherTest {
         "Debounce should prevent all 5 writes from triggering separate reloads");
   }
 
+  /**
+   * Interrupting the watcher while it is blocked waiting for a change ends the watch. {@code stop()} only
+   * signals the thread; the interrupt itself is what {@code take()} throws.
+   */
+  @Test
+  void interruptingTheWatcherEndsIt() throws Exception {
+    ConfigWatcher watcher = new ConfigWatcher(configFile.getAbsolutePath(), registry);
+    watcher.start();
+    Thread thread = null;
+    long deadline = System.currentTimeMillis() + 5000;
+    while (thread == null && System.currentTimeMillis() < deadline) {
+      for (Thread candidate : Thread.getAllStackTraces().keySet()) {
+        if ("weaver-girl-config-watcher".equals(candidate.getName()) && candidate.isAlive()) {
+          thread = candidate;
+        }
+      }
+      if (thread == null) {
+        Thread.sleep(20);
+      }
+    }
+    assertNotNull(thread, "the watcher thread never started");
+    StringBuilder stack = new StringBuilder();
+    for (StackTraceElement frame : thread.getStackTrace()) {
+      stack.append(frame).append(" | ");
+    }
+    assertTrue(stack.toString().contains("take"), "watcher stack: " + stack);
+    thread.interrupt();
+    thread.join(5000);
+    assertFalse(thread.isAlive(), "interrupting the watcher left it running");
+  }
+
   @Test
   void stopInterruptsWatcherThread() throws Exception {
     ConfigWatcher watcher = new ConfigWatcher(configFile.getAbsolutePath(), registry);
@@ -196,5 +229,55 @@ class ConfigWatcherTest {
     watcher.stop();
     Thread.sleep(200);
     // If the watcher thread was properly interrupted, this test completes without hanging
+  }
+
+  /**
+   * With no callback of its own the watcher uses the hook installed on the holder, so a reload started
+   * from a plugin still reaches the agent's transformer.
+   */
+  @Test
+  void aReloadWithoutItsOwnCallbackUsesTheInstalledHook() throws Exception {
+    CountDownLatch hookRan = new CountDownLatch(1);
+    com.github.cc11001100.weavergirl.core.InterceptorHolder.setRetransformHook(hookRan::countDown);
+    ConfigWatcher watcher = new ConfigWatcher(configFile.getAbsolutePath(), registry);
+    watcher.start();
+    try {
+      Thread.sleep(500);
+      writeConfig(
+          "interceptors:\n"
+              + "  - className: com.example.Service9\n"
+              + "    method: run\n"
+              + "    before: com.example.TestBeforeAdvice\n");
+
+      assertTrue(hookRan.await(10, TimeUnit.SECONDS), "the installed hook was not run on reload");
+    } finally {
+      watcher.stop();
+      com.github.cc11001100.weavergirl.core.InterceptorHolder.setRetransformHook(null);
+    }
+  }
+
+  /** A reload whose callback throws is logged and the watcher keeps running. */
+  @Test
+  void aCallbackThatThrowsDoesNotStopTheWatcher() throws Exception {
+    CountDownLatch failed = new CountDownLatch(1);
+    ConfigWatcher watcher = new ConfigWatcher(configFile.getAbsolutePath(), registry);
+    watcher.setAfterReloadCallback(
+        () -> {
+          failed.countDown();
+          throw new IllegalStateException("retransform failed");
+        });
+    watcher.start();
+    try {
+      Thread.sleep(500);
+      writeConfig(
+          "interceptors:\n"
+              + "  - className: com.example.Service8\n"
+              + "    method: run\n"
+              + "    before: com.example.TestBeforeAdvice\n");
+
+      assertTrue(failed.await(10, TimeUnit.SECONDS), "the failing callback was never run");
+    } finally {
+      watcher.stop();
+    }
   }
 }

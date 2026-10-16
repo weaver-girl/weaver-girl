@@ -149,6 +149,17 @@ class ExporterTest {
     List<InterceptorEvent> recent = exporter.getRecentEvents(3);
     assertEquals(3, recent.size());
     assertEquals("t7", recent.get(0).getType());
+    // More than are stored: the window starts at the beginning instead of before it.
+    assertEquals(10, exporter.getRecentEvents(100).size());
+  }
+
+  /** A maximum that is not a number leaves the default in place. */
+  @Test
+  void inMemory_ignoresAMaximumThatIsNotANumber() {
+    InMemoryExporter exporter = new InMemoryExporter();
+    exporter.init(Collections.singletonMap("maxEvents", "lots"));
+    exporter.export(InterceptorEvent.builder().type("t").plugin("p").build());
+    assertEquals(1, exporter.size());
   }
 
   @Test

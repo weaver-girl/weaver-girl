@@ -37,4 +37,41 @@ class SpringBootAutoConfigurationTest {
     // In test environment without Spring Boot, may or may not have entries
     assertNotNull(config);
   }
+
+  /** With Spring Boot and a reactive stack present, the recommendation covers both. */
+  @Test
+  void aDetectedSpringBootAndReactiveStackShapeTheConfig() throws Exception {
+    java.lang.reflect.Field capabilities =
+        com.github.cc11001100.weavergirl.core.compat.RuntimeCompatibility.class.getDeclaredField(
+            "CAPABILITIES");
+    @SuppressWarnings("unchecked")
+    java.util.Map<String, Boolean> detected =
+        (java.util.Map<String, Boolean>)
+            com.github.cc11001100.weavergirl.core.testsupport.Statics.read(capabilities, null);
+    Boolean spring = detected.get("spring-boot");
+    Boolean reactor = detected.get("reactor");
+    Boolean webflux = detected.get("webflux");
+    try {
+      detected.put("spring-boot", true);
+      detected.put("reactor", true);
+
+      assertTrue(SpringBootAutoConfiguration.shouldApply());
+      Map<String, String> config = SpringBootAutoConfiguration.getRecommendedConfig();
+      assertTrue(config.get("excludedClasses").contains("org.springframework"));
+      assertEquals("10", config.get("samplingRate"));
+      assertEquals("20000", config.get("samplingThreshold"));
+    } finally {
+      restore(detected, "spring-boot", spring);
+      restore(detected, "reactor", reactor);
+      restore(detected, "webflux", webflux);
+    }
+  }
+
+  private static void restore(java.util.Map<String, Boolean> map, String key, Boolean value) {
+    if (value == null) {
+      map.remove(key);
+    } else {
+      map.put(key, value);
+    }
+  }
 }

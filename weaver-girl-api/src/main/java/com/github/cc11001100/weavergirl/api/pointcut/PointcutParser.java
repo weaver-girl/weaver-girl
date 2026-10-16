@@ -26,9 +26,12 @@ import com.github.cc11001100.weavergirl.api.ValidationUtils;
  *   <tr><td>{@code @target(annotationClassName)}</td><td>{@link PointcutExpression.Type#AT_TARGET}</td>
  *       <td>{@code @target(com.example.Target)}</td></tr>
  *   <tr><td>{@code call(retType class.method(params))}</td><td>{@link PointcutExpression.Type#CALL}</td>
- *       <td>{@code call(* com.example.Service.process(..))}</td></tr>
+ *       <td>{@code call(* com.example.Service.process(..))} — an alias for {@code execution(...)} in this
+ *       framework (no call-site weaving; see {@link PointcutExpression#call(String, String, String, String)}).</td></tr>
  *   <tr><td>{@code handler(exceptionType)}</td><td>{@link PointcutExpression.Type#HANDLER}</td>
- *       <td>{@code handler(java.io.IOException)}</td></tr>
+ *       <td>{@code handler(java.io.IOException)} — <b>placeholder</b>: catch-block weaving is not yet
+ *       implemented, so this matches methods literally named {@code handler} and ignores
+ *       {@code exceptionType} (see {@link PointcutExpression#handler(String)}).</td></tr>
  *   <tr><td>{@code cflow(expr)}</td><td>{@link PointcutExpression.Type#CFLOW}</td>
  *       <td>{@code cflow(execution(* com.example..*(..)))}</td></tr>
  *   <tr><td>{@code if(condition)}</td><td>{@link PointcutExpression.Type#IF}</td>
