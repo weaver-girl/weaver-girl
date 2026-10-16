@@ -1,0 +1,2 @@
+com.github.cc11001100.weavergirl.plugins.async.AsyncContextPropagationPlugin
+com.github.cc11001100.weavergirl.plugins.async.CompletableFuturePropagationPlugin

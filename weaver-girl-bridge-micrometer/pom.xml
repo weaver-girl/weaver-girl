@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.github.cc11001100</groupId>
+        <artifactId>weaver-girl</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>weaver-girl-bridge-micrometer</artifactId>
+    <packaging>jar</packaging>
+
+    <name>Weaver Girl - Micrometer Bridge</name>
+    <description>Optional bridge that publishes the agent's counters to a Micrometer MeterRegistry.
+        Kept out of weaver-girl-core so the engine does not depend on Micrometer; add this module
+        (it is bundled in the agent jar) and call MicrometerBridge.start(registry).</description>
+
+    <properties>
+        <moduleinfo.skip>false</moduleinfo.skip>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

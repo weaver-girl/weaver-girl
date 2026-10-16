@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.github.cc11001100</groupId>
+        <artifactId>weaver-girl</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>weaver-girl-runtime-plugins</artifactId>
+    <packaging>pom</packaging>
+
+    <name>Weaver Girl - Runtime Plugins</name>
+    <description>The agent's own optional capabilities, one module per capability. Each is loaded only
+        when its config key is set, and each jar can be left out of a distribution entirely.</description>
+
+    <properties>
+        <!-- Aggregator only; the children carry the code. -->
+        <moduleinfo.skip>true</moduleinfo.skip>
+    </properties>
+
+    <modules>
+        <module>weaver-girl-runtime-json-events</module>
+        <module>weaver-girl-runtime-prometheus</module>
+        <module>weaver-girl-runtime-config-watch</module>
+        <module>weaver-girl-runtime-annotation-scan</module>
+        <module>weaver-girl-runtime-management-api</module>
+        <module>weaver-girl-runtime-health</module>
+        <module>weaver-girl-runtime-diagnostics</module>
+        <module>weaver-girl-runtime-otlp</module>
+        <module>weaver-girl-runtime-span-export</module>
+        <module>weaver-girl-runtime-update-check</module>
+        <module>weaver-girl-runtime-alert-file</module>
+        <module>weaver-girl-runtime-dynamic-refresh</module>
+        <module>weaver-girl-runtime-jmx</module>
+        <module>weaver-girl-runtime-taint</module>
+    </modules>
+
+    <build>
+        <plugins>
+            <!-- A capability jar is loaded beside the agent, not inside it, so it cannot see the
+                 org.slf4j the agent shades away. Relocate it to the same prefix the agent uses and
+                 bundle the API, exactly as the instrumentation plugins do. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <artifactSet>
+                                <includes>
+                                    <include>${project.groupId}:${project.artifactId}</include>
+                                    <include>org.slf4j:slf4j-api</include>
+                                </includes>
+                            </artifactSet>
+                            <relocations>
+                                <relocation>
+                                    <pattern>org.slf4j</pattern>
+                                    <shadedPattern>com.github.cc11001100.weavergirl.shade.org.slf4j</shadedPattern>
+                                </relocation>
+                            </relocations>
+                            <filters>
+                                <filter>
+                                    <artifact>org.slf4j:slf4j-api</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/services/**</exclude>
+                                        <exclude>META-INF/maven/**</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

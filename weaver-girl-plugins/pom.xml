@@ -11,83 +11,198 @@
     </parent>
 
     <artifactId>weaver-girl-plugins</artifactId>
-    <packaging>jar</packaging>
+    <packaging>pom</packaging>
 
     <name>Weaver Girl - Plugins</name>
-    <description>Built-in instrumentation plugins for common Java frameworks and libraries</description>
+    <description>Aggregator for the built-in instrumentation plugins. Each plugin is its own
+        module depending only on weaver-girl-api, so a deployment can ship exactly the plugins it
+        needs. Plugins match target classes by name and never compile against the libraries they
+        instrument.</description>
 
-    <dependencies>
-        <!-- Plugin SDK only — no direct dependency on instrumented libraries -->
-        <dependency>
-            <groupId>com.github.cc11001100</groupId>
-            <artifactId>weaver-girl-api</artifactId>
-        </dependency>
+    <modules>
+        <module>weaver-girl-plugin-async</module>
+        <module>weaver-girl-plugin-caffeine</module>
+        <module>weaver-girl-plugin-druid</module>
+        <module>weaver-girl-plugin-dubbo</module>
+        <module>weaver-girl-plugin-elasticsearch</module>
+        <module>weaver-girl-plugin-exception</module>
+        <module>weaver-girl-plugin-feign</module>
+        <module>weaver-girl-plugin-grpc</module>
+        <module>weaver-girl-plugin-hikari</module>
+        <module>weaver-girl-plugin-httpclient</module>
+        <module>weaver-girl-plugin-jdbc</module>
+        <module>weaver-girl-plugin-jetty</module>
+        <module>weaver-girl-plugin-kafka</module>
+        <module>weaver-girl-plugin-logging</module>
+        <module>weaver-girl-plugin-mongo</module>
+        <module>weaver-girl-plugin-mybatis</module>
+        <module>weaver-girl-plugin-netty</module>
+        <module>weaver-girl-plugin-okhttp</module>
+        <module>weaver-girl-plugin-rabbitmq</module>
+        <module>weaver-girl-plugin-redis</module>
+        <module>weaver-girl-plugin-redisson</module>
+        <module>weaver-girl-plugin-rocketmq</module>
+        <module>weaver-girl-plugin-servlet</module>
+        <module>weaver-girl-plugin-spring</module>
+        <module>weaver-girl-plugin-timing</module>
+        <module>weaver-girl-plugin-tomcat</module>
+        <module>weaver-girl-plugin-trace</module>
+        <module>weaver-girl-plugin-undertow</module>
+        <module>weaver-girl-plugin-pulsar</module>
+        <module>weaver-girl-plugin-quartz</module>
+        <module>weaver-girl-plugin-xxljob</module>
+        <module>weaver-girl-plugin-thrift</module>
+        <module>weaver-girl-plugin-jms</module>
+        <module>weaver-girl-plugin-cassandra</module>
+        <module>weaver-girl-plugin-graphql</module>
+        <module>weaver-girl-plugin-clickhouse</module>
+        <module>weaver-girl-plugin-hbase</module>
+        <module>weaver-girl-plugin-reactor</module>
+        <module>weaver-girl-plugin-rxjava</module>
+        <module>weaver-girl-plugin-kotlin</module>
+        <module>weaver-girl-plugin-vertx</module>
+        <module>weaver-girl-plugin-jedis</module>
+        <module>weaver-girl-plugin-lettuce</module>
+        <module>weaver-girl-plugin-nats</module>
+        <module>weaver-girl-plugin-hibernate</module>
+        <module>weaver-girl-plugin-memcached</module>
+        <module>weaver-girl-plugin-elasticjob</module>
+        <module>weaver-girl-plugin-powerjob</module>
+        <module>weaver-girl-plugin-grizzly</module>
+        <module>weaver-girl-plugin-struts</module>
+        <module>weaver-girl-plugin-javalin</module>
+        <module>weaver-girl-plugin-opensearch</module>
+        <module>weaver-girl-plugin-play</module>
+        <module>weaver-girl-plugin-camel</module>
+        <module>weaver-girl-plugin-jaxrs</module>
+        <module>weaver-girl-plugin-couchbase</module>
+        <module>weaver-girl-plugin-hystrix</module>
+        <module>weaver-girl-plugin-c3p0</module>
+        <module>weaver-girl-plugin-dbcp</module>
+        <module>weaver-girl-plugin-pool</module>
+        <module>weaver-girl-plugin-asynchttp</module>
+        <module>weaver-girl-plugin-geode</module>
+        <module>weaver-girl-plugin-influxdb</module>
+        <module>weaver-girl-plugin-jfinal</module>
+        <module>weaver-girl-plugin-kubernetes</module>
+        <module>weaver-girl-plugin-jodd</module>
+        <module>weaver-girl-plugin-vaadin</module>
+        <module>weaver-girl-plugin-wicket</module>
+        <module>weaver-girl-plugin-ghttp</module>
+        <module>weaver-girl-plugin-restlet</module>
+        <module>weaver-girl-plugin-sparkjava</module>
+        <module>weaver-girl-plugin-grails</module>
+        <module>weaver-girl-plugin-finatra</module>
+        <module>weaver-girl-plugin-jaxws</module>
+        <module>weaver-girl-plugin-vibur</module>
+        <module>weaver-girl-plugin-dropwizard</module>
+        <module>weaver-girl-plugin-jersey</module>
+        <module>weaver-girl-plugin-resteasy</module>
+        <module>weaver-girl-plugin-jsf</module>
+        <module>weaver-girl-plugin-jsp</module>
+        <module>weaver-girl-plugin-tapestry</module>
+        <module>weaver-girl-plugin-struts2</module>
+        <module>weaver-girl-plugin-cxf</module>
+        <module>weaver-girl-plugin-liberty</module>
+        <module>weaver-girl-plugin-activej</module>
+        <module>weaver-girl-plugin-avaje</module>
+        <module>weaver-girl-plugin-ratpack</module>
+        <module>weaver-girl-plugin-twilio</module>
+        <module>weaver-girl-plugin-gwt</module>
+        <module>weaver-girl-plugin-quarkus</module>
+        <module>weaver-girl-plugin-rediscala</module>
+        <module>weaver-girl-plugin-jettyhttp</module>
+        <module>weaver-girl-plugin-awssdk</module>
+        <module>weaver-girl-plugin-azurecore</module>
+        <module>weaver-girl-plugin-awssdk2</module>
+        <module>weaver-girl-plugin-hibernatesearch</module>
+        <module>weaver-girl-plugin-resttemplate</module>
+        <module>weaver-girl-plugin-awslambda</module>
+        <module>weaver-girl-plugin-googlehttp</module>
+        <module>weaver-girl-plugin-springbatch</module>
+        <module>weaver-girl-plugin-websocket</module>
+        <module>weaver-girl-plugin-webflux</module>
+        <module>weaver-girl-plugin-scheduling</module>
+        <module>weaver-girl-plugin-springws</module>
+        <module>weaver-girl-plugin-springrmi</module>
+        <module>weaver-girl-plugin-scheduled</module>
+        <module>weaver-girl-plugin-httpasync</module>
+        <module>weaver-girl-plugin-withspan</module>
+        <module>weaver-girl-plugin-traced</module>
+        <module>weaver-girl-plugin-scalafuture</module>
+        <module>weaver-girl-plugin-scalaforkjoin</module>
+        <module>weaver-girl-plugin-elasticapm</module>
+        <module>weaver-girl-plugin-traceanno</module>
+        <module>weaver-girl-plugin-springamqp</module>
+        <module>weaver-girl-plugin-springjms</module>
+        <module>weaver-girl-plugin-springkafka</module>
+        <module>weaver-girl-plugin-springpulsar</module>
+        <module>weaver-girl-plugin-springmvc</module>
+        <module>weaver-girl-plugin-estransport</module>
+        <module>weaver-girl-plugin-vertxredis</module>
+        <module>weaver-girl-plugin-vertxsql</module>
+        <module>weaver-girl-plugin-httpclient5</module>
+        <module>weaver-girl-plugin-commonshttp</module>
+        <module>weaver-girl-plugin-jetty12http</module>
+        <module>weaver-girl-plugin-ninghttp</module>
+        <module>weaver-girl-plugin-playws</module>
+        <!-- Cross-plugin regression tests; depends on every plugin module above. -->
+        <module>weaver-girl-plugins-tests</module>
+    </modules>
 
-        <!-- Logging -->
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-        </dependency>
+    <properties>
+        <moduleinfo.skip>true</moduleinfo.skip>
+    </properties>
 
-        <!-- Testing -->
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-core</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>ch.qos.logback</groupId>
-            <artifactId>logback-classic</artifactId>
-            <version>1.6.3</version>
-            <scope>test</scope>
-        </dependency>
-        <!-- For end-to-end plugin integration tests that install a real transformer -->
-        <dependency>
-            <groupId>com.github.cc11001100</groupId>
-            <artifactId>weaver-girl-core</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>net.bytebuddy</groupId>
-            <artifactId>byte-buddy-agent</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>javax.servlet</groupId>
-            <artifactId>javax.servlet-api</artifactId>
-            <version>3.1.0</version>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>1.4.14</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <build>
         <plugins>
+            <!-- A capability jar is loaded beside the agent, not inside it, so it cannot see the
+                 org.slf4j the agent shades away. Relocate it to the same prefix the agent uses, and
+                 bundle the API (provided — the agent already carries it, so it is not packaged
+                 twice). The shaded jar replaces the main artifact. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
                 <executions>
                     <execution>
-                        <id>default-test</id>
-                        <configuration>
-                            <excludes>
-                                <exclude>**/IastHookLaunchTest.java</exclude>
-                            </excludes>
-                        </configuration>
-                    </execution>
-                    <execution>
-                        <id>iast-hook-launch</id>
+                        <phase>package</phase>
                         <goals>
-                            <goal>test</goal>
+                            <goal>shade</goal>
                         </goals>
                         <configuration>
-                            <includes>
-                                <include>**/IastHookLaunchTest.java</include>
-                            </includes>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <artifactSet>
+                                <includes>
+                                    <include>${project.groupId}:${project.artifactId}</include>
+                                    <include>org.slf4j:slf4j-api</include>
+                                </includes>
+                            </artifactSet>
+                            <relocations>
+                                <relocation>
+                                    <pattern>org.slf4j</pattern>
+                                    <shadedPattern>com.github.cc11001100.weavergirl.shade.org.slf4j</shadedPattern>
+                                </relocation>
+                            </relocations>
+                            <filters>
+                                <filter>
+                                    <artifact>org.slf4j:slf4j-api</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/services/**</exclude>
+                                        <exclude>META-INF/maven/**</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
                         </configuration>
                     </execution>
                 </executions>
