@@ -71,6 +71,8 @@ public class InterceptorDefinition {
   private final boolean hasAround;
   private final com.github.cc11001100.weavergirl.api.matcher.FieldMatcher fieldMatcher;
   private final String catchExceptionTypeName;
+  /** The fully-qualified aspect class name, used for {@code @DeclarePrecedence} resolution. */
+  private final String aspectClassName;
 
   /**
    * Creates a new interceptor definition with default priority (0).
@@ -158,6 +160,45 @@ public class InterceptorDefinition {
       boolean hasAround,
       com.github.cc11001100.weavergirl.api.matcher.FieldMatcher fieldMatcher,
       String catchExceptionTypeName) {
+    this(
+        name,
+        pointcut,
+        interceptor,
+        priority,
+        adviceMode,
+        hasAround,
+        fieldMatcher,
+        catchExceptionTypeName,
+        null);
+  }
+
+  /**
+   * Creates a new interceptor definition with all fields specified, including the fully-qualified
+   * aspect class name used for {@code @DeclarePrecedence} resolution.
+   *
+   * @param name unique name for this definition
+   * @param pointcut determines which classes and methods are intercepted
+   * @param interceptor the interceptor to invoke when the pointcut matches
+   * @param priority execution priority
+   * @param adviceMode which inlined advice class to use
+   * @param hasAround whether this interceptor implements around advice
+   * @param fieldMatcher the field matcher for FIELD advice mode, or null
+   * @param catchExceptionTypeName the exception type name for CATCH advice mode, or null
+   * @param aspectClassName the fully-qualified aspect class name this definition was derived from,
+   *     or null for programmatically registered definitions; drives {@code @DeclarePrecedence}
+   *     resolution
+   * @since 2.0.0
+   */
+  public InterceptorDefinition(
+      String name,
+      Pointcut pointcut,
+      Interceptor interceptor,
+      int priority,
+      AdviceMode adviceMode,
+      boolean hasAround,
+      com.github.cc11001100.weavergirl.api.matcher.FieldMatcher fieldMatcher,
+      String catchExceptionTypeName,
+      String aspectClassName) {
     if (name == null || name.isEmpty()) {
       throw new IllegalArgumentException("Interceptor name must not be null or empty");
     }
@@ -178,6 +219,7 @@ public class InterceptorDefinition {
     this.hasAround = hasAround;
     this.fieldMatcher = fieldMatcher;
     this.catchExceptionTypeName = catchExceptionTypeName;
+    this.aspectClassName = aspectClassName;
   }
 
   /**
@@ -218,16 +260,25 @@ public class InterceptorDefinition {
   /**
    * Returns the aspect class name associated with this definition, if any.
    *
-   * <p>This is used for {@code @DeclarePrecedence} resolution. For definitions created by
-   * {@link com.github.cc11001100.weavergirl.core.plugin.AnnotationPluginLoader}, this returns the
-   * simple name of the aspect class. For programmatically registered definitions, this may return
-   * the definition name as a fallback.
+   * <p>This is used for {@code @DeclarePrecedence} resolution: the precedence map is keyed by
+   * fully-qualified aspect class names, and {@link
+   * com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry#refreshPrecedence()}
+   * loads the name with {@code Class.forName} to read the annotation. For definitions created by
+   * {@link com.github.cc11001100.weavergirl.core.plugin.AnnotationPluginLoader} this returns the
+   * fully-qualified aspect class name recorded at registration time. For programmatically
+   * registered definitions it falls back to the definition name.
    *
    * @return the aspect class name, or the definition name if not available
    * @since 2.0.0
    */
   public String getAspectClassName() {
-    // Heuristic: AnnotationPluginLoader names definitions as
+    // Explicit FQN set by AnnotationPluginLoader at registration time. This is the only value
+    // that both loads via Class.forName and matches the precedence map keys users write in
+    // @DeclarePrecedence ("com.example.MyAspect, ..."), so it must take priority.
+    if (aspectClassName != null) {
+      return aspectClassName;
+    }
+    // Heuristic fallback: AnnotationPluginLoader names definitions as
     // "annotation-" + aspectClassSimpleName + "-" + methodKey
     if (name.startsWith("annotation-")) {
       int firstDash = name.indexOf('-', "annotation-".length());

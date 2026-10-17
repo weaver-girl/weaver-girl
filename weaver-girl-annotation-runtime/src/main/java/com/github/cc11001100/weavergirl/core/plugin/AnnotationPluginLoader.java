@@ -424,7 +424,16 @@ public class AnnotationPluginLoader {
               timedAnnotation);
       String defName = "annotation-" + clazz.getSimpleName();
       InterceptorDefinition definition =
-          new InterceptorDefinition(defName, pointcut, interceptor, priority);
+          new InterceptorDefinition(
+              defName,
+              pointcut,
+              interceptor,
+              priority,
+              InterceptorDefinition.AdviceMode.STANDARD,
+              false,
+              null,
+              null,
+              clazz.getName());
       registry.register(definition);
       return;
     }
@@ -453,7 +462,17 @@ public class AnnotationPluginLoader {
           createStaticInitInterceptor(interceptorInstance, staticInitMethods, sampleRate);
       Pointcut pointcut = new Pointcut(classMatcher, staticInitMatcher);
       String defName = "annotation-" + clazz.getSimpleName() + "-<clinit>";
-      registry.register(new InterceptorDefinition(defName, pointcut, interceptor, priority));
+      registry.register(
+          new InterceptorDefinition(
+              defName,
+              pointcut,
+              interceptor,
+              priority,
+              InterceptorDefinition.AdviceMode.STANDARD,
+              false,
+              null,
+              null,
+              clazz.getName()));
     }
 
     // --- Register constructor interceptor ---
@@ -484,7 +503,17 @@ public class AnnotationPluginLoader {
             createConstructorInterceptor(interceptorInstance, entry.getValue(), sampleRate);
         Pointcut pointcut = new Pointcut(classMatcher, constructorMatcher);
         String defName = "annotation-" + clazz.getSimpleName() + "-" + entry.getKey();
-        registry.register(new InterceptorDefinition(defName, pointcut, interceptor, priority));
+        registry.register(
+            new InterceptorDefinition(
+                defName,
+                pointcut,
+                interceptor,
+                priority,
+                InterceptorDefinition.AdviceMode.STANDARD,
+                false,
+                null,
+                null,
+                clazz.getName()));
       }
     }
 
@@ -509,7 +538,11 @@ public class AnnotationPluginLoader {
               pointcut,
               interceptor,
               priority,
-              InterceptorDefinition.AdviceMode.ARGUMENT_REWRITE));
+              InterceptorDefinition.AdviceMode.ARGUMENT_REWRITE,
+              false,
+              null,
+              null,
+              clazz.getName()));
     }
 
     // --- Register pattern/annotation interceptors ---
@@ -519,7 +552,17 @@ public class AnnotationPluginLoader {
           createPatternInterceptor(interceptorInstance, entry.getValue(), sampleRate);
       Pointcut pointcut = new Pointcut(classMatcher, methodMatcher);
       String defName = "annotation-" + clazz.getSimpleName() + "-pattern-" + entry.getKey();
-      registry.register(new InterceptorDefinition(defName, pointcut, interceptor, priority));
+      registry.register(
+          new InterceptorDefinition(
+              defName,
+              pointcut,
+              interceptor,
+              priority,
+              InterceptorDefinition.AdviceMode.STANDARD,
+              false,
+              null,
+              null,
+              clazz.getName()));
     }
     for (Map.Entry<String, List<Method>> entry : whenAnnotatedMethods.entrySet()) {
       MethodMatcher methodMatcher = MethodMatcher.byAnnotation(entry.getKey());
@@ -527,7 +570,17 @@ public class AnnotationPluginLoader {
           createPatternInterceptor(interceptorInstance, entry.getValue(), sampleRate);
       Pointcut pointcut = new Pointcut(classMatcher, methodMatcher);
       String defName = "annotation-" + clazz.getSimpleName() + "-annotated-" + entry.getKey();
-      registry.register(new InterceptorDefinition(defName, pointcut, interceptor, priority));
+      registry.register(
+          new InterceptorDefinition(
+              defName,
+              pointcut,
+              interceptor,
+              priority,
+              InterceptorDefinition.AdviceMode.STANDARD,
+              false,
+              null,
+              null,
+              clazz.getName()));
     }
 
     // --- Collect all target method keys ---
@@ -710,7 +763,17 @@ public class AnnotationPluginLoader {
 
       Pointcut pointcut = new Pointcut(classMatcher, methodMatcher);
       String defName = "annotation-" + clazz.getSimpleName() + "-" + targetMethod;
-      registry.register(new InterceptorDefinition(defName, pointcut, interceptor, priority));
+      registry.register(
+          new InterceptorDefinition(
+              defName,
+              pointcut,
+              interceptor,
+              priority,
+              InterceptorDefinition.AdviceMode.STANDARD,
+              false,
+              null,
+              null,
+              clazz.getName()));
     }
   }
 
@@ -1992,7 +2055,15 @@ public class AnnotationPluginLoader {
             + fieldName;
     registry.register(
         new InterceptorDefinition(
-            defName, pointcut, interceptor, priority, InterceptorDefinition.AdviceMode.FIELD));
+            defName,
+            pointcut,
+            interceptor,
+            priority,
+            InterceptorDefinition.AdviceMode.FIELD,
+            false,
+            null,
+            null,
+            clazz.getName()));
   }
 
   /**
@@ -2094,7 +2165,8 @@ public class AnnotationPluginLoader {
             InterceptorDefinition.AdviceMode.CATCH,
             false,
             null,
-            ann.value()));
+            ann.value(),
+            clazz.getName()));
   }
 
   /**

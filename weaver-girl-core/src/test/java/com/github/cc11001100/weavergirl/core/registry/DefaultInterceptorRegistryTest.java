@@ -5,10 +5,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.github.cc11001100.weavergirl.annotation.Before;
 import com.github.cc11001100.weavergirl.annotation.DeclarePrecedence;
+import com.github.cc11001100.weavergirl.annotation.WeaveClass;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
+import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
@@ -695,6 +698,73 @@ class DefaultInterceptorRegistryTest {
     List<InterceptorDefinition> result = registry.getInterceptorsForClass("com.example.Svc");
     assertEquals("FirstOrderedAspect", result.get(0).getName());
     assertEquals("SecondOrderedAspect", result.get(1).getName());
+  }
+
+  // --- @DeclarePrecedence via the annotation loader (end-to-end FQN resolution) ---
+
+  /**
+   * The end-to-end path: AnnotationPluginLoader names each definition
+   * "annotation-{simpleName}-{method}" and records {@code clazz.getName()} as the explicit
+   * {@code aspectClassName}. When the holder aspect carries {@code @DeclarePrecedence} with
+   * fully-qualified names, {@code getAspectClassName()} must return those FQNs so
+   * {@code refreshPrecedence()} can {@code Class.forName} them, build the precedence map, and
+   * order equal-priority definitions accordingly — even though the loader-derived names are simple
+   * names that {@code Class.forName} alone could never load.
+   */
+  @WeaveClass(target = "com.example.GuardedService")
+  public static class SecurityAspect {
+    @Before("execute")
+    public void beforeExecute(MethodInvocation inv) {}
+  }
+
+  @WeaveClass(target = "com.example.GuardedService")
+  public static class LoggingAspect {
+    @Before("execute")
+    public void beforeExecute(MethodInvocation inv) {}
+  }
+
+  @WeaveClass(target = "com.example.UnrelatedService")
+  @DeclarePrecedence(
+      "com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistryTest.SecurityAspect,"
+          + " com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistryTest.LoggingAspect")
+  public static class OrderingConfig {}
+
+  @Test
+  void annotationLoader_fqnDeclarePrecedence_ordersEqualPriorityDefinitions() {
+    com.github.cc11001100.weavergirl.core.plugin.AnnotationPluginLoader loader =
+        new com.github.cc11001100.weavergirl.core.plugin.AnnotationPluginLoader();
+    java.util.Set<Class<?>> aspects = new java.util.HashSet<>();
+    aspects.add(SecurityAspect.class);
+    aspects.add(LoggingAspect.class);
+    aspects.add(OrderingConfig.class);
+    loader.loadAnnotatedInterceptors(aspects, registry);
+
+    // The holder targets an unrelated class, so it is not part of the query result;
+    // the two advice aspects share priority 0 and differ only in precedence order.
+    List<InterceptorDefinition> result =
+        registry.getInterceptorsForClass("com.example.GuardedService");
+    assertEquals(2, result.size());
+    assertEquals("annotation-SecurityAspect-execute", result.get(0).getName());
+    assertEquals("annotation-LoggingAspect-execute", result.get(1).getName());
+  }
+
+  @Test
+  void annotationLoader_definitionAspectClassName_isFullyQualified() {
+    com.github.cc11001100.weavergirl.core.plugin.AnnotationPluginLoader loader =
+        new com.github.cc11001100.weavergirl.core.plugin.AnnotationPluginLoader();
+    java.util.Set<Class<?>> aspects = new java.util.HashSet<>();
+    aspects.add(SecurityAspect.class);
+    loader.loadAnnotatedInterceptors(aspects, registry);
+
+    InterceptorDefinition def =
+        registry.getAllDefinitions().stream()
+            .filter(d -> d.getName().startsWith("annotation-SecurityAspect"))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("SecurityAspect definition not registered"));
+    assertEquals(
+        SecurityAspect.class.getName(),
+        def.getAspectClassName(),
+        "loader must record the fully-qualified aspect class name");
   }
 
   private InterceptorDefinition createDefinition(String name, String className, String methodName) {
