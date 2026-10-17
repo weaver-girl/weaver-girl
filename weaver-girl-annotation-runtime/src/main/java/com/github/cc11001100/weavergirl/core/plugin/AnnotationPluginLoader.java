@@ -19,6 +19,7 @@ import com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression;
 import com.github.cc11001100.weavergirl.api.pointcut.PointcutParser;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -1304,7 +1305,9 @@ public class AnnotationPluginLoader {
         if (ann.allEntries()) {
           cacheStore.keySet().removeIf(k -> k.startsWith(prefix));
         } else {
-          cacheStore.remove(prefix + ":" + Arrays.toString(inv.getArguments()));
+          // Must agree with buildStableArgKey's key scheme used by @CacheResult/@CachePut, or the
+          // entry written there could never be removed by the evict.
+          cacheStore.remove(buildStableArgKey(prefix, inv, new int[0]));
         }
       }
     };
@@ -1620,28 +1623,92 @@ public class AnnotationPluginLoader {
     return inv.getTargetClass().getName() + "#" + inv.getMethodName();
   }
 
+  /**
+   * Builds a <em>stable</em> cache/idempotency key suffix from the intercepted arguments, fixing
+   * two defects of the former {@code prefix + ":" + Arrays.toString(args)} scheme:
+   *
+   * <ul>
+   *   <li><b>Array arguments keyed by identity.</b> {@link Arrays#toString(Object[])} on an
+   *       argument that is itself an array (e.g. {@code new int[]{1,2}}) called the array's own
+   *       {@link Object#toString()}, producing {@code [I@4f2410ac} — a different key for every
+   *       invocation even when the content was identical, silently disabling {@code @CacheResult}
+   *       and {@code @Idempotent} for array-typed parameters.
+   *   <li><b>Cross-shape aliasing.</b> Without an argument-count prefix, the single {@code String}
+   *       argument {@code "1, 2"} and the pair {@code (1, 2)} both rendered as {@code "[1, 2]"}.
+   *       {@code @CacheResult} then handed one invocation another invocation's stale return, and
+   *       {@code @Idempotent} swallowed a genuine repeat call. The count prefix plus per-argument
+   *       {@code '|'} separators make distinct argument shapes produce distinct keys.
+   * </ul>
+   *
+   * <p>Each argument renders by content with a type tag: arrays flatten recursively (equal content
+   * in a fresh array keys identically), scalars/boxed values/strings/enums keep an exact type tag
+   * and value, and arbitrary objects contribute their {@code toString()}. Callers using value
+   * objects (DTOs, requests) as key arguments must therefore supply a stable {@code toString()} —
+   * the same contract {@code equals/hashCode} must satisfy for such objects as map keys.
+   *
+   * <p>{@code keyArgIndices} selects a subset; an empty selection uses all arguments.
+   */
+  private static String buildStableArgKey(String prefix, MethodInvocation inv, int[] keyArgIndices) {
+    Object[] args;
+    if (keyArgIndices.length > 0) {
+      args = new Object[keyArgIndices.length];
+      for (int i = 0; i < keyArgIndices.length; i++) {
+        args[i] = inv.getArgument(keyArgIndices[i]);
+      }
+    } else {
+      args = inv.getArguments();
+    }
+    StringBuilder sb = new StringBuilder(prefix).append(':').append(args.length).append(':');
+    for (int i = 0; i < args.length; i++) {
+      if (i > 0) {
+        sb.append('|');
+      }
+      sb.append(renderKeySegment(args[i]));
+    }
+    return sb.toString();
+  }
+
+  private static String renderKeySegment(Object arg) {
+    if (arg == null) {
+      return "null";
+    }
+    Class<?> cls = arg.getClass();
+    if (cls.isArray()) {
+      return argTypeTag(cls) + ':' + Arrays.deepToString(new Object[] {arg});
+    }
+    if (arg instanceof String) {
+      return argTypeTag(cls) + ':' + arg;
+    }
+    if (arg instanceof Number || arg instanceof Boolean || arg instanceof Character) {
+      return argTypeTag(cls) + ':' + arg;
+    }
+    if (arg instanceof Enum) {
+      return argTypeTag(cls) + '.' + ((Enum<?>) arg).name();
+    }
+    return argTypeTag(cls) + ':' + arg;
+  }
+
+  private static String argTypeTag(Class<?> cls) {
+    if (!cls.isArray()) {
+      return cls.getName();
+    }
+    StringBuilder tag = new StringBuilder();
+    Class<?> c = cls;
+    while (c.isArray()) {
+      c = c.getComponentType();
+      tag.append("[]");
+    }
+    return c.getName() + tag;
+  }
+
   private String buildCacheKey(CacheResult ann, MethodInvocation inv) {
     String prefix = ann.keyPrefix().isEmpty() ? ann.value() : ann.keyPrefix();
-    if (ann.keyArgIndices().length > 0) {
-      StringBuilder sb = new StringBuilder(prefix).append(":");
-      for (int idx : ann.keyArgIndices()) {
-        sb.append(inv.getArgument(idx)).append(",");
-      }
-      return sb.toString();
-    }
-    return prefix + ":" + Arrays.toString(inv.getArguments());
+    return buildStableArgKey(prefix, inv, ann.keyArgIndices());
   }
 
   private String buildIdempotencyKey(Idempotent ann, MethodInvocation inv) {
     String base = inv.getTargetClass().getName() + "#" + inv.getMethodName();
-    if (ann.keyArgIndices().length > 0) {
-      StringBuilder sb = new StringBuilder(base).append(":");
-      for (int idx : ann.keyArgIndices()) {
-        sb.append(inv.getArgument(idx)).append(",");
-      }
-      return sb.toString();
-    }
-    return base + ":" + Arrays.toString(inv.getArguments());
+    return buildStableArgKey(base, inv, ann.keyArgIndices());
   }
 
   // ==================== EnableIf / SampleRate helpers ====================
@@ -2401,14 +2468,7 @@ public class AnnotationPluginLoader {
 
   private String buildCachePutKey(CachePut ann, MethodInvocation inv) {
     String prefix = ann.keyPrefix().isEmpty() ? ann.value() : ann.keyPrefix();
-    if (ann.keyArgIndices().length > 0) {
-      StringBuilder sb = new StringBuilder(prefix).append(":");
-      for (int idx : ann.keyArgIndices()) {
-        sb.append(inv.getArgument(idx)).append(",");
-      }
-      return sb.toString();
-    }
-    return prefix + ":" + Arrays.toString(inv.getArguments());
+    return buildStableArgKey(prefix, inv, ann.keyArgIndices());
   }
 
   /**

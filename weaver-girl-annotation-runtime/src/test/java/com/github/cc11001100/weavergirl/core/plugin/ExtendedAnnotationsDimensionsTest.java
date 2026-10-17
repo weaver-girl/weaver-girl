@@ -174,7 +174,13 @@ class ExtendedAnnotationsDimensionsTest {
     Interceptor put = interceptorFor("ndePutB");
     MethodInvocation inv = invocation("ndePutB", "a", "b");
     put.before(inv);
-    assertEquals("ndeKeyB:a,", inv.getAttachment("cachePut.key"));
+    String key = (String) inv.getAttachment("cachePut.key");
+    assertNotNull(key, "write-through wrapper must record the cache key");
+    assertTrue(
+        key.startsWith("ndeKeyB"), "cache key must use the configured keyPrefix");
+    assertTrue(
+        key.contains("String:a") && !key.contains("b"),
+        "keyArgIndices={0} must key on arg[0] only");
   }
 
   // ==================== @FallbackValue ====================

@@ -327,4 +327,107 @@ class CachingAndIdempotentWrapperCoverageTest {
     assertFalse(second.isSkipped(), "a null return value must never populate the idempotency store");
     assertNull(second.getAttachment("idempotent.cached"));
   }
+
+  // ==================== stable key semantics (regressions) ====================
+  //
+  // The former key was `prefix + ":" + Arrays.toString(args)`. For an argument that is itself an
+  // array (int[]/{Object[]), Arrays.toString delegated to the array's Object.toString(), which
+  // yields an identity form ([I@...) — so two invocations with equal content but fresh array
+  // instances produced different keys, silently defeating caching and idempotency for array-typed
+  // parameters. And without an argument-count prefix, a single String "1, 2" and the pair (1, 2)
+  // both rendered "[1, 2]", aliasing unrelated calls.
+
+  @Test
+  void cacheResult_arrayArgument_equalContentKeysIdenticallyAcrossInstances() {
+    Interceptor interceptor = interceptorFor("cwctFetchA");
+
+    MethodInvocation first = invocation("cwctFetchA", new int[] {1, 2});
+    interceptor.before(first);
+    assertFalse(first.isSkipped());
+    first.initReturnValue("result-array");
+    interceptor.after(first);
+
+    // Same content, different array instance: must hit (old code keyed by identity and missed).
+    MethodInvocation second = invocation("cwctFetchA", new int[] {1, 2});
+    interceptor.before(second);
+    assertTrue(second.isSkipped(), "equal-content array must hit despite a fresh array instance");
+    assertEquals("result-array", second.getReturnValue());
+  }
+
+  @Test
+  void cacheResult_arrayArgument_differentContentKeysDiffer() {
+    Interceptor interceptor = interceptorFor("cwctFetchA");
+
+    // Uses content distinct from the other array tests so the shared static cacheStore never
+    // pre-populates this key.
+    MethodInvocation first = invocation("cwctFetchA", new int[] {5, 5});
+    interceptor.before(first);
+    assertFalse(first.isSkipped());
+    first.initReturnValue("result-55");
+    interceptor.after(first);
+
+    MethodInvocation second = invocation("cwctFetchA", new int[] {2, 1});
+    interceptor.before(second);
+    assertFalse(second.isSkipped(), "different array content must key differently");
+    assertNull(second.getAttachment("cache.hit"));
+  }
+
+  @Test
+  void cacheResult_argumentShapes_doNotAlias() {
+    Interceptor interceptor = interceptorFor("cwctFetchA");
+
+    MethodInvocation singleString = invocation("cwctFetchA", "1, 2");
+    interceptor.before(singleString);
+    assertFalse(singleString.isSkipped());
+    singleString.initReturnValue("stringResult");
+    interceptor.after(singleString);
+
+    // The pair (1, 2) must NOT alias onto the single "1, 2" string key.
+    MethodInvocation pair = invocation("cwctFetchA", 1, 2);
+    interceptor.before(pair);
+    assertFalse(pair.isSkipped(), "a different argument shape must not alias onto another key");
+    assertNull(pair.getAttachment("cache.hit"));
+  }
+
+  @Test
+  void cacheResult_objectArgument_noCrossInstanceAliasing() {
+    Interceptor interceptor = interceptorFor("cwctFetchA");
+
+    Object key1 = new Object();
+    MethodInvocation first = invocation("cwctFetchA", key1);
+    interceptor.before(first);
+    assertFalse(first.isSkipped());
+    first.initReturnValue("objResult");
+    interceptor.after(first);
+
+    // A different instance must NOT alias onto the first instance's key (default Object.toString
+    // is identity-based, so the old scheme would never hit; the stable scheme keys by the tagged
+    // toString, which stays distinct per instance).
+    MethodInvocation other = invocation("cwctFetchA", new Object());
+    interceptor.before(other);
+    assertFalse(other.isSkipped(), "distinct object instance must not alias");
+    assertNull(other.getAttachment("cache.hit"));
+
+    // The same instance must still hit (reference semantics preserved).
+    MethodInvocation same = invocation("cwctFetchA", key1);
+    interceptor.before(same);
+    assertTrue(same.isSkipped());
+    assertEquals("objResult", same.getReturnValue());
+  }
+
+  @Test
+  void idempotent_arrayArgument_equalContentDeduplicates() {
+    Interceptor interceptor = interceptorFor("cwctCreateOrder");
+
+    MethodInvocation first = invocation("cwctCreateOrder", new int[] {7, 7});
+    interceptor.before(first);
+    assertFalse(first.isSkipped());
+    first.initReturnValue("created-array");
+    interceptor.after(first);
+
+    MethodInvocation second = invocation("cwctCreateOrder", new int[] {7, 7});
+    interceptor.before(second);
+    assertTrue(second.isSkipped(), "equal-content array must deduplicate");
+    assertEquals("created-array", second.getReturnValue());
+  }
 }
