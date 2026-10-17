@@ -211,11 +211,23 @@ class ConfigWatcherTest {
       }
     }
     assertNotNull(thread, "the watcher thread never started");
-    StringBuilder stack = new StringBuilder();
-    for (StackTraceElement frame : thread.getStackTrace()) {
-      stack.append(frame).append(" | ");
+    // The thread registers its WatchService before it ever calls take(). Sampling its stack once
+    // right after it appears races that registration: we might catch it still in register() and
+    // fail spuriously. Poll until the stack actually shows the blocked take() call.
+    long takeDeadline = System.currentTimeMillis() + 5000;
+    String stack = "";
+    while (System.currentTimeMillis() < takeDeadline) {
+      StringBuilder sb = new StringBuilder();
+      for (StackTraceElement frame : thread.getStackTrace()) {
+        sb.append(frame).append(" | ");
+      }
+      stack = sb.toString();
+      if (stack.contains("take")) {
+        break;
+      }
+      Thread.sleep(20);
     }
-    assertTrue(stack.toString().contains("take"), "watcher stack: " + stack);
+    assertTrue(stack.contains("take"), "watcher stack never reached take(): " + stack);
     thread.interrupt();
     thread.join(5000);
     assertFalse(thread.isAlive(), "interrupting the watcher left it running");

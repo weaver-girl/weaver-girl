@@ -471,7 +471,7 @@ public class AnnotationPluginLoader {
               pointcut,
               interceptor,
               priority,
-              InterceptorDefinition.AdviceMode.STANDARD,
+              InterceptorDefinition.AdviceMode.STATIC_INIT,
               false,
               null,
               null,

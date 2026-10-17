@@ -60,7 +60,8 @@ public class InterceptorDefinition {
     STANDARD,
     ARGUMENT_REWRITE,
     FIELD,
-    CATCH
+    CATCH,
+    STATIC_INIT
   }
 
   private final String name;

@@ -10,6 +10,7 @@ import static net.bytebuddy.matcher.ElementMatchers.isInterface;
 import static net.bytebuddy.matcher.ElementMatchers.isMethod;
 import static net.bytebuddy.matcher.ElementMatchers.isNative;
 import static net.bytebuddy.matcher.ElementMatchers.isSynthetic;
+import static net.bytebuddy.matcher.ElementMatchers.isTypeInitializer;
 import static net.bytebuddy.matcher.ElementMatchers.nameMatches;
 import static net.bytebuddy.matcher.ElementMatchers.nameStartsWith;
 import static net.bytebuddy.matcher.ElementMatchers.named;
@@ -28,6 +29,7 @@ import com.github.cc11001100.weavergirl.core.CatchAdvice;
 import com.github.cc11001100.weavergirl.core.ConstructorAdvice;
 import com.github.cc11001100.weavergirl.core.FieldAdvice;
 import com.github.cc11001100.weavergirl.core.InterceptAdvice;
+import com.github.cc11001100.weavergirl.core.StaticInitAdvice;
 import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
 import com.github.cc11001100.weavergirl.core.management.AgentDiagnostics;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
@@ -395,6 +397,12 @@ public class WeaverTransformer {
           adviceClass = FieldAdvice.class;
         } else if (mode == com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode.CATCH) {
           adviceClass = CatchAdvice.class;
+        } else if (mode == com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode.STATIC_INIT) {
+          // Static initializers have no reflective Method, so InterceptAdvice's
+          // @Advice.Origin Method binding cannot be inlined into <clinit> (ByteBuddy throws
+          // "Cannot represent static <clinit>() as the specified constant" at make() time).
+          // StaticInitAdvice binds only @Advice.Origin Class<?>, which resolves on <clinit>.
+          adviceClass = StaticInitAdvice.class;
         } else if (definition.getPointcut().getMethodMatcher().getMatchType()
             == com.github.cc11001100.weavergirl.api.matcher.MethodMatcher.MatchType.CONSTRUCTOR) {
           adviceClass = ConstructorAdvice.class;
@@ -650,7 +658,14 @@ public class WeaverTransformer {
         userMatcher;
     switch (methodMatcher.getMatchType()) {
       case EXACT_NAME:
-        userMatcher = named(methodMatcher.getPattern());
+        if ("<clinit>".equals(methodMatcher.getPattern())) {
+          // <clinit> must be selected via isTypeInitializer(); ByteBuddy's named("<clinit>")
+          // does NOT match a type initializer, so EXACT_NAME would silently select zero methods
+          // and the @OnStaticInit weave would be dropped without a trace.
+          userMatcher = isTypeInitializer();
+        } else {
+          userMatcher = named(methodMatcher.getPattern());
+        }
         break;
       case NAME_PATTERN:
         userMatcher = nameMatches(methodMatcher.getPattern());
