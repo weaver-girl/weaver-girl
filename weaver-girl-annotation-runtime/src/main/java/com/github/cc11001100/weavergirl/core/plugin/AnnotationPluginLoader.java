@@ -69,8 +69,10 @@ public class AnnotationPluginLoader {
   private static final Map<String, Object> idempotencyStore = new ConcurrentHashMap<>();
   // Attachment key used to resolve @Elapsed advice-method parameters
   private static final String ELAPSED_START_ATTACHMENT = "__weavergirl.elapsed.startNanos";
-  // Synchronized locks
-  private static final Map<String, Object> lockObjects = new ConcurrentHashMap<>();
+  // Synchronized locks: ReentrantLock held ACROSS the target method body (before() locks,
+  // after()/onException() unlock on the same thread), keyed by lockKey or target class+instance
+  private static final Map<String, java.util.concurrent.locks.ReentrantLock> lockObjects =
+      new ConcurrentHashMap<>();
 
   /** Scan a set of annotated classes and register their interceptors. */
   public void loadAnnotatedInterceptors(
@@ -1354,37 +1356,74 @@ public class AnnotationPluginLoader {
     return new Interceptor() {
       @Override
       public void before(MethodInvocation inv) {
-        String lockKey = ann.lockKey().isEmpty() ? inv.getTargetClass().getName() : ann.lockKey();
-        Object lock = lockObjects.computeIfAbsent(lockKey, k -> new Object());
-        synchronized (lock) {
+        // Acquire the lock and hold it ACROSS the method body: a synchronized block scoped to
+        // this before() frame would release the moment it returned, long before the target
+        // method executes, leaving the body unsynchronized. The matching release happens in
+        // after()/onException(), which run on the same thread after the body completes (or
+        // throws). acquireLock() is the only place a call can block, so a second thread queues
+        // here until the first call's after/onException releases.
+        java.util.concurrent.locks.ReentrantLock lock = acquireLock(inv);
+        try {
           delegate.before(inv);
+        } catch (Throwable e) {
+          // Never hold the lock across a before()-phase failure: release it and rethrow so a
+          // broken inner interceptor cannot leak the lock and deadlock later callers.
+          lock.unlock();
+          throw e;
         }
       }
 
       @Override
       public void after(MethodInvocation inv) {
-        String lockKey = ann.lockKey().isEmpty() ? inv.getTargetClass().getName() : ann.lockKey();
-        Object lock = lockObjects.get(lockKey);
-        if (lock != null) {
-          synchronized (lock) {
-            delegate.after(inv);
-          }
-        } else {
+        try {
           delegate.after(inv);
+        } finally {
+          // Always release the lock even if an inner interceptor's after() throws. The engine
+          // swallows interceptor exceptions, so a skipped release here would silently deadlock
+          // the next caller of this method.
+          releaseLock(inv);
         }
       }
 
       @Override
       public void onException(MethodInvocation inv) {
-        String lockKey = ann.lockKey().isEmpty() ? inv.getTargetClass().getName() : ann.lockKey();
-        Object lock = lockObjects.get(lockKey);
-        if (lock != null) {
-          synchronized (lock) {
-            delegate.onException(inv);
-          }
-        } else {
+        try {
           delegate.onException(inv);
+        } finally {
+          releaseLock(inv);
         }
+      }
+
+      /** The per-(lockKey[, instance]) lock guarding this invocation's method body. */
+      private java.util.concurrent.locks.ReentrantLock acquireLock(MethodInvocation inv) {
+        String lockKey = lockKeyOf(inv);
+        java.util.concurrent.locks.ReentrantLock lock =
+            lockObjects.computeIfAbsent(
+                lockKey, k -> new java.util.concurrent.locks.ReentrantLock());
+        lock.lock();
+        inv.setAttachment("synchronized.lockKey", lockKey);
+        return lock;
+      }
+
+      private void releaseLock(MethodInvocation inv) {
+        Object lockKey = inv.getAttachment("synchronized.lockKey");
+        if (lockKey != null) {
+          java.util.concurrent.locks.ReentrantLock lock = lockObjects.get(lockKey);
+          if (lock != null) {
+            lock.unlock();
+          }
+          // Clear so a later onException/after (unit tests drive both phases on one invocation)
+          // cannot release the same lock twice.
+          inv.setAttachment("synchronized.lockKey", null);
+        }
+      }
+
+      private String lockKeyOf(MethodInvocation inv) {
+        String base = ann.lockKey().isEmpty() ? inv.getTargetClass().getName() : ann.lockKey();
+        if (ann.instanceLevel() && inv.getTarget() != null) {
+          return base + "#" + System.identityHashCode(inv.getTarget());
+        }
+        return base;
       }
     };
   }
