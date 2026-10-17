@@ -1102,11 +1102,28 @@ public class AnnotationPluginLoader {
       @Override
       public void after(MethodInvocation inv) {
         Long deadline = (Long) inv.getAttachment("timeout.deadlineNanos");
-        if (deadline != null && System.nanoTime() > deadline) {
-          inv.setAttachment("timeout.exceeded", true);
-          invokeMethods(instance, methods, inv);
+        try {
+          delegate.after(inv);
+        } finally {
+          if (deadline != null && System.nanoTime() > deadline) {
+            inv.setAttachment("timeout.exceeded", true);
+            invokeMethods(instance, methods, inv);
+            if (ann.cancelOnTimeout()) {
+              // The body has run to completion but blew past its budget; the caller must not
+              // observe a stale successful return. InterceptAdvice re-reads the throwable from
+              // the context after after(), so this TimeoutException reaches the caller instead
+              // of the overdue result. (The running body itself cannot be force-interrupted in
+              // a synchronous bytecode weave; its side effects still complete.)
+              inv.setThrowable(
+                  new java.util.concurrent.TimeoutException(
+                      "method '"
+                          + inv.getMethodName()
+                          + "' exceeded "
+                          + ann.durationMs()
+                          + "ms timeout"));
+            }
+          }
         }
-        delegate.after(inv);
       }
 
       @Override

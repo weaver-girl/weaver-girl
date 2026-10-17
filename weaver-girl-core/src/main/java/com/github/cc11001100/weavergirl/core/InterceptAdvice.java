@@ -267,6 +267,14 @@ public class InterceptAdvice {
               }
             } else {
               interceptor.after(context);
+              // @Timeout injects a TimeoutException into the context when the method ran
+              // longer than its deadline; surface it to the caller instead of letting the
+              // stale (successful) return slip through. Normal interceptors never set a
+              // throwable in after(), so this stays a no-op for everyone else.
+              Throwable current = context.getThrowable();
+              if (current != null && !context.isExceptionSuppressed()) {
+                throwable = current;
+              }
             }
             try {
               interceptor.afterFinally(context);

@@ -18,6 +18,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -300,6 +301,10 @@ class ResilienceWrapperCoverageTest {
 
     interceptor.after(inv);
     assertEquals(true, inv.getAttachment("timeout.exceeded"));
+    // The caller must observe a real timeout signal, not a stale success. cancelOnTimeout is
+    // true by default, so after() pushes a TimeoutException into the context for
+    // InterceptAdvice to surface.
+    assertTrue(inv.getThrowable() instanceof TimeoutException);
     assertTrue(ResilienceInterceptors.guardCalls.contains("toExceeded:toExceeded"));
   }
 
