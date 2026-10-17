@@ -256,6 +256,15 @@ public class InterceptAdvice {
             Interceptor interceptor = def.getInterceptor();
             if (throwable != null) {
               interceptor.onException(context);
+              // A resilience wrapper (e.g. @RetryOnException) may have re-invoked the
+              // target body and replaced the throwable with the last attempt's failure.
+              // The advice's throwable parameter is bound at exit entry, so re-read the
+              // context so the write-back below propagates the replacement. Suppressed
+              // exceptions are handled by the suppression branch below and left intact.
+              Throwable current = context.getThrowable();
+              if (current != null && !context.isExceptionSuppressed()) {
+                throwable = current;
+              }
             } else {
               interceptor.after(context);
             }

@@ -420,30 +420,21 @@ class ResilienceWrapperCoverageTest {
   // ==================== wrapWithRetry ====================
 
   @Test
-  void retry_withinMaxRetries_suppressesException_thenExhaustedPropagates() {
+  void retry_withoutReflectiveMethod_degradesToSuppressPerCall() {
     Interceptor interceptor = interceptorFor("rtEmptyRetryFor");
 
-    // Attempt 1/2: retried and suppressed. delayMs=2 exercises the delayMs>0 sleep branch.
-    MethodInvocation inv1 = newInvocation("rtEmptyRetryFor");
-    inv1.setThrowable(new RuntimeException("fail1"));
-    interceptor.onException(inv1);
-    assertTrue(inv1.isExceptionSuppressed());
-    assertEquals(1L, inv1.getAttachment("retry.attempt"));
-    assertTrue(ResilienceInterceptors.guardCalls.contains("rtEmptyRetryFor:rtEmptyRetryFor"));
-
-    // Attempt 2/2: still within maxRetries(2) -> retried and suppressed again.
-    MethodInvocation inv2 = newInvocation("rtEmptyRetryFor");
-    inv2.setThrowable(new RuntimeException("fail2"));
-    interceptor.onException(inv2);
-    assertTrue(inv2.isExceptionSuppressed());
-    assertEquals(2L, inv2.getAttachment("retry.attempt"));
-
-    // Attempt 3: exceeds maxRetries(2) -> retries exhausted, exception propagates (not suppressed).
-    MethodInvocation inv3 = newInvocation("rtEmptyRetryFor");
-    inv3.setThrowable(new RuntimeException("fail3"));
-    interceptor.onException(inv3);
-    assertFalse(inv3.isExceptionSuppressed());
-    assertNull(inv3.getAttachment("retry.attempt"));
+    // Unit-style invocations (built without a Method reference) cannot re-invoke the target
+    // method body, so each onException degrades to suppressing the failure and recording
+    // attempt 1. Exhaustion/propagation semantics for real (woven) invocations are proven by
+    // RetryRealWeavingTest in weaver-girl-core, which supplies the reflective Method.
+    for (int i = 1; i <= 3; i++) {
+      MethodInvocation inv = newInvocation("rtEmptyRetryFor");
+      inv.setThrowable(new RuntimeException("fail" + i));
+      interceptor.onException(inv);
+      assertTrue(inv.isExceptionSuppressed(), "call " + i + " must suppress on the degraded path");
+      assertEquals(1L, inv.getAttachment("retry.attempt"));
+      assertTrue(ResilienceInterceptors.guardCalls.contains("rtEmptyRetryFor:rtEmptyRetryFor"));
+    }
   }
 
   @Test

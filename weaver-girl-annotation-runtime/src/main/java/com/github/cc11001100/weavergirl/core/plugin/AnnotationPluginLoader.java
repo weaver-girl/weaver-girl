@@ -2216,27 +2216,42 @@ public class AnnotationPluginLoader {
     long delayMs = retryAnn.delayMs();
     Set<Class<? extends Throwable>> retryFor = new HashSet<>(Arrays.asList(retryAnn.retryFor()));
     return new Interceptor() {
-      private final AtomicLong retryAttempt = new AtomicLong(0);
+      /**
+       * Re-entry guard for the reflective re-invocation. Calling {@code inv.getMethod().invoke}
+       * re-enters the woven target method, whose exit advice dispatches back into this {@code
+       * onException} when the re-invocation fails. That nested call must not retry again — it
+       * exists only to report the re-invocation's failure back to the outer loop below (as the
+       * exception the reflective call throws). Without this guard, a persistent failure would
+       * recurse forever.
+       */
+      private final ThreadLocal<Boolean> retrying = new ThreadLocal<>();
 
       @Override
       public void before(MethodInvocation inv) {
-        retryAttempt.set(0);
         delegate.before(inv);
       }
 
       @Override
       public void after(MethodInvocation inv) {
-        retryAttempt.set(0);
         delegate.after(inv);
       }
 
       @Override
       public void onException(MethodInvocation inv) {
         Throwable t = inv.getThrowable();
-        if (t != null && shouldRetryFor(t, retryFor)) {
-          long attempt = retryAttempt.incrementAndGet();
-          if (attempt <= maxRetries) {
-            log.info("Retrying {} (attempt {}/{})", inv.getMethodName(), attempt, maxRetries);
+        if (t == null || !shouldRetryFor(t, retryFor)) {
+          delegate.onException(inv);
+          return;
+        }
+        // Re-entry guard (see field javadoc): let the nested failure propagate out of
+        // method.invoke so the outer loop can decide whether to try again.
+        if (Boolean.TRUE.equals(retrying.get())) {
+          return;
+        }
+        retrying.set(Boolean.TRUE);
+        try {
+          for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            inv.setAttachment("retry.attempt", (long) attempt);
             if (delayMs > 0) {
               try {
                 Thread.sleep(delayMs);
@@ -2244,14 +2259,45 @@ public class AnnotationPluginLoader {
                 Thread.currentThread().interrupt();
               }
             }
-            inv.setAttachment("retry.attempt", attempt);
+            // Invoke the user's @RetryOnException method (observability hook), then actually
+            // re-execute the target method body rather than merely suppressing the failure.
             invokeMethods(instance, retryMethods, inv);
-            inv.suppressException();
-            return;
+            Method method = inv.getMethod();
+            if (method == null) {
+              // No reflective target available (e.g. a unit-style invocation built without a
+              // Method): cannot re-run the body, so degrade to suppressing the failure.
+              inv.suppressException();
+              return;
+            }
+            try {
+              Object result =
+                  method.invoke(
+                      inv.getTarget(),
+                      inv.getArguments());
+              // A successful re-invocation replaces the failure: write the result back (for
+              // non-void targets) and clear the exception so onMethodExit returns it.
+              if (method.getReturnType() != Void.TYPE) {
+                inv.setReturnValue(result);
+              }
+              inv.suppressException();
+              return;
+            } catch (java.lang.reflect.InvocationTargetException ite) {
+              // The re-invoked target method failed again; record it and try the next attempt.
+              Throwable cause = ite.getCause();
+              inv.setThrowable(cause != null ? cause : ite);
+            } catch (Throwable infra) {
+              // Reflective infrastructure failure (illegal access, wrong argument types, ...):
+              // not a retryable target failure — stop retrying and propagate.
+              inv.setThrowable(infra);
+              break;
+            }
           }
+          // All retries exhausted: hand the last failure to the downstream onException chain,
+          // which may suppress it or let it propagate.
+          delegate.onException(inv);
+        } finally {
+          retrying.remove();
         }
-        retryAttempt.set(0);
-        delegate.onException(inv);
       }
 
       private boolean shouldRetryFor(Throwable t, Set<Class<? extends Throwable>> retryFor) {
