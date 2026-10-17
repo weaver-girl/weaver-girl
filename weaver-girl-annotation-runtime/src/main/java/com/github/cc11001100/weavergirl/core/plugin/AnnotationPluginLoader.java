@@ -1262,9 +1262,8 @@ public class AnnotationPluginLoader {
         delegate.after(inv);
         String cacheKey = (String) inv.getAttachment("cache.key");
         if (cacheKey != null && inv.getReturnValue() != null) {
-          long ttlNanos = ann.ttlMs() > 0 ? ann.ttlMs() * 1_000_000 : Long.MAX_VALUE;
-          cacheStore.put(
-              cacheKey, new CacheEntry(inv.getReturnValue(), System.nanoTime() + ttlNanos));
+          String prefix = ann.keyPrefix().isEmpty() ? ann.value() : ann.keyPrefix();
+          cacheWrite(prefix, cacheKey, inv.getReturnValue(), ann.ttlMs(), ann.maxSize());
         }
       }
 
@@ -2454,8 +2453,8 @@ public class AnnotationPluginLoader {
         delegate.after(inv);
         String cacheKey = (String) inv.getAttachment("cachePut.key");
         if (cacheKey != null && inv.getReturnValue() != null) {
-          long ttlNanos = ann.ttlMs() > 0 ? ann.ttlMs() * 1_000_000 : Long.MAX_VALUE;
-          cacheStore.put(cacheKey, new CacheEntry(inv.getReturnValue(), System.nanoTime() + ttlNanos));
+          String prefix = ann.keyPrefix().isEmpty() ? ann.value() : ann.keyPrefix();
+          cacheWrite(prefix, cacheKey, inv.getReturnValue(), ann.ttlMs(), ann.maxSize());
         }
       }
 
@@ -3199,14 +3198,59 @@ public class AnnotationPluginLoader {
   private static class CacheEntry {
     final Object value;
     final long expiryNanos;
+    final long insertedNanos;
 
     CacheEntry(Object value, long expiryNanos) {
       this.value = value;
       this.expiryNanos = expiryNanos;
+      this.insertedNanos = System.nanoTime();
     }
 
     boolean isExpired() {
       return expiryNanos > 0 && System.nanoTime() > expiryNanos;
+    }
+  }
+
+  /**
+   * Writes a cache entry then enforces the {@code maxSize} bound <em>scoped to the key prefix</em>,
+   * so one {@code @CacheResult}/{@code @CachePut} target's capacity never evicts another target's
+   * entries. The former implementation ignored {@code maxSize} entirely and the {@link
+   * ConcurrentHashMap} grew unbounded, leaking memory until OOM.
+   *
+   * <p>When the prefix's entries exceed {@code maxSize}, expired ones are dropped first, then the
+   * oldest non-expired ones.
+   */
+  private static void cacheWrite(
+      String prefix, String cacheKey, Object value, long ttlMs, int maxSize) {
+    long expiry = ttlMs > 0 ? System.nanoTime() + ttlMs * 1_000_000 : Long.MAX_VALUE;
+    cacheStore.put(cacheKey, new CacheEntry(value, expiry));
+    if (maxSize > 0) {
+      trimCacheStore(prefix, maxSize);
+    }
+  }
+
+  private static void trimCacheStore(String prefix, int maxSize) {
+    long count = cacheStore.keySet().stream().filter(k -> k.startsWith(prefix)).count();
+    if (count <= maxSize) {
+      return;
+    }
+    cacheStore.entrySet().removeIf(e -> e.getKey().startsWith(prefix) && e.getValue().isExpired());
+    while (true) {
+      Map.Entry<String, CacheEntry> eldest = null;
+      long oldestInserted = Long.MAX_VALUE;
+      for (Map.Entry<String, CacheEntry> e : cacheStore.entrySet()) {
+        if (e.getKey().startsWith(prefix) && e.getValue().insertedNanos < oldestInserted) {
+          oldestInserted = e.getValue().insertedNanos;
+          eldest = e;
+        }
+      }
+      if (eldest == null) {
+        break;
+      }
+      cacheStore.remove(eldest.getKey());
+      if (cacheStore.keySet().stream().filter(k -> k.startsWith(prefix)).count() <= maxSize) {
+        break;
+      }
     }
   }
 }

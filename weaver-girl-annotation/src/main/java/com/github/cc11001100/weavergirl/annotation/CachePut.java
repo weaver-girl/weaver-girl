@@ -45,4 +45,10 @@ public @interface CachePut {
 
   /** Indices of arguments to include in the cache key. When empty, all arguments are used. */
   int[] keyArgIndices() default {};
+
+  /**
+   * Maximum number of cache entries across all key prefixes. When the store exceeds this bound,
+   * expired entries are dropped first, then the oldest non-expired entries. 0 disables the bound.
+   */
+  int maxSize() default 1000;
 }

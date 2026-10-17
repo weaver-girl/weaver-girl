@@ -45,6 +45,14 @@ class CachingAndIdempotentWrapperCoverageTest {
     @CacheResult(value = "cwctFetchNull")
     public void cacheFetchNull(MethodInvocation inv) {}
 
+    // Tiny maxSize to exercise the capacity trim path in isolation from other tests.
+    @CacheResult(value = "cwctBoundedA", keyPrefix = "cwctBoundedA", maxSize = 3)
+    public void cacheBoundedA(MethodInvocation inv) {}
+
+    // maxSize = 0 disables the bound (never trims).
+    @CacheResult(value = "cwctBoundedZero", keyPrefix = "cwctBoundedZero", maxSize = 0)
+    public void cacheBoundedZero(MethodInvocation inv) {}
+
     // Populates entries under an explicit keyPrefix for the single-key evict test.
     @CacheResult(value = "cwctDataA", keyPrefix = "cwctPrefixA")
     public void cacheDataA(MethodInvocation inv) {}
@@ -429,5 +437,75 @@ class CachingAndIdempotentWrapperCoverageTest {
     interceptor.before(second);
     assertTrue(second.isSkipped(), "equal-content array must deduplicate");
     assertEquals("created-array", second.getReturnValue());
+  }
+
+  // ==================== maxSize capacity (regression) ====================
+  //
+  // @CacheResult declared maxSize but the wrapper never enforced it: cacheStore was a plain
+  // ConcurrentHashMap that grew without bound, so a long-lived cached method leaked memory until
+  // OOM. The bound is scoped to the key prefix, so one method's capacity never evicts another
+  // method's entries.
+
+  @Test
+  void cacheResult_maxSize_evictsOldestUnderPrefixOnly() {
+    Interceptor bounded = interceptorFor("cwctBoundedA");
+    Interceptor other = interceptorFor("cwctFetchNull"); // disjoint prefix, maxSize=1000 default
+
+    // Seed the disjoint prefix first; the bounded prefix's trims must never touch it.
+    MethodInvocation otherWrite = invocation("cwctFetchNull", "keep");
+    other.before(otherWrite);
+    assertFalse(otherWrite.isSkipped());
+    otherWrite.initReturnValue("keep-me");
+    other.after(otherWrite);
+
+    // maxSize=3: three distinct keys under cwctBoundedA fill the bound without trimming.
+    for (int i = 0; i < 3; i++) {
+      MethodInvocation inv = invocation("cwctBoundedA", "k" + i);
+      bounded.before(inv);
+      assertFalse(inv.isSkipped(), "new key k" + i + " should be a miss");
+      inv.initReturnValue("v-k" + i);
+      bounded.after(inv);
+    }
+    for (int i = 0; i < 3; i++) {
+      MethodInvocation inv = invocation("cwctBoundedA", "k" + i);
+      bounded.before(inv);
+      assertTrue(inv.isSkipped(), "k" + i + " should still be cached at capacity");
+    }
+
+    // A 4th distinct key pushes k0 (the eldest under the prefix) out of the budget.
+    MethodInvocation k3 = invocation("cwctBoundedA", "k3");
+    bounded.before(k3);
+    assertFalse(k3.isSkipped());
+    k3.initReturnValue("v-k3");
+    bounded.after(k3);
+
+    MethodInvocation k0 = invocation("cwctBoundedA", "k0");
+    bounded.before(k0);
+    assertFalse(k0.isSkipped(), "oldest entry must be evicted once the bound is exceeded");
+    assertNull(k0.getAttachment("cache.hit"));
+
+    // The disjoint prefix must be completely untouched by the bounded trim.
+    MethodInvocation otherRead = invocation("cwctFetchNull", "keep");
+    other.before(otherRead);
+    assertTrue(otherRead.isSkipped(), "bounded trim must not evict a different prefix's entry");
+    assertEquals("keep-me", otherRead.getReturnValue());
+  }
+
+  @Test
+  void cacheResult_maxSize_zero_neverTrims() {
+    Interceptor interceptor = interceptorFor("cwctBoundedZero");
+
+    for (int i = 0; i < 5; i++) {
+      MethodInvocation inv = invocation("cwctBoundedZero", "k" + i);
+      interceptor.before(inv);
+      assertFalse(inv.isSkipped());
+      inv.initReturnValue("v-" + i);
+      interceptor.after(inv);
+    }
+    // Unbounded: every key still present.
+    MethodInvocation last = invocation("cwctBoundedZero", "k4");
+    interceptor.before(last);
+    assertTrue(last.isSkipped());
+    assertEquals("v-4", last.getReturnValue());
   }
 }
