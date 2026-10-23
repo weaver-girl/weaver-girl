@@ -7,6 +7,8 @@ import com.github.cc11001100.weavergirl.api.metrics.MetricSnapshot;
 import com.github.cc11001100.weavergirl.api.observability.MetricCollector;
 import com.github.cc11001100.weavergirl.api.observability.MetricSource;
 import com.github.cc11001100.weavergirl.api.observability.MetricSources;
+import com.github.cc11001100.weavergirl.api.observability.SpanSinkStats;
+import com.github.cc11001100.weavergirl.api.observability.SpanSinks;
 import com.github.cc11001100.weavergirl.api.plugin.PluginHealth;
 import com.github.cc11001100.weavergirl.api.plugin.PluginHealthRegistry;
 import com.github.cc11001100.weavergirl.api.status.AgentStatusHolder;
@@ -332,6 +334,7 @@ public class PrometheusExporter implements InterceptorEventListener {
     appendInterceptorMetrics(sb);
     appendAgentMetrics(sb);
     appendPluginHealthMetrics(sb);
+    appendSpanSinkMetrics(sb);
     appendJvmMetrics(sb);
     appendRegistryMetrics(sb);
     appendMetricSources(sb);
@@ -819,6 +822,45 @@ public class PrometheusExporter implements InterceptorEventListener {
           .append(escape(name))
           .append("\"} ")
           .append(formatNumber(plugin.getCheckTimestamp() / 1000.0))
+          .append("\n");
+    }
+    sb.append("\n");
+  }
+
+  /**
+   * Delivery counters for plugin-contributed {@link
+   * com.github.cc11001100.weavergirl.api.observability.SpanSink}s. A sink's failures are invisible
+   * from the application side (they are isolated and rate-limit logged), so this is how a failing
+   * user backend shows up.
+   */
+  private void appendSpanSinkMetrics(StringBuilder sb) {
+    Map<String, SpanSinkStats> stats;
+    try {
+      stats = SpanSinks.getSinkStats();
+    } catch (RuntimeException e) {
+      return;
+    }
+    if (stats == null || stats.isEmpty()) {
+      return;
+    }
+
+    sb.append("# HELP weavergirl_span_sink_deliveries_total Spans handed to a SpanSink\n");
+    sb.append("# TYPE weavergirl_span_sink_deliveries_total counter\n");
+    for (Map.Entry<String, SpanSinkStats> entry : stats.entrySet()) {
+      sb.append("weavergirl_span_sink_deliveries_total{sink=\"")
+          .append(escape(entry.getKey()))
+          .append("\"} ")
+          .append(entry.getValue().getDeliveries())
+          .append("\n");
+    }
+
+    sb.append("# HELP weavergirl_span_sink_errors_total SpanSink callbacks that threw\n");
+    sb.append("# TYPE weavergirl_span_sink_errors_total counter\n");
+    for (Map.Entry<String, SpanSinkStats> entry : stats.entrySet()) {
+      sb.append("weavergirl_span_sink_errors_total{sink=\"")
+          .append(escape(entry.getKey()))
+          .append("\"} ")
+          .append(entry.getValue().getFailures())
           .append("\n");
     }
     sb.append("\n");

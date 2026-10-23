@@ -5,7 +5,10 @@ import com.github.cc11001100.weavergirl.api.tracing.SpanContext;
 import com.github.cc11001100.weavergirl.api.tracing.Tracer;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
@@ -131,17 +134,52 @@ public final class SpanSinks {
     }
   }
 
-  /** A sink plus its rate-limited failure logging state. */
+  /**
+   * Delivery and failure counters per sink name, for metric bridges.
+   *
+   * <p>Two sinks that report the same name are summed: the label a metrics backend sees cannot
+   * distinguish them either.
+   *
+   * @return an immutable snapshot, empty when no sink is registered
+   */
+  public static Map<String, SpanSinkStats> getSinkStats() {
+    Map<String, long[]> merged = new TreeMap<>();
+    for (SinkHolder holder : holders) {
+      String name = holder.name();
+      long[] counts = merged.get(name);
+      if (counts == null) {
+        counts = new long[2];
+        merged.put(name, counts);
+      }
+      counts[0] += holder.deliveries.get();
+      counts[1] += holder.failures.get();
+    }
+    Map<String, SpanSinkStats> stats = new LinkedHashMap<>();
+    for (Map.Entry<String, long[]> entry : merged.entrySet()) {
+      long[] counts = entry.getValue();
+      stats.put(entry.getKey(), new SpanSinkStats(entry.getKey(), counts[0], counts[1]));
+    }
+    return Collections.unmodifiableMap(stats);
+  }
+
+  /** A sink plus its counters and rate-limited failure logging state. */
   private static final class SinkHolder {
     private final SpanSink sink;
     private final AtomicLong lastWarningAt = new AtomicLong(0);
     private final AtomicLong failures = new AtomicLong(0);
+    private final AtomicLong deliveries = new AtomicLong(0);
 
     SinkHolder(SpanSink sink) {
       this.sink = sink;
     }
 
+    String name() {
+      String name = sink.name();
+      return name == null || name.trim().isEmpty() ? "unknown" : name.trim();
+    }
+
     void deliver(SpanRecord record) {
+      deliveries.incrementAndGet();
       try {
         sink.onSpanEnd(record);
       } catch (RuntimeException e) {

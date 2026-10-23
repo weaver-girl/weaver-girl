@@ -26,6 +26,8 @@ class PrometheusExporterTest {
     com.github.cc11001100.weavergirl.api.observability.MetricSources.clear();
     com.github.cc11001100.weavergirl.api.status.AgentStatusHolder.set(null);
     com.github.cc11001100.weavergirl.api.plugin.PluginHealthRegistry.clear();
+    com.github.cc11001100.weavergirl.api.observability.SpanSinks.clear();
+    com.github.cc11001100.weavergirl.api.tracing.Tracer.setCurrentSpan(null);
   }
 
   @Test
@@ -250,6 +252,36 @@ class PrometheusExporterTest {
     assertTrue(metrics.contains("# TYPE weavergirl_plugin_health gauge"), metrics);
     assertTrue(
         metrics.contains("weavergirl_plugin_health_timestamp_seconds{plugin=\"jdbc\"} "), metrics);
+  }
+
+  @Test
+  void renderMetrics_rendersSpanSinkStats() {
+    com.github.cc11001100.weavergirl.api.observability.SpanSinks.register(
+        new com.github.cc11001100.weavergirl.api.observability.SpanSink() {
+          @Override
+          public String name() {
+            return "my-apm";
+          }
+
+          @Override
+          public void onSpanEnd(com.github.cc11001100.weavergirl.api.observability.SpanRecord span) {
+            throw new IllegalStateException("backend down");
+          }
+        });
+    com.github.cc11001100.weavergirl.api.tracing.Tracer.startSpan("op");
+    com.github.cc11001100.weavergirl.api.tracing.Tracer.endSpan(null, null);
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(
+        metrics.contains("weavergirl_span_sink_deliveries_total{sink=\"my-apm\"} 1"), metrics);
+    assertTrue(metrics.contains("weavergirl_span_sink_errors_total{sink=\"my-apm\"} 1"), metrics);
+  }
+
+  @Test
+  void renderMetrics_omitsSpanSinkMetricsWhenNoSinkIsRegistered() {
+    String metrics = exporter.renderMetrics();
+    assertFalse(metrics.contains("weavergirl_span_sink"), metrics);
   }
 
   @Test

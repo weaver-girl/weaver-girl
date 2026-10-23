@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.github.cc11001100.weavergirl.api.tracing.Tracer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -157,6 +158,45 @@ class SpanSinksTest {
     } finally {
       Tracer.removeCompletionListener(other);
     }
+  }
+
+  @Test
+  void statsCountDeliveriesAndFailuresPerSinkName() {
+    SpanSinks.register(recordSinkCounting(new AtomicInteger()));
+    SpanSinks.register(
+        new SpanSink() {
+          @Override
+          public String name() {
+            return "broken";
+          }
+
+          @Override
+          public void onSpanEnd(SpanRecord span) {
+            throw new IllegalStateException("backend down");
+          }
+        });
+
+    Tracer.startSpan("op");
+    Tracer.endSpan(null, null);
+
+    Map<String, SpanSinkStats> stats = SpanSinks.getSinkStats();
+    assertEquals(2, stats.size());
+    assertEquals(1, stats.get("counting").getDeliveries());
+    assertEquals(0, stats.get("counting").getFailures());
+    assertEquals(1, stats.get("broken").getDeliveries());
+    assertEquals(1, stats.get("broken").getFailures());
+  }
+
+  @Test
+  void statsDisappearWhenTheSinkIsUnregistered() {
+    SpanSink sink = recordSinkCounting(new AtomicInteger());
+    SpanSinks.register(sink);
+    Tracer.startSpan("op");
+    Tracer.endSpan(null, null);
+
+    SpanSinks.unregister(sink);
+
+    assertTrue(SpanSinks.getSinkStats().isEmpty());
   }
 
   @Test

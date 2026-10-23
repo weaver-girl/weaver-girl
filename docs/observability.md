@@ -213,6 +213,19 @@ weavergirl_plugin_health_timestamp_seconds{plugin="jdbc"} 1730000000.123
 告警表达式：`weavergirl_plugin_health{status!="healthy"} == 1`。从未上报的插件不输出序列（而不是
 伪造 `unknown`）；`_timestamp_seconds` 用于发现“卡住不更新”的健康检查。
 
+### 4.2.3 SpanSink 投递指标
+
+用户插件通过 `SpanSink` 接自己的后端时，回调异常会被隔离（只限流打日志），业务侧看不到。
+`SpanSinkStats` 的计数在这里暴露：
+
+| 指标 | 类型 | 标签 | 含义 |
+| --- | --- | --- | --- |
+| `weavergirl_span_sink_deliveries_total` | counter | `sink` | 交给该 sink 的 span 数（含失败） |
+| `weavergirl_span_sink_errors_total` | counter | `sink` | `onSpanEnd` 抛异常的次数 |
+
+没有注册任何 sink 时不输出。`errors_total` 增长说明用户后端在丢数据，而业务无损——
+这正是需要用指标而不是日志发现的问题。
+
 ### 4.3 JVM 指标
 
 基于 `java.lang.management`，每次抓取读取一次：
@@ -445,7 +458,8 @@ public final class MySpanSink implements SpanSink {
 行为约定：
 
 - 回调在**业务线程**上同步执行。慢 sink 会直接拖慢业务，所有 IO 请自行缓冲/异步化。
-- 每个 sink 的异常被隔离：记录一条限流的 WARNING，其它 sink 和业务代码不受影响。
+- 每个 sink 的异常被隔离：记录一条限流的 WARNING，其它 sink 和业务代码不受影响。失败次数可在
+  `/metrics` 的 `weavergirl_span_sink_errors_total{sink}` 里观察到（见 4.2.3）。
 - 同一个实例重复注册只回调一次；注销最后一个 sink 时自动摘除 `Tracer` 上的内部监听器，不影响
   其它 `SpanCompletionListener`。
 - **不要用 `Tracer.setCompletionListener(...)`**：它是覆盖式 API，会清掉所有监听器（包括其它
