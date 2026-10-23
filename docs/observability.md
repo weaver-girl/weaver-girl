@@ -198,6 +198,21 @@ OTLP formatter 发送完整的 `ExportTraceServiceRequest`：
 
 序列数上界是“已注册定义数”，抓取时实时渲染，不做跨进程聚合。没被调用过的定义不出现。
 
+### 4.2.2 插件健康（PluginHealthRegistry）
+
+插件通过 `PluginHealthRegistry.reportHealthy/reportDegraded/reportUnhealthy` 上报自身状态，
+Prometheus 抓取时渲染。样本值恒为 1，当前状态放在 `status` 标签里，方便直接告警：
+
+```text
+# TYPE weavergirl_plugin_health gauge
+weavergirl_plugin_health{plugin="prometheus",status="healthy"} 1
+weavergirl_plugin_health{plugin="jdbc",status="degraded"} 1
+weavergirl_plugin_health_timestamp_seconds{plugin="jdbc"} 1730000000.123
+```
+
+告警表达式：`weavergirl_plugin_health{status!="healthy"} == 1`。从未上报的插件不输出序列（而不是
+伪造 `unknown`）；`_timestamp_seconds` 用于发现“卡住不更新”的健康检查。
+
 ### 4.3 JVM 指标
 
 基于 `java.lang.management`，每次抓取读取一次：

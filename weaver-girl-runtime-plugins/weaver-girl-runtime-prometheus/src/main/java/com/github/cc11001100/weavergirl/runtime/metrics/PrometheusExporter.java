@@ -7,6 +7,8 @@ import com.github.cc11001100.weavergirl.api.metrics.MetricSnapshot;
 import com.github.cc11001100.weavergirl.api.observability.MetricCollector;
 import com.github.cc11001100.weavergirl.api.observability.MetricSource;
 import com.github.cc11001100.weavergirl.api.observability.MetricSources;
+import com.github.cc11001100.weavergirl.api.plugin.PluginHealth;
+import com.github.cc11001100.weavergirl.api.plugin.PluginHealthRegistry;
 import com.github.cc11001100.weavergirl.api.status.AgentStatusHolder;
 import com.github.cc11001100.weavergirl.api.status.AgentStatusView;
 import com.github.cc11001100.weavergirl.api.status.InterceptorMetricsView;
@@ -50,6 +52,8 @@ import java.util.concurrent.atomic.AtomicLong;
  *       total callback time and a latency histogram, one series per definition
  *   <li>Agent self-metrics, read from {@link AgentStatusHolder}: transformations, transformation
  *       errors, interceptor invocations, interceptor errors and registered interceptor count
+ *   <li>Plugin health from {@link PluginHealthRegistry}: one sample per plugin that reported,
+ *       carrying the current status in a label
  *   <li>JVM metrics from {@code java.lang.management}: heap/non-heap memory, threads, classes, GC
  *       count/time and uptime
  *   <li>Business metrics from {@link MetricRegistry}: one series per window snapshot, carrying
@@ -327,6 +331,7 @@ public class PrometheusExporter implements InterceptorEventListener {
 
     appendInterceptorMetrics(sb);
     appendAgentMetrics(sb);
+    appendPluginHealthMetrics(sb);
     appendJvmMetrics(sb);
     appendRegistryMetrics(sb);
     appendMetricSources(sb);
@@ -761,6 +766,62 @@ public class PrometheusExporter implements InterceptorEventListener {
     } catch (RuntimeException e) {
       // A misbehaving status view must not take the whole scrape down.
     }
+  }
+
+  /**
+   * Plugin-reported health from {@link PluginHealthRegistry}.
+   *
+   * <p>Every sample is 1 and the current status is a label, so an alert reads
+   * {@code weavergirl_plugin_health{status!="healthy"} == 1}. Plugins that never report are simply
+   * absent; a fake "unknown" series would be worse than no series.
+   */
+  private void appendPluginHealthMetrics(StringBuilder sb) {
+    Map<String, PluginHealth> health;
+    try {
+      health = PluginHealthRegistry.getAllHealth();
+    } catch (RuntimeException e) {
+      return;
+    }
+    if (health == null || health.isEmpty()) {
+      return;
+    }
+
+    List<String> names = new ArrayList<String>(health.keySet());
+    Collections.sort(names);
+
+    sb.append("# HELP weavergirl_plugin_health Plugin health as last reported, 1 per status\n");
+    sb.append("# TYPE weavergirl_plugin_health gauge\n");
+    for (String name : names) {
+      PluginHealth plugin = health.get(name);
+      if (plugin == null) {
+        continue;
+      }
+      String status =
+          plugin.getStatus() == null
+              ? "unknown"
+              : plugin.getStatus().name().toLowerCase(java.util.Locale.ROOT);
+      sb.append("weavergirl_plugin_health{plugin=\"")
+          .append(escape(name))
+          .append("\",status=\"")
+          .append(status)
+          .append("\"} 1\n");
+    }
+
+    sb.append(
+        "# HELP weavergirl_plugin_health_timestamp_seconds Unix time of the last health report\n");
+    sb.append("# TYPE weavergirl_plugin_health_timestamp_seconds gauge\n");
+    for (String name : names) {
+      PluginHealth plugin = health.get(name);
+      if (plugin == null) {
+        continue;
+      }
+      sb.append("weavergirl_plugin_health_timestamp_seconds{plugin=\"")
+          .append(escape(name))
+          .append("\"} ")
+          .append(formatNumber(plugin.getCheckTimestamp() / 1000.0))
+          .append("\n");
+    }
+    sb.append("\n");
   }
 
   /** JVM gauges: memory, threads, classes, GC and uptime. */

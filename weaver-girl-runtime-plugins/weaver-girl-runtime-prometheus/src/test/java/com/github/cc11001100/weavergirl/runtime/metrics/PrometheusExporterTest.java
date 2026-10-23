@@ -25,6 +25,7 @@ class PrometheusExporterTest {
     exporter.stop();
     com.github.cc11001100.weavergirl.api.observability.MetricSources.clear();
     com.github.cc11001100.weavergirl.api.status.AgentStatusHolder.set(null);
+    com.github.cc11001100.weavergirl.api.plugin.PluginHealthRegistry.clear();
   }
 
   @Test
@@ -230,6 +231,31 @@ class PrometheusExporterTest {
     } finally {
       com.github.cc11001100.weavergirl.api.status.AgentStatusHolder.set(null);
     }
+  }
+
+  @Test
+  void renderMetrics_rendersPluginHealth() {
+    com.github.cc11001100.weavergirl.api.plugin.PluginHealthRegistry.reportHealthy("prometheus");
+    com.github.cc11001100.weavergirl.api.plugin.PluginHealthRegistry.reportDegraded(
+        "jdbc", "collector unreachable");
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(
+        metrics.contains("weavergirl_plugin_health{plugin=\"prometheus\",status=\"healthy\"} 1"),
+        metrics);
+    assertTrue(
+        metrics.contains("weavergirl_plugin_health{plugin=\"jdbc\",status=\"degraded\"} 1"),
+        metrics);
+    assertTrue(metrics.contains("# TYPE weavergirl_plugin_health gauge"), metrics);
+    assertTrue(
+        metrics.contains("weavergirl_plugin_health_timestamp_seconds{plugin=\"jdbc\"} "), metrics);
+  }
+
+  @Test
+  void renderMetrics_omitsPluginHealthWhenNothingReported() {
+    String metrics = exporter.renderMetrics();
+    assertFalse(metrics.contains("weavergirl_plugin_health"), metrics);
   }
 
   @Test
