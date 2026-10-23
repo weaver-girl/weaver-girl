@@ -23,6 +23,8 @@ class PrometheusExporterTest {
   @AfterEach
   void tearDown() {
     exporter.stop();
+    com.github.cc11001100.weavergirl.api.observability.MetricSources.clear();
+    com.github.cc11001100.weavergirl.api.status.AgentStatusHolder.set(null);
   }
 
   @Test
@@ -312,6 +314,319 @@ class PrometheusExporterTest {
     assertEquals("0.5", PrometheusExporter.formatNumber(0.5));
     assertEquals("NaN", PrometheusExporter.formatNumber(Double.NaN));
     assertEquals("+Inf", PrometheusExporter.formatNumber(Double.POSITIVE_INFINITY));
+  }
+
+  @Test
+  void renderMetrics_rendersPluginMetricSources() {
+    com.github.cc11001100.weavergirl.api.observability.MetricSources.register(
+        new com.github.cc11001100.weavergirl.api.observability.MetricSource() {
+          @Override
+          public String name() {
+            return "job-queue";
+          }
+
+          @Override
+          public void collect(
+              com.github.cc11001100.weavergirl.api.observability.MetricCollector collector) {
+            java.util.Map<String, String> labels = new java.util.LinkedHashMap<>();
+            labels.put("queue", "mail");
+            collector.counter("jobs_processed_total", "Jobs finished, by queue", labels, 12);
+            collector.gauge("jobs_pending", "Jobs waiting", 3);
+          }
+        });
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(metrics.contains("# TYPE jobs_processed_total counter"), metrics);
+    assertTrue(metrics.contains("# HELP jobs_processed_total Jobs finished, by queue"), metrics);
+    assertTrue(metrics.contains("jobs_processed_total{queue=\"mail\"} 12"), metrics);
+    assertTrue(metrics.contains("# TYPE jobs_pending gauge"), metrics);
+    assertTrue(metrics.contains("# HELP jobs_pending Jobs waiting"), metrics);
+    assertTrue(metrics.contains("jobs_pending 3"), metrics);
+  }
+
+  @Test
+  void renderMetrics_sanitizesPluginMetricNamesAndLabelNames() {
+    register(
+        "odd-names",
+        collector -> {
+          java.util.Map<String, String> labels = new java.util.HashMap<>();
+          labels.put("9bad-label", "v");
+          collector.gauge("my.app:requests", "Requests", labels, 1);
+        });
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(metrics.contains("my_app:requests{_bad_label=\"v\"} 1"), metrics);
+    assertFalse(metrics.contains("my.app:requests"));
+  }
+
+  @Test
+  void renderMetrics_skipsPluginSeriesInTheAgentNamespace() {
+    register(
+        "intruder",
+        collector -> {
+          collector.gauge("weavergirl_custom_total", "Reserved", 1);
+          collector.gauge("plugin_custom_total", "Fine", 2);
+        });
+
+    String metrics = exporter.renderMetrics();
+
+    assertFalse(metrics.contains("weavergirl_custom_total"), metrics);
+    assertTrue(metrics.contains("plugin_custom_total 2"), metrics);
+  }
+
+  @Test
+  void renderMetrics_isolatesAThrowingMetricSource() {
+    register(
+        "broken",
+        collector -> {
+          throw new IllegalStateException("metadata unavailable");
+        });
+    register("healthy", collector -> collector.gauge("healthy_metric", "Still collected", 5));
+
+    String first = exporter.renderMetrics();
+    String second = exporter.renderMetrics();
+
+    assertTrue(first.contains("healthy_metric 5"), first);
+    assertTrue(
+        first.contains("weavergirl_metric_source_errors_total{source=\"broken\"} 1"), first);
+    assertTrue(
+        second.contains("weavergirl_metric_source_errors_total{source=\"broken\"} 2"), second);
+  }
+
+  @Test
+  void renderMetrics_keepsTheFirstTypeWhenTwoSourcesClaimTheSameName() {
+    register("a-first", collector -> collector.gauge("conflict_metric", "gauge", 1));
+    register("b-second", collector -> collector.counter("conflict_metric", "counter", 2));
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(metrics.contains("# TYPE conflict_metric gauge"), metrics);
+    assertTrue(metrics.contains("conflict_metric 1"), metrics);
+    assertFalse(metrics.contains("conflict_metric 2"), metrics);
+  }
+
+  @Test
+  void renderMetrics_rendersPerInterceptorMetricsFromTheAgentView() {
+    final com.github.cc11001100.weavergirl.api.status.InterceptorMetricsView view =
+        new com.github.cc11001100.weavergirl.api.status.InterceptorMetricsView() {
+          @Override
+          public long getInvocations() {
+            return 10;
+          }
+
+          @Override
+          public long getErrors() {
+            return 2;
+          }
+
+          @Override
+          public long getTotalNanos() {
+            return 5_000_000_000L;
+          }
+
+          @Override
+          public long getMaxNanos() {
+            return 2_000_000_000L;
+          }
+
+          @Override
+          public long getSlowCalls() {
+            return 1;
+          }
+
+          @Override
+          public double getAverageNanos() {
+            return 500_000_000.0;
+          }
+
+          @Override
+          public double estimatePercentile(double percentile) {
+            return 0;
+          }
+
+          @Override
+          public long[] getLatencyBucketBoundsNanos() {
+            return new long[] {1_000_000_000L, 10_000_000_000L, Long.MAX_VALUE};
+          }
+
+          @Override
+          public long[] getLatencyBucketCounts() {
+            return new long[] {6, 3, 1};
+          }
+        };
+    com.github.cc11001100.weavergirl.api.status.AgentStatusHolder.set(
+        new com.github.cc11001100.weavergirl.api.status.AgentStatusView() {
+          @Override
+          public long getTransformationCount() {
+            return 0;
+          }
+
+          @Override
+          public long getTransformationErrorCount() {
+            return 0;
+          }
+
+          @Override
+          public long getInterceptorInvocationCount() {
+            return 10;
+          }
+
+          @Override
+          public long getInterceptorErrorCount() {
+            return 2;
+          }
+
+          @Override
+          public int getRegisteredInterceptorCount() {
+            return 1;
+          }
+
+          @Override
+          public java.util.Map<String, ? extends com.github.cc11001100.weavergirl.api.status.InterceptorMetricsView>
+              getInterceptorMetrics() {
+            return java.util.Collections.singletonMap("jdbc.query", view);
+          }
+        });
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(
+        metrics.contains("weavergirl_interceptor_invocations_total{interceptor=\"jdbc.query\"} 10"),
+        metrics);
+    assertTrue(
+        metrics.contains("weavergirl_interceptor_errors_total{interceptor=\"jdbc.query\"} 2"),
+        metrics);
+    assertTrue(
+        metrics.contains("weavergirl_interceptor_slow_calls_total{interceptor=\"jdbc.query\"} 1"),
+        metrics);
+    assertTrue(
+        metrics.contains(
+            "weavergirl_interceptor_duration_seconds_total{interceptor=\"jdbc.query\"} 5"),
+        metrics);
+    assertTrue(
+        metrics.contains(
+            "# TYPE weavergirl_interceptor_duration_seconds histogram"),
+        metrics);
+    // Counts are non-cumulative and rendered as cumulative buckets, +Inf inclusive.
+    assertTrue(
+        metrics.contains(
+            "weavergirl_interceptor_duration_seconds_bucket{interceptor=\"jdbc.query\",le=\"1\"}"
+                + " 6"),
+        metrics);
+    assertTrue(
+        metrics.contains(
+            "weavergirl_interceptor_duration_seconds_bucket{interceptor=\"jdbc.query\",le=\"10\"}"
+                + " 9"),
+        metrics);
+    assertTrue(
+        metrics.contains(
+            "weavergirl_interceptor_duration_seconds_bucket{interceptor=\"jdbc.query\",le=\"+Inf\"}"
+                + " 10"),
+        metrics);
+    assertTrue(
+        metrics.contains(
+            "weavergirl_interceptor_duration_seconds_count{interceptor=\"jdbc.query\"} 10"),
+        metrics);
+  }
+
+  @Test
+  void renderMetrics_omitsTheInterceptorHistogramWhenNoViewKeepsBuckets() {
+    com.github.cc11001100.weavergirl.api.status.InterceptorMetricsView view =
+        new com.github.cc11001100.weavergirl.api.status.InterceptorMetricsView() {
+          @Override
+          public long getInvocations() {
+            return 1;
+          }
+
+          @Override
+          public long getErrors() {
+            return 0;
+          }
+
+          @Override
+          public long getTotalNanos() {
+            return 0;
+          }
+
+          @Override
+          public long getMaxNanos() {
+            return 0;
+          }
+
+          @Override
+          public long getSlowCalls() {
+            return 0;
+          }
+
+          @Override
+          public double getAverageNanos() {
+            return 0;
+          }
+
+          @Override
+          public double estimatePercentile(double percentile) {
+            return 0;
+          }
+        };
+    com.github.cc11001100.weavergirl.api.status.AgentStatusHolder.set(
+        new com.github.cc11001100.weavergirl.api.status.AgentStatusView() {
+          @Override
+          public long getTransformationCount() {
+            return 0;
+          }
+
+          @Override
+          public long getTransformationErrorCount() {
+            return 0;
+          }
+
+          @Override
+          public long getInterceptorInvocationCount() {
+            return 1;
+          }
+
+          @Override
+          public long getInterceptorErrorCount() {
+            return 0;
+          }
+
+          @Override
+          public int getRegisteredInterceptorCount() {
+            return 1;
+          }
+
+          @Override
+          public java.util.Map<String, ? extends com.github.cc11001100.weavergirl.api.status.InterceptorMetricsView>
+              getInterceptorMetrics() {
+            return java.util.Collections.singletonMap("no-histogram", view);
+          }
+        });
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(metrics.contains("weavergirl_interceptor_invocations_total{interceptor=\"no-histogram\"} 1"), metrics);
+    assertFalse(metrics.contains("weavergirl_interceptor_duration_seconds_bucket"), metrics);
+  }
+
+  private static void register(
+      String name,
+      java.util.function.Consumer<com.github.cc11001100.weavergirl.api.observability.MetricCollector>
+          body) {
+    com.github.cc11001100.weavergirl.api.observability.MetricSources.register(
+        new com.github.cc11001100.weavergirl.api.observability.MetricSource() {
+          @Override
+          public String name() {
+            return name;
+          }
+
+          @Override
+          public void collect(
+              com.github.cc11001100.weavergirl.api.observability.MetricCollector collector) {
+            body.accept(collector);
+          }
+        });
   }
 
   @Test

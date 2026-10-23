@@ -16,6 +16,8 @@ public class JsonEventsPlugin implements WeaverPlugin {
 
   static final String NAME = "json-events";
 
+  private JsonEventListener listener;
+
   @Override
   public String name() {
     return NAME;
@@ -33,11 +35,22 @@ public class JsonEventsPlugin implements WeaverPlugin {
     if (!isEnabled(context)) {
       return;
     }
-    InterceptorEventPublisher.getInstance().addListener(new JsonEventListener());
+    listener = new JsonEventListener();
+    InterceptorEventPublisher.getInstance().addListener(listener);
   }
 
   @Override
   public void registerInterceptors(InterceptorRegistry registry) {
     // event subscriber only
+  }
+
+  @Override
+  public void destroy() {
+    if (listener != null) {
+      // Hot reload and directory unloading destroy a plugin while the JVM keeps running; without
+      // this the old listener stays subscribed and prints every event a second time.
+      InterceptorEventPublisher.getInstance().removeListener(listener);
+      listener = null;
+    }
   }
 }

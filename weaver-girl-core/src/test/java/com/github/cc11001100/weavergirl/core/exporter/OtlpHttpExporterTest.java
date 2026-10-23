@@ -266,6 +266,71 @@ class OtlpHttpExporterTest {
     assertFalse(exporter.getResourceAttributes().containsKey("k"));
   }
 
+  @org.junit.jupiter.api.AfterEach
+  void clearResourceAttributeProviders() {
+    com.github.cc11001100.weavergirl.api.observability.ResourceAttributes.clear();
+  }
+
+  @Test
+  void export_includesResourceAttributesFromProviders() throws Exception {
+    com.github.cc11001100.weavergirl.api.observability.ResourceAttributes.register(
+        () ->
+            java.util.Collections.singletonMap("cloud.region", "eu-west-1"));
+
+    String body = captureExportedBody(null);
+
+    assertTrue(
+        body.contains("\"key\":\"cloud.region\",\"value\":{\"stringValue\":\"eu-west-1\"}"), body);
+  }
+
+  @Test
+  void explicitResourceAttributesOverrideProviders() throws Exception {
+    com.github.cc11001100.weavergirl.api.observability.ResourceAttributes.register(
+        () -> java.util.Collections.singletonMap("service.name", "from-provider"));
+
+    String body = captureExportedBody("payments");
+
+    assertTrue(
+        body.contains("\"key\":\"service.name\",\"value\":{\"stringValue\":\"payments\"}"), body);
+    assertFalse(body.contains("from-provider"), body);
+  }
+
+  private String captureExportedBody(String serviceNameOverride) throws Exception {
+    final CountDownLatch requestLatch = new CountDownLatch(1);
+    final AtomicReference<String> receivedBody = new AtomicReference<>();
+    HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+    server.createContext(
+        "/v1/traces",
+        exchange -> {
+          BufferedReader reader =
+              new BufferedReader(new InputStreamReader(exchange.getRequestBody()));
+          StringBuilder body = new StringBuilder();
+          String line;
+          while ((line = reader.readLine()) != null) {
+            body.append(line);
+          }
+          receivedBody.set(body.toString());
+          requestLatch.countDown();
+          exchange.sendResponseHeaders(200, -1);
+          exchange.close();
+        });
+    server.start();
+    try {
+      OtlpHttpExporter.Builder builder =
+          OtlpHttpExporter.builder()
+              .endpoint("http://127.0.0.1:" + server.getAddress().getPort() + "/v1/traces");
+      if (serviceNameOverride != null) {
+        builder.resourceAttribute("service.name", serviceNameOverride);
+      }
+      builder.build().export(Collections.singletonList(createSpan("t1", "s1", "op1")));
+      assertTrue(
+          requestLatch.await(5, TimeUnit.SECONDS), "Server should receive request within timeout");
+      return receivedBody.get();
+    } finally {
+      server.stop(0);
+    }
+  }
+
   private static int countOccurrences(String text, String needle) {
     int count = 0;
     int index = 0;

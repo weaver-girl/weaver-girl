@@ -1,5 +1,11 @@
 package com.github.cc11001100.weavergirl.api.plugin;
 
+import com.github.cc11001100.weavergirl.api.observability.MetricSource;
+import com.github.cc11001100.weavergirl.api.observability.MetricSources;
+import com.github.cc11001100.weavergirl.api.observability.ResourceAttributeProvider;
+import com.github.cc11001100.weavergirl.api.observability.ResourceAttributes;
+import com.github.cc11001100.weavergirl.api.observability.SpanSink;
+import com.github.cc11001100.weavergirl.api.observability.SpanSinks;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import java.util.Map;
 
@@ -143,6 +149,54 @@ public interface PluginContext {
    */
   default void registerService(Class<?> service, Object implementation) {
     PluginServices.register(service, implementation);
+  }
+
+  /**
+   * Register a consumer of completed spans, so this plugin can export them to its own backend.
+   *
+   * <p>The agent's implementation withdraws the sink when the plugin is unloaded or destroyed, so a
+   * plugin does not have to keep the reference only to unregister it later. The default
+   * implementation registers directly on {@link SpanSinks}, which a test double gets.
+   *
+   * <p>Sinks are called on the thread that ends the span; see {@link SpanSink} for the cost rules.
+   *
+   * @param sink the sink to receive completed spans
+   * @see SpanSink
+   * @since 1.0.0
+   */
+  default void registerSpanSink(SpanSink sink) {
+    SpanSinks.register(sink);
+  }
+
+  /**
+   * Register a source of metrics read at scrape time, for values that are not recorded through
+   * {@link com.github.cc11001100.weavergirl.api.metrics.MetricRegistry}.
+   *
+   * <p>The agent's implementation withdraws the source when the plugin is unloaded or destroyed.
+   * The default implementation registers directly on {@link MetricSources}.
+   *
+   * @param source the metric source to add
+   * @see MetricSource
+   * @since 1.0.0
+   */
+  default void registerMetricSource(MetricSource source) {
+    MetricSources.register(source);
+  }
+
+  /**
+   * Contribute OTLP resource attributes for every span the agent exports.
+   *
+   * <p>Read at export time, so registering after the exporter started still applies. Explicit
+   * configuration ({@code serviceName}, {@code serviceVersion}, {@code deploymentEnvironment})
+   * wins over a provider. The agent's implementation withdraws the provider when the plugin is
+   * unloaded or destroyed.
+   *
+   * @param provider the resource attribute provider to add
+   * @see ResourceAttributeProvider
+   * @since 1.0.0
+   */
+  default void registerResourceAttributes(ResourceAttributeProvider provider) {
+    ResourceAttributes.register(provider);
   }
 
   /**

@@ -21,7 +21,10 @@ import org.slf4j.LoggerFactory;
  * <p>Resource keys: {@code serviceName} (defaults to {@code weavergirl.service.name}, then {@code
  * weaver-girl}), {@code serviceVersion} and {@code deploymentEnvironment}. They become the OTLP
  * resource attributes {@code service.name}, {@code service.version} and {@code
- * deployment.environment}, which is what tells two services in the same collector apart.
+ * deployment.environment}, which is what tells two services in the same collector apart. Plugins
+ * can contribute further resource attributes through {@link
+ * com.github.cc11001100.weavergirl.api.observability.ResourceAttributeProvider}; those are merged
+ * at export time and are overridden by these explicit keys.
  */
 public final class SpanExport {
 

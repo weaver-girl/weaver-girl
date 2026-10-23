@@ -167,4 +167,62 @@ class DefaultPluginContextTest {
 
     assertEquals("my-awesome-plugin", context.getPluginName());
   }
+
+  @Test
+  void withdrawServices_detachesObservabilityContributions() {
+    com.github.cc11001100.weavergirl.api.observability.SpanSink sink =
+        new com.github.cc11001100.weavergirl.api.observability.SpanSink() {
+          @Override
+          public String name() {
+            return "test-sink";
+          }
+
+          @Override
+          public void onSpanEnd(
+              com.github.cc11001100.weavergirl.api.observability.SpanRecord span) {}
+        };
+    com.github.cc11001100.weavergirl.api.observability.MetricSource source =
+        new com.github.cc11001100.weavergirl.api.observability.MetricSource() {
+          @Override
+          public String name() {
+            return "test-source";
+          }
+
+          @Override
+          public void collect(
+              com.github.cc11001100.weavergirl.api.observability.MetricCollector collector) {}
+        };
+    com.github.cc11001100.weavergirl.api.observability.ResourceAttributeProvider provider =
+        () -> java.util.Collections.singletonMap("plugin", "test-plugin");
+
+    DefaultPluginContext context =
+        new DefaultPluginContext(mockRegistry, null, "test-plugin");
+    context.registerSpanSink(sink);
+    context.registerMetricSource(source);
+    context.registerResourceAttributes(provider);
+
+    assertTrue(
+        com.github.cc11001100.weavergirl.api.observability.SpanSinks.getSinks().contains(sink));
+    assertTrue(
+        com.github.cc11001100.weavergirl.api.observability.MetricSources.getSources()
+            .contains(source));
+    assertEquals(
+        "test-plugin",
+        com.github.cc11001100.weavergirl.api.observability.ResourceAttributes.getAttributes()
+            .get("plugin"));
+
+    context.withdrawServices();
+
+    assertFalse(
+        com.github.cc11001100.weavergirl.api.observability.SpanSinks.getSinks().contains(sink),
+        "an unloaded plugin must not keep receiving spans");
+    assertFalse(
+        com.github.cc11001100.weavergirl.api.observability.MetricSources.getSources()
+            .contains(source),
+        "an unloaded plugin must not keep being scraped");
+    assertFalse(
+        com.github.cc11001100.weavergirl.api.observability.ResourceAttributes.getAttributes()
+            .containsKey("plugin"),
+        "an unloaded plugin must not keep contributing resource attributes");
+  }
 }

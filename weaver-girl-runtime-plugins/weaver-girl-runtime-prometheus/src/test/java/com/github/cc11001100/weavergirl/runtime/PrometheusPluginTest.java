@@ -38,6 +38,23 @@ class PrometheusPluginTest {
     assertEquals(before, publisher.getListenerCount());
   }
 
+  @Test
+  void destroyUnsubscribesTheExporter() {
+    PrometheusPlugin plugin = new PrometheusPlugin();
+    PluginContext context = context(config("metricsPort", "0"));
+    InterceptorEventPublisher publisher = InterceptorEventPublisher.getInstance();
+
+    int before = publisher.getListenerCount();
+    plugin.init(context);
+    assertEquals(before + 1, publisher.getListenerCount());
+
+    plugin.destroy();
+    assertEquals(
+        before,
+        publisher.getListenerCount(),
+        "a reloaded plugin must not leave its old exporter subscribed");
+  }
+
   private static Map<String, String> config(String key, String value) {
     Map<String, String> config = new HashMap<>();
     config.put(key, value);

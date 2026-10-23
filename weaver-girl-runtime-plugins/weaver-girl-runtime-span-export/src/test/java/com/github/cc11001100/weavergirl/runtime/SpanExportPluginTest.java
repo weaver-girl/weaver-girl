@@ -37,6 +37,19 @@ class SpanExportPluginTest {
   }
 
   @Test
+  void enabledWhenOnlyTheDedicatedTracesEndpointIsSet() {
+    SpanExportPlugin plugin = new SpanExportPlugin();
+    PluginContext ctx =
+        context(config("otlpTracesEndpoint", "http://127.0.0.1:9/v1/traces"));
+
+    assertTrue(
+        plugin.isEnabled(ctx),
+        "a dedicated traces endpoint is enough; it used to be ignored unless spanExport was set");
+    plugin.init(ctx);
+    plugin.destroy();
+  }
+
+  @Test
   void enabledForLogOnlyExport() {
     assertTrue(new SpanExportPlugin().isEnabled(context(config("spanExport", "true"))));
   }

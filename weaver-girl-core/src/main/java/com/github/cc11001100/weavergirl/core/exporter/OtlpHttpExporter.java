@@ -1,5 +1,6 @@
 package com.github.cc11001100.weavergirl.core.exporter;
 
+import com.github.cc11001100.weavergirl.api.observability.ResourceAttributes;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -18,8 +19,11 @@ import org.slf4j.LoggerFactory;
  * spans}), which is what a collector's {@code /v1/traces} receiver expects. Resource attributes
  * identify the process: {@code service.name} defaults to the {@code weavergirl.service.name} system
  * property, or {@code weaver-girl}; the builder adds {@code service.version}, the deployment
- * environment and anything else the caller supplies. Supports custom headers (e.g. authentication),
- * connect/read timeouts, and tracks export statistics.
+ * environment and anything else the caller supplies. Providers registered through {@link
+ * ResourceAttributes} are merged at export time, so a plugin can contribute attributes such as
+ * {@code k8s.pod.name} without being loaded before the exporter starts; an attribute the caller set
+ * explicitly wins over a provider. Supports custom headers (e.g. authentication), connect/read
+ * timeouts, and tracks export statistics.
  *
  * @since 1.1.0
  */
@@ -34,7 +38,12 @@ public class OtlpHttpExporter implements SpanFormatter {
 
   private final String endpoint;
   private final Map<String, String> headers;
+  /** Built-in defaults (service.name, telemetry.sdk.*), before providers and explicit config. */
+  private final Map<String, String> defaultResourceAttributes;
+
+  /** Attributes set explicitly through the builder; these win over providers. */
   private final Map<String, String> resourceAttributes;
+
   private final int connectTimeoutMs;
   private final int readTimeoutMs;
 
@@ -44,9 +53,10 @@ public class OtlpHttpExporter implements SpanFormatter {
   private OtlpHttpExporter(Builder builder) {
     this.endpoint = builder.endpoint;
     this.headers = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(builder.headers));
-    Map<String, String> resource = defaultResourceAttributes();
-    resource.putAll(builder.resourceAttributes);
-    this.resourceAttributes = java.util.Collections.unmodifiableMap(resource);
+    this.defaultResourceAttributes =
+        java.util.Collections.unmodifiableMap(builtInResourceAttributes());
+    this.resourceAttributes =
+        java.util.Collections.unmodifiableMap(new LinkedHashMap<>(builder.resourceAttributes));
     this.connectTimeoutMs = builder.connectTimeoutMs;
     this.readTimeoutMs = builder.readTimeoutMs;
   }
@@ -61,7 +71,7 @@ public class OtlpHttpExporter implements SpanFormatter {
       return;
     }
 
-    String payload = toExportRequest(spans, resourceAttributes);
+    String payload = toExportRequest(spans, effectiveResourceAttributes());
 
     // Send via HTTP POST
     try {
@@ -132,7 +142,7 @@ public class OtlpHttpExporter implements SpanFormatter {
     return json.toString();
   }
 
-  private static Map<String, String> defaultResourceAttributes() {
+  private static Map<String, String> builtInResourceAttributes() {
     Map<String, String> resource = new LinkedHashMap<String, String>();
     String serviceName = System.getProperty("weavergirl.service.name");
     resource.put(
@@ -149,8 +159,27 @@ public class OtlpHttpExporter implements SpanFormatter {
     return version != null && !version.isEmpty() ? version : "unknown";
   }
 
+  /** The attributes configured on this exporter, defaults plus explicit builder values. */
   public Map<String, String> getResourceAttributes() {
-    return resourceAttributes;
+    Map<String, String> configured = new LinkedHashMap<>(defaultResourceAttributes);
+    configured.putAll(resourceAttributes);
+    return java.util.Collections.unmodifiableMap(configured);
+  }
+
+  /**
+   * Defaults, then plugin-provided attributes, then explicitly configured ones: a provider may
+   * override a default such as {@code service.name}, but never a value the operator set.
+   */
+  private Map<String, String> effectiveResourceAttributes() {
+    Map<String, String> effective = new LinkedHashMap<>(defaultResourceAttributes);
+    try {
+      effective.putAll(ResourceAttributes.getAttributes());
+    } catch (RuntimeException e) {
+      // A broken provider must not stop span export; use the configured attributes.
+      log.debug("[OTLP] Ignoring resource attribute providers: {}", e.getMessage());
+    }
+    effective.putAll(resourceAttributes);
+    return effective;
   }
 
   public long getExportedCount() {

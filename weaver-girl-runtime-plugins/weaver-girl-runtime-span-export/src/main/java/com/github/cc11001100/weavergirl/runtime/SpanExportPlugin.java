@@ -6,8 +6,9 @@ import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.exporter.SpanExport;
 
 /**
- * Exports completed trace spans. Enabled with {@code otlpEndpoint}, which sends them to a collector
- * as OTLP/HTTP JSON, or with {@code spanExport=true}, which logs them.
+ * Exports completed trace spans. Enabled with {@code otlpTracesEndpoint} (or the historical alias
+ * {@code otlpEndpoint}), which sends them to a collector as OTLP/HTTP JSON, or with {@code
+ * spanExport=true}, which logs them.
  *
  * <p>This registers no interceptors. It listens for spans the tracer finishes, and only when one of
  * those keys is set, so shipping the jar costs nothing until then.
@@ -25,9 +26,14 @@ public class SpanExportPlugin implements WeaverPlugin {
 
   @Override
   public boolean isEnabled(PluginContext context) {
-    String endpoint = context.getConfig("otlpEndpoint");
-    return (endpoint != null && !endpoint.trim().isEmpty())
+    // Either endpoint name enables trace export; otlpTracesEndpoint is the explicit one.
+    return hasValue(context.getConfig("otlpTracesEndpoint"))
+        || hasValue(context.getConfig("otlpEndpoint"))
         || context.getConfigBoolean("spanExport", false);
+  }
+
+  private static boolean hasValue(String value) {
+    return value != null && !value.trim().isEmpty();
   }
 
   @Override

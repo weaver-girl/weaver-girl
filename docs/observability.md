@@ -37,6 +37,10 @@
       OTLP/HTTP JSON → /v1/traces                    GET /metrics      /v1/logs        stdout JSON
 ```
 
+除此之外，插件还能通过三组扩展点直接参与信号生产：`SpanSink` 接收每个结束的 span、`MetricSource`
+在每次抓取时生产指标、`ResourceAttributeProvider` 在 OTLP 导出前补充资源属性。这些扩展点由插件
+体系托管（随插件卸载自动摘除），详见 [第 9 节](#9-扩展点插件自定义可观测)。
+
 ## 3. Trace
 
 ### 3.1 基本用法
@@ -150,7 +154,8 @@ OTLP formatter 发送完整的 `ExportTraceServiceRequest`：
 ## 4. Metrics（Prometheus）
 
 配置 `metricsPort=9400` 后，`GET /metrics` 返回
-`text/plain; version=0.0.4; charset=utf-8`。每次抓取都会实时渲染以下四组指标。
+`text/plain; version=0.0.4; charset=utf-8`。每次抓取都会实时渲染以下内置指标组；此外插件还可以在
+抓取时动态贡献指标（见 4.5）。
 
 ### 4.1 拦截事件指标
 
@@ -176,6 +181,22 @@ OTLP formatter 发送完整的 `ExportTraceServiceRequest`：
 | `weavergirl_agent_interceptor_invocations_total` | counter | 拦截器调用次数 |
 | `weavergirl_agent_interceptor_errors_total` | counter | 拦截器抛异常次数 |
 | `weavergirl_agent_registered_interceptors` | gauge | 已注册拦截器定义数 |
+
+### 4.2.1 切面级指标（按拦截器定义）
+
+`weavergirl_agent_*` 是整个进程的汇总值；要知道“哪个切面慢/哪个切面在抛异常”，看按定义拆分的
+`weavergirl_interceptor_*`。数据直接来自引擎对每个回调的计时，没有额外开销：
+
+| 指标 | 类型 | 标签 | 含义 |
+| --- | --- | --- | --- |
+| `weavergirl_interceptor_invocations_total` | counter | `interceptor` | 该定义的回调次数 |
+| `weavergirl_interceptor_errors_total` | counter | `interceptor` | 该定义回调抛异常次数 |
+| `weavergirl_interceptor_slow_calls_total` | counter | `interceptor` | 超过慢钩子阈值（默认 50ms）的次数 |
+| `weavergirl_interceptor_duration_seconds_total` | counter | `interceptor` | 回调累计耗时（秒） |
+| `weavergirl_interceptor_duration_seconds_bucket` | histogram | `interceptor`, `le` | 回调耗时分布（1ms…1s、`+Inf`） |
+| `weavergirl_interceptor_duration_seconds_sum` / `_count` | histogram | `interceptor` | 分布的总和/总数 |
+
+序列数上界是“已注册定义数”，抓取时实时渲染，不做跨进程聚合。没被调用过的定义不出现。
 
 ### 4.3 JVM 指标
 
@@ -221,7 +242,36 @@ weavergirl_metric_count{metric="request.duration_ms",route="/users"} 128
 例如 `weavergirl_metric_count{metric="weavergirl.span.export.dropped"}` 持续增长，表示 collector
 太慢或 `spanExportBufferSize` 太小。
 
-### 4.5 常用 PromQL
+### 4.5 插件自定义指标（MetricSource）
+
+插件通过 `PluginContext.registerMetricSource(...)` 注册一个 `MetricSource`，Prometheus 插件在
+**每次抓取时**调用它的 `collect(collector)`。适合“抓取时现算”的值（队列长度、缓存命中率、
+连接池状态），不需要自己开线程或维护滚动窗口：
+
+```java
+context.registerMetricSource(new MetricSource() {
+  @Override public String name() { return "job-queue"; }
+
+  @Override public void collect(MetricCollector collector) {
+    collector.gauge("jobs_pending", "Jobs waiting in the queue", queue.size());
+    collector.counter(
+        "jobs_processed_total", "Jobs finished, by queue",
+        Collections.singletonMap("queue", "mail"), processed.get());
+  }
+});
+```
+
+渲染规则：
+
+- 指标名按 `[a-zA-Z_:][a-zA-Z0-9_:]*` 清洗（非法字符变 `_`）；标签名按
+  `[a-zA-Z_][a-zA-Z0-9_]*` 清洗，标签值按 Prometheus 规则转义。
+- **`weavergirl_` 前缀保留给底座**。插件使用该前缀的指标族会被整族跳过，避免与内置指标冲突。
+- 同一指标名被两个源声明为不同类型时，保留先出现的类型；同名 + 同标签的首个样本获胜。
+- 每个源独立采集：某个 `collect` 抛异常只记一次
+  `weavergirl_metric_source_errors_total{source="..."}`，其余源照常输出。
+- 输出按源名、指标名、标签块排序，抓取结果稳定。
+
+### 4.6 常用 PromQL
 
 ```promql
 # 错误率（按插件）
@@ -323,8 +373,110 @@ curl -s http://localhost:9400/metrics | grep -E 'weavergirl_(agent|jvm|events)'
 - Span 导出是“尽力而为”：缓冲满即丢弃；生产环境请同时监控 `SpanExporter` 的 dropped/failed 日志。
 - `sampled` 只在上下文里传播，本地拦截器仍会执行；如需真正降低采集量，请在 collector 使用
   `probabilistic_sampler` / `tail_sampling`。
-- Prometheus 输出不含 histogram 和 exemplar（text 0.0.4 限制）；业务分布看 p50/p90/p95/p99 窗口值。
+- Prometheus 输出不含 exemplar（text 0.0.4 限制）；业务指标（`MetricRegistry`）没有原生
+  histogram，分布看 p50/p90/p95/p99 窗口值。切面回调延迟有固定桶的 histogram（4.2.1）。
 - `MetricRegistry` 指标是滑动窗口值而非进程生命周期累计值；窗口内无样本时序列会消失。
+- `SpanSink` / `MetricSource` 都在调用方线程上同步执行：慢 sink 会拖慢业务线程，慢 `collect`
+  会拖慢抓取。需要 IO 请在自己的实现里缓冲或异步化。
 - JVM 指标反映的是**被织入进程**，一个 JVM 一个 scrape target。
 - 跨进程传播目前落在 Servlet 边界；HTTP client、消息队列等协议需要对应插件调用
   `Tracer.inject` / `Tracer.extract`（后续插件可直接复用这套 API）。
+
+## 9. 扩展点：插件自定义可观测
+
+可观测能力本身就是插件：本仓库的 `span-export`、`otlp`、`prometheus`、`json-events`、
+`diagnostics` 都是 `weaver-girl-runtime-*` 插件，agent 入口没有硬编码任何后端。上层产品用同一套
+机制接入自己的采集端即可，不需要修改底座。
+
+### 9.1 三组扩展点
+
+| 扩展点 | 注册方法 | 调用时机 | 典型用途 |
+| --- | --- | --- | --- |
+| `SpanSink` | `context.registerSpanSink(sink)` | 每个 span 结束（`Tracer.endSpan`）时同步回调 | 自有 APM/日志后端、span 采样与脱敏后再转发 |
+| `MetricSource` | `context.registerMetricSource(source)` | Prometheus 每次抓取时 | 队列深度、缓存命中率、连接池状态 |
+| `ResourceAttributeProvider` | `context.registerResourceAttributes(provider)` | OTLP 每次导出时 | 集群/区域/租户等运行时元数据 |
+
+```text
+Tracer.endSpan ──► SpanSinks ──► 你的 SpanSink（同步）
+GET /metrics   ──► MetricSources ──► 你的 MetricSource.collect(...)
+OTLP 导出批次  ──► ResourceAttributes ──► 你的 provider（覆盖默认值，可被显式配置覆盖）
+```
+
+**注册必须走 `PluginContext`。** `DefaultPluginContext` 会记录插件注册了什么，并在插件卸载/热
+替换时调用 `withdrawServices()` 自动摘除。直接调用静态的 `SpanSinks.register` 也能生效，但
+`destroy()` 里必须自己 `unregister`，否则旧实例会继续收到数据（这是插件热重载后“数据重复”的
+最常见原因）。
+
+### 9.2 SpanSink
+
+```java
+public final class MySpanSink implements SpanSink {
+  @Override public String name() { return "my-backend"; }
+
+  @Override public void onSpanEnd(SpanRecord span) {
+    if (!span.isSampled()) {
+      return; // 未采样的 span 也会送达，按需丢弃
+    }
+    buffer.offer(span); // 不要在这里做网络 IO
+  }
+}
+```
+
+`SpanRecord` 是结束时刻的不可变快照：`traceId`、`spanId`、`parentSpanId`、`operationName`、
+`kind`（`internal` / `server` / `client` / `producer` / `consumer`）、`startTimeMs`、`durationMs`、
+`status`、`sampled`、`attributes`、`baggage`。`isError()` 在 `status=ERROR` 或属性
+`error=true` 时为真。
+
+行为约定：
+
+- 回调在**业务线程**上同步执行。慢 sink 会直接拖慢业务，所有 IO 请自行缓冲/异步化。
+- 每个 sink 的异常被隔离：记录一条限流的 WARNING，其它 sink 和业务代码不受影响。
+- 同一个实例重复注册只回调一次；注销最后一个 sink 时自动摘除 `Tracer` 上的内部监听器，不影响
+  其它 `SpanCompletionListener`。
+- **不要用 `Tracer.setCompletionListener(...)`**：它是覆盖式 API，会清掉所有监听器（包括其它
+  插件的 sink）。
+
+### 9.3 MetricSource
+
+```java
+context.registerMetricSource(new MetricSource() {
+  @Override public String name() { return "connection-pool"; }
+
+  @Override public void collect(MetricCollector collector) {
+    MetricPoolStats s = pool.stats();
+    collector.gauge("pool_active_connections", "Connections in use", s.active());
+    collector.gauge(
+        "pool_idle_connections", "Connections idle",
+        Collections.singletonMap("pool", "primary"), s.idle());
+  }
+});
+```
+
+抓取时现算，不需要后台线程。渲染规则见 4.5；要点：`weavergirl_` 前缀保留、单源异常隔离并计入
+`weavergirl_metric_source_errors_total`、同类型名冲突保留先出现者。
+
+### 9.4 ResourceAttributeProvider
+
+资源属性按以下顺序合并，后者覆盖前者：
+
+1. 底座内置默认值（`telemetry.sdk.name`、`telemetry.sdk.language`、`service.name` 等）；
+2. 插件注册的 provider，**每次导出时**读取，按注册顺序后者覆盖前者；
+3. 显式配置（`serviceName`、`serviceVersion`、`deploymentEnvironment` 或
+   `resourceAttribute(...)`）。
+
+```java
+context.registerResourceAttributes(() -> {
+  Map<String, String> attrs = new HashMap<>();
+  attrs.put("cloud.region", System.getenv("REGION"));
+  attrs.put("k8s.pod.name", System.getenv("POD_NAME"));
+  return attrs;
+});
+```
+
+返回 `null` 的键值对会被忽略；单个 provider 抛异常只影响它自己。由于在导出线程读取，provider
+可以查询原本只在运行时才确定的信息（发布的版本号、灰度分组等）。
+
+### 9.5 完整示例
+
+一个同时注册三种扩展点的插件见
+[docs/examples/CustomObservabilityPlugin.java](examples/CustomObservabilityPlugin.java)。

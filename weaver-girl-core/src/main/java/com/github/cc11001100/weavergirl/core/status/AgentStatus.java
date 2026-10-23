@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import com.github.cc11001100.weavergirl.api.status.AgentStatusView;
+import com.github.cc11001100.weavergirl.api.status.InterceptorMetricsView;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -139,6 +140,7 @@ public class AgentStatus implements AgentStatusView {
   }
 
   /** Get per-interceptor metrics. */
+  @Override
   public Map<String, InterceptorMetrics> getInterceptorMetrics() {
     return Collections.unmodifiableMap(interceptorMetrics);
   }
@@ -263,7 +265,7 @@ public class AgentStatus implements AgentStatusView {
    * approximated by a fixed cumulative-bucket histogram (no per-sample retention), so recording is
    * O(1) and memory-bounded; percentiles are interpolated across buckets only on read (infrequent).
    */
-  public static class InterceptorMetrics {
+  public static class InterceptorMetrics implements InterceptorMetricsView {
 
     /** Cumulative upper bounds (nanoseconds) for each latency bucket. */
     public static final long[] BUCKET_BOUNDS_NS = {
@@ -362,6 +364,20 @@ public class AgentStatus implements AgentStatusView {
     /** Management/observability accessor for the latency histogram buckets. */
     public AtomicLong[] getLatencyBucketsRef() {
       return latencyBuckets;
+    }
+
+    @Override
+    public long[] getLatencyBucketBoundsNanos() {
+      return BUCKET_BOUNDS_NS.clone();
+    }
+
+    @Override
+    public long[] getLatencyBucketCounts() {
+      long[] counts = new long[latencyBuckets.length];
+      for (int i = 0; i < latencyBuckets.length; i++) {
+        counts[i] = latencyBuckets[i].get();
+      }
+      return counts;
     }
 
     /**

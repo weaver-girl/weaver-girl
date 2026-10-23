@@ -1,6 +1,12 @@
 package com.github.cc11001100.weavergirl.core.plugin;
 
 import com.github.cc11001100.weavergirl.api.ValidationUtils;
+import com.github.cc11001100.weavergirl.api.observability.MetricSource;
+import com.github.cc11001100.weavergirl.api.observability.MetricSources;
+import com.github.cc11001100.weavergirl.api.observability.ResourceAttributeProvider;
+import com.github.cc11001100.weavergirl.api.observability.ResourceAttributes;
+import com.github.cc11001100.weavergirl.api.observability.SpanSink;
+import com.github.cc11001100.weavergirl.api.observability.SpanSinks;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.plugin.PluginLogger;
 import com.github.cc11001100.weavergirl.api.plugin.PluginServices;
@@ -22,6 +28,13 @@ public class DefaultPluginContext implements PluginContext {
   /** The services this plugin published, so they can be withdrawn when the plugin goes away. */
   private final List<Object> publishedServices = new CopyOnWriteArrayList<>();
 
+  /** Observability extensions this plugin registered; withdrawn with the plugin. */
+  private final List<SpanSink> spanSinks = new CopyOnWriteArrayList<>();
+
+  private final List<MetricSource> metricSources = new CopyOnWriteArrayList<>();
+  private final List<ResourceAttributeProvider> resourceAttributeProviders =
+      new CopyOnWriteArrayList<>();
+
   public DefaultPluginContext(
       InterceptorRegistry registry, Map<String, String> config, String pluginName) {
     this.registry = ValidationUtils.requireNonNull(registry, "registry");
@@ -35,12 +48,45 @@ public class DefaultPluginContext implements PluginContext {
     publishedServices.add(implementation);
   }
 
-  /** Withdraw every service this plugin published. Called when the plugin is unloaded or destroyed. */
+  @Override
+  public void registerSpanSink(SpanSink sink) {
+    SpanSinks.register(sink);
+    spanSinks.add(sink);
+  }
+
+  @Override
+  public void registerMetricSource(MetricSource source) {
+    MetricSources.register(source);
+    metricSources.add(source);
+  }
+
+  @Override
+  public void registerResourceAttributes(ResourceAttributeProvider provider) {
+    ResourceAttributes.register(provider);
+    resourceAttributeProviders.add(provider);
+  }
+
+  /**
+   * Withdraw every service and observability extension this plugin published, so nothing it
+   * contributed outlives it. Called when the plugin is unloaded or destroyed.
+   */
   public void withdrawServices() {
     for (Object service : publishedServices) {
       PluginServices.unregister(service);
     }
     publishedServices.clear();
+    for (SpanSink sink : spanSinks) {
+      SpanSinks.unregister(sink);
+    }
+    spanSinks.clear();
+    for (MetricSource source : metricSources) {
+      MetricSources.unregister(source);
+    }
+    metricSources.clear();
+    for (ResourceAttributeProvider provider : resourceAttributeProviders) {
+      ResourceAttributes.unregister(provider);
+    }
+    resourceAttributeProviders.clear();
   }
 
   @Override

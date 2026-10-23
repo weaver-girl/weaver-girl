@@ -59,7 +59,11 @@ public class PrometheusPlugin implements WeaverPlugin {
   @Override
   public void destroy() {
     if (exporter != null) {
+      // The exporter is also the event listener: detach it first, or an unloaded plugin keeps
+      // counting events for a server that is no longer serving.
+      InterceptorEventPublisher.getInstance().removeListener(exporter);
       exporter.stop();
+      exporter = null;
     }
   }
 }

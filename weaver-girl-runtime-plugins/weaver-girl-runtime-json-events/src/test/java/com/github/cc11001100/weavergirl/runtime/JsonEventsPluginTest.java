@@ -37,6 +37,23 @@ class JsonEventsPluginTest {
   }
 
   @Test
+  void destroyUnsubscribesTheListener() {
+    JsonEventsPlugin plugin = new JsonEventsPlugin();
+    PluginContext context = context(config("jsonEvents", "true"));
+    InterceptorEventPublisher publisher = InterceptorEventPublisher.getInstance();
+
+    int before = publisher.getListenerCount();
+    plugin.init(context);
+    assertEquals(before + 1, publisher.getListenerCount());
+
+    plugin.destroy();
+    assertEquals(
+        before,
+        publisher.getListenerCount(),
+        "a reloaded plugin must not leave its old listener subscribed");
+  }
+
+  @Test
   void disabledWhenJsonEventsFalse() {
     assertFalse(new JsonEventsPlugin().isEnabled(context(config("jsonEvents", "false"))));
   }

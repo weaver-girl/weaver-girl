@@ -4,8 +4,12 @@ import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventListener;
 import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
 import com.github.cc11001100.weavergirl.api.metrics.MetricSnapshot;
+import com.github.cc11001100.weavergirl.api.observability.MetricCollector;
+import com.github.cc11001100.weavergirl.api.observability.MetricSource;
+import com.github.cc11001100.weavergirl.api.observability.MetricSources;
 import com.github.cc11001100.weavergirl.api.status.AgentStatusHolder;
 import com.github.cc11001100.weavergirl.api.status.AgentStatusView;
+import com.github.cc11001100.weavergirl.api.status.InterceptorMetricsView;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -17,7 +21,13 @@ import java.lang.management.MemoryUsage;
 import java.lang.management.RuntimeMXBean;
 import java.lang.management.ThreadMXBean;
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -28,7 +38,7 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <p>Enable with agent argument: {@code metricsPort=9400}
  *
- * <p>Exposed metrics fall into three groups, all rendered on every scrape:
+ * <p>Exposed metrics fall into these groups, all rendered on every scrape:
  *
  * <ul>
  *   <li>Interception events: {@code weavergirl_events_total} (every event by plugin/type, the
@@ -36,6 +46,8 @@ import java.util.concurrent.atomic.AtomicLong;
  *       weavergirl_error_operations_total} (counters by plugin/type), {@code
  *       weavergirl_operation_duration_ms_sum}/{@code _count} (cumulative duration by plugin) and
  *       {@code weavergirl_iast_findings_total} (IAST findings by sink kind)
+ *   <li>Per-interceptor metrics from {@link AgentStatusHolder}: invocations, errors, slow calls,
+ *       total callback time and a latency histogram, one series per definition
  *   <li>Agent self-metrics, read from {@link AgentStatusHolder}: transformations, transformation
  *       errors, interceptor invocations, interceptor errors and registered interceptor count
  *   <li>JVM metrics from {@code java.lang.management}: heap/non-heap memory, threads, classes, GC
@@ -43,6 +55,9 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li>Business metrics from {@link MetricRegistry}: one series per window snapshot, carrying
  *       count/sum/avg/min/max and p50/p90/p95/p99 as {@code weavergirl_metric_*} gauges with the
  *       original metric name and labels attached
+ *   <li>Plugin metrics from {@link MetricSources}: each registered source is collected on this
+ *       scrape and its gauges/counters are rendered under the source's own names, with failures
+ *       counted in {@code weavergirl_metric_source_errors_total}
  * </ul>
  *
  * <p>Example output:
@@ -86,6 +101,10 @@ public class PrometheusExporter implements InterceptorEventListener {
   private final ConcurrentMap<String, AtomicLong> durationCount =
       new ConcurrentHashMap<String, AtomicLong>();
   private final ConcurrentMap<String, AtomicLong> iastFindings =
+      new ConcurrentHashMap<String, AtomicLong>();
+
+  /** Scrapes in which a plugin's {@link MetricSource#collect} threw, by source name. */
+  private final ConcurrentMap<String, AtomicLong> metricSourceErrors =
       new ConcurrentHashMap<String, AtomicLong>();
 
   private volatile HttpServer server;
@@ -306,11 +325,390 @@ public class PrometheusExporter implements InterceptorEventListener {
       sb.append("\n");
     }
 
+    appendInterceptorMetrics(sb);
     appendAgentMetrics(sb);
     appendJvmMetrics(sb);
     appendRegistryMetrics(sb);
+    appendMetricSources(sb);
 
     return sb.toString();
+  }
+
+  /**
+   * Per-interceptor counters from {@link AgentStatusView}: how often each woven hook point ran, how
+   * often its callback threw, how much time it spent and how many calls were slow.
+   *
+   * <p>The number of series is bounded by the number of registered definitions, so this is safe to
+   * render on every scrape. A view that keeps no histogram contributes only the counters.
+   */
+  private void appendInterceptorMetrics(StringBuilder sb) {
+    AgentStatusView status;
+    try {
+      status = AgentStatusHolder.get();
+    } catch (RuntimeException e) {
+      return;
+    }
+    if (status == null) {
+      return;
+    }
+    Map<String, ? extends InterceptorMetricsView> metrics;
+    try {
+      metrics = status.getInterceptorMetrics();
+    } catch (RuntimeException e) {
+      return;
+    }
+    if (metrics == null || metrics.isEmpty()) {
+      return;
+    }
+
+    List<String> names = new ArrayList<String>(metrics.keySet());
+    Collections.sort(names);
+
+    sb.append(
+        "# HELP weavergirl_interceptor_invocations_total Interceptor callbacks invoked, by"
+            + " definition\n");
+    sb.append("# TYPE weavergirl_interceptor_invocations_total counter\n");
+    for (String name : names) {
+      InterceptorMetricsView view = metrics.get(name);
+      if (view == null) {
+        continue;
+      }
+      sb.append("weavergirl_interceptor_invocations_total{interceptor=\"")
+          .append(escape(name))
+          .append("\"} ")
+          .append(view.getInvocations())
+          .append("\n");
+    }
+
+    sb.append(
+        "# HELP weavergirl_interceptor_errors_total Interceptor callbacks that threw, by"
+            + " definition\n");
+    sb.append("# TYPE weavergirl_interceptor_errors_total counter\n");
+    for (String name : names) {
+      InterceptorMetricsView view = metrics.get(name);
+      if (view == null) {
+        continue;
+      }
+      sb.append("weavergirl_interceptor_errors_total{interceptor=\"")
+          .append(escape(name))
+          .append("\"} ")
+          .append(view.getErrors())
+          .append("\n");
+    }
+
+    sb.append(
+        "# HELP weavergirl_interceptor_slow_calls_total Interceptor callbacks above the slow-hook"
+            + " threshold\n");
+    sb.append("# TYPE weavergirl_interceptor_slow_calls_total counter\n");
+    for (String name : names) {
+      InterceptorMetricsView view = metrics.get(name);
+      if (view == null) {
+        continue;
+      }
+      sb.append("weavergirl_interceptor_slow_calls_total{interceptor=\"")
+          .append(escape(name))
+          .append("\"} ")
+          .append(view.getSlowCalls())
+          .append("\n");
+    }
+
+    sb.append(
+        "# HELP weavergirl_interceptor_duration_seconds_total Time spent inside interceptor"
+            + " callbacks\n");
+    sb.append("# TYPE weavergirl_interceptor_duration_seconds_total counter\n");
+    for (String name : names) {
+      InterceptorMetricsView view = metrics.get(name);
+      if (view == null) {
+        continue;
+      }
+      sb.append("weavergirl_interceptor_duration_seconds_total{interceptor=\"")
+          .append(escape(name))
+          .append("\"} ")
+          .append(formatNumber(view.getTotalNanos() / 1_000_000_000.0))
+          .append("\n");
+    }
+
+    if (hasLatencyHistogram(metrics)) {
+      sb.append(
+          "# HELP weavergirl_interceptor_duration_seconds Callback latency distribution, by"
+              + " definition\n");
+      sb.append("# TYPE weavergirl_interceptor_duration_seconds histogram\n");
+      for (String name : names) {
+        InterceptorMetricsView view = metrics.get(name);
+        if (view == null) {
+          continue;
+        }
+        appendLatencyHistogram(sb, name, view);
+      }
+    }
+    sb.append("\n");
+  }
+
+  private static boolean hasLatencyHistogram(
+      Map<String, ? extends InterceptorMetricsView> metrics) {
+    for (InterceptorMetricsView view : metrics.values()) {
+      if (view != null && view.getLatencyBucketBoundsNanos().length > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static void appendLatencyHistogram(
+      StringBuilder sb, String name, InterceptorMetricsView view) {
+    long[] bounds = view.getLatencyBucketBoundsNanos();
+    long[] counts = view.getLatencyBucketCounts();
+    if (bounds.length == 0 || bounds.length != counts.length) {
+      return;
+    }
+    long cumulative = 0;
+    for (int i = 0; i < bounds.length; i++) {
+      cumulative += counts[i];
+      String le =
+          bounds[i] == Long.MAX_VALUE
+              ? "+Inf"
+              : formatNumber(bounds[i] / 1_000_000_000.0);
+      sb.append("weavergirl_interceptor_duration_seconds_bucket{interceptor=\"")
+          .append(escape(name))
+          .append("\",le=\"")
+          .append(le)
+          .append("\"} ")
+          .append(cumulative)
+          .append("\n");
+    }
+    sb.append("weavergirl_interceptor_duration_seconds_sum{interceptor=\"")
+        .append(escape(name))
+        .append("\"} ")
+        .append(formatNumber(view.getTotalNanos() / 1_000_000_000.0))
+        .append("\n");
+    sb.append("weavergirl_interceptor_duration_seconds_count{interceptor=\"")
+        .append(escape(name))
+        .append("\"} ")
+        .append(view.getInvocations())
+        .append("\n");
+  }
+
+  /**
+   * Metrics plugins contribute through {@link MetricSources}, read on this scrape.
+   *
+   * <p>Each source is collected in isolation; one that throws is counted in {@code
+   * weavergirl_metric_source_errors_total} and the rest still render. Names in the {@code
+   * weavergirl_} namespace belong to the agent and are skipped, and a name claimed by an earlier
+   * source wins over a later duplicate. Output is sorted so a scrape is stable.
+   */
+  private void appendMetricSources(StringBuilder sb) {
+    List<MetricSource> sources;
+    try {
+      sources = MetricSources.getSources();
+    } catch (RuntimeException e) {
+      return;
+    }
+    if (sources.isEmpty() && metricSourceErrors.isEmpty()) {
+      return;
+    }
+
+    List<MetricSource> ordered = new ArrayList<MetricSource>(sources);
+    Collections.sort(
+        ordered,
+        new Comparator<MetricSource>() {
+          @Override
+          public int compare(MetricSource a, MetricSource b) {
+            return sourceName(a).compareTo(sourceName(b));
+          }
+        });
+
+    Map<String, MetricFamily> families = new LinkedHashMap<String, MetricFamily>();
+    for (MetricSource source : ordered) {
+      try {
+        source.collect(new RecordingCollector(families));
+      } catch (RuntimeException e) {
+        String name = sourceName(source);
+        AtomicLong errors = metricSourceErrors.get(name);
+        if (errors == null) {
+          AtomicLong created = new AtomicLong();
+          AtomicLong existing = metricSourceErrors.putIfAbsent(name, created);
+          errors = existing != null ? existing : created;
+        }
+        errors.incrementAndGet();
+      }
+    }
+
+    for (MetricFamily family : families.values()) {
+      sb.append("# HELP ").append(family.name).append(" ").append(escapeHelp(family.help)).append("\n");
+      sb.append("# TYPE ").append(family.name).append(" ").append(family.type).append("\n");
+      List<String> labelBlocks = new ArrayList<String>(family.series.keySet());
+      Collections.sort(labelBlocks);
+      for (String labelBlock : labelBlocks) {
+        sb.append(family.name).append(labelBlock).append(" ")
+            .append(formatNumber(family.series.get(labelBlock))).append("\n");
+      }
+      sb.append("\n");
+    }
+
+    if (!metricSourceErrors.isEmpty()) {
+      sb.append(
+          "# HELP weavergirl_metric_source_errors_total MetricSource collections that threw\n");
+      sb.append("# TYPE weavergirl_metric_source_errors_total counter\n");
+      List<String> errorNames = new ArrayList<String>(metricSourceErrors.keySet());
+      Collections.sort(errorNames);
+      for (String name : errorNames) {
+        sb.append("weavergirl_metric_source_errors_total{source=\"")
+            .append(escape(name))
+            .append("\"} ")
+            .append(metricSourceErrors.get(name).get())
+            .append("\n");
+      }
+      sb.append("\n");
+    }
+  }
+
+  private static String sourceName(MetricSource source) {
+    String name = source.name();
+    return name == null || name.trim().isEmpty() ? "unknown" : name.trim();
+  }
+
+  /** One metric family collected from plugin sources during this scrape. */
+  private static final class MetricFamily {
+    final String name;
+    final String type;
+    final Map<String, Double> series = new LinkedHashMap<String, Double>();
+    String help = "";
+
+    MetricFamily(String name, String help, String type) {
+      this.name = name;
+      this.type = type;
+      if (help != null) {
+        this.help = help;
+      }
+    }
+  }
+
+  /** Collects one source's samples into families, enforcing name and label rules. */
+  private static final class RecordingCollector implements MetricCollector {
+    private final Map<String, MetricFamily> families;
+
+    RecordingCollector(Map<String, MetricFamily> families) {
+      this.families = families;
+    }
+
+    @Override
+    public void gauge(String name, String help, double value) {
+      record(name, help, "gauge", Collections.<String, String>emptyMap(), value);
+    }
+
+    @Override
+    public void gauge(
+        String name, String help, Map<String, String> labels, double value) {
+      record(name, help, "gauge", labels, value);
+    }
+
+    @Override
+    public void counter(String name, String help, double value) {
+      record(name, help, "counter", Collections.<String, String>emptyMap(), value);
+    }
+
+    @Override
+    public void counter(
+        String name, String help, Map<String, String> labels, double value) {
+      record(name, help, "counter", labels, value);
+    }
+
+    private void record(
+        String name, String help, String type, Map<String, String> labels, double value) {
+      String metricName = sanitizeMetricName(name);
+      if (metricName == null || metricName.startsWith("weavergirl_")) {
+        return;
+      }
+      MetricFamily family = families.get(metricName);
+      if (family == null) {
+        family = new MetricFamily(metricName, help, type);
+        families.put(metricName, family);
+      } else if (!family.type.equals(type)) {
+        // Same name, different type: keep the first and drop the conflict rather than emit an
+        // exposition Prometheus will reject.
+        return;
+      } else if (family.help.isEmpty() && help != null && !help.isEmpty()) {
+        family.help = help;
+      }
+      String labelBlock = renderLabelBlock(labels);
+      if (!family.series.containsKey(labelBlock)) {
+        family.series.put(labelBlock, value);
+      }
+    }
+  }
+
+  /**
+   * Prometheus metric-name grammar: {@code [a-zA-Z_:][a-zA-Z0-9_:]*}. Invalid characters become
+   * {@code _}; a null or blank name is dropped.
+   */
+  static String sanitizeMetricName(String name) {
+    if (name == null) {
+      return null;
+    }
+    String trimmed = name.trim();
+    if (trimmed.isEmpty()) {
+      return null;
+    }
+    StringBuilder out = new StringBuilder(trimmed.length());
+    for (int i = 0; i < trimmed.length(); i++) {
+      char c = trimmed.charAt(i);
+      boolean valid =
+          (c >= 'a' && c <= 'z')
+              || (c >= 'A' && c <= 'Z')
+              || c == '_'
+              || c == ':'
+              || (i > 0 && c >= '0' && c <= '9');
+      out.append(valid ? c : '_');
+    }
+    return out.toString();
+  }
+
+  /** Render a sorted, escaped label block such as {@code {route="/a",status="200"}}. */
+  private static String renderLabelBlock(Map<String, String> labels) {
+    if (labels == null || labels.isEmpty()) {
+      return "";
+    }
+    TreeMap<String, String> sorted = new TreeMap<String, String>();
+    for (Map.Entry<String, String> entry : labels.entrySet()) {
+      if (entry.getKey() == null || entry.getValue() == null) {
+        continue;
+      }
+      String labelName = sanitizeLabelName(entry.getKey());
+      if ("__name__".equals(labelName)) {
+        continue;
+      }
+      sorted.put(labelName, entry.getValue());
+    }
+    if (sorted.isEmpty()) {
+      return "";
+    }
+    StringBuilder block = new StringBuilder("{");
+    boolean first = true;
+    for (Map.Entry<String, String> entry : sorted.entrySet()) {
+      if (!first) {
+        block.append(",");
+      }
+      block.append(entry.getKey()).append("=\"")
+          .append(escapeLabelValue(entry.getValue())).append("\"");
+      first = false;
+    }
+    return block.append("}").toString();
+  }
+
+  /** Escape a label value: backslash, double quote and newline. */
+  private static String escapeLabelValue(String value) {
+    if (value == null) {
+      return "";
+    }
+    return value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+  }
+
+  /** Escape HELP text: backslash and newline. */
+  private static String escapeHelp(String help) {
+    if (help == null) {
+      return "";
+    }
+    return help.replace("\\", "\\\\").replace("\n", "\\n");
   }
 
   /**
@@ -584,7 +982,7 @@ public class PrometheusExporter implements InterceptorEventListener {
     return Double.toString(value);
   }
 
-  private String escape(String s) {
+  private static String escape(String s) {
     if (s == null) return "";
     return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
   }
