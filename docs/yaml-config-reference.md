@@ -55,10 +55,12 @@ logLevel: INFO                   # TRACE, DEBUG, INFO, WARN, ERROR
 | `grpc` | gRPC (io.grpc) |
 | `kafka` | Apache Kafka (producer/consumer) |
 | `mongo` | MongoDB Java Driver |
-| `timing` | Method execution timing |
+| `method-timing` | Method execution timing |
 | `trace-correlation` | Cross-service trace ID propagation |
-| `exception` | Exception monitoring and tracking |
+| `exception-monitor` | Exception monitoring and tracking |
 | `logging` | SLF4J/Log4j2 logging integration |
+
+The names in this table are the values returned by `WeaverPlugin.name()` in the corresponding plugin module, and they are what `disabledPlugins` / `enabledPlugins` / `depends()` match. The bundled plugin set is much larger than the table (about 120 modules); the module directory name and the plugin name usually agree but not always (`weaver-girl-plugin-timing` is `method-timing`, `weaver-girl-plugin-exception` is `exception-monitor`). Read `name()` rather than guessing from the artifact id.
 
 ## Interceptor Definitions
 
@@ -130,76 +132,106 @@ interceptors:
 
 ## Plugin-Specific Configuration
 
-Each built-in plugin has its own configuration keys, set via the agent config map:
+Every plugin reads its settings through `PluginContext`, so the same key can be supplied in
+several places. The lookup order, first match wins:
+
+1. system property `weavergirl.plugin.<plugin-name>.<key>`
+2. YAML `plugins.<plugin-name>.<key>`
+3. plain system property `<key>`
+4. agent arguments (`-javaagent:...=config=...,<key>=<value>`) and top-level YAML keys
+5. the default passed by the plugin
+
+A YAML section is just a shorthand for the namespaced keys: `plugins.jdbc.logSql` is delivered to
+the plugin named `jdbc` as `logSql`. Agent arguments of the form `plugins.jdbc.logSql=true` are
+also accepted and win over the YAML file.
 
 ```yaml
-# JDBC Plugin
 plugins:
+  # JDBC Plugin
   jdbc:
     slowQueryThreshold: 1000    # ms; log queries slower than this
     logSql: true                # log SQL statements
     maxSqlLength: 500           # truncate SQL longer than this
 
-# Redis Plugin
-plugins:
+  # Redis Plugin
   redis:
     slowCommandThreshold: 100   # ms; log commands slower than this
     logKeys: true               # log Redis keys
     maxKeyLength: 200           # truncate keys longer than this
 
-# Kafka Plugin
-plugins:
+  # Kafka Plugin
   kafka:
     slowThreshold: 500          # ms; log operations slower than this
     logTopic: true              # log Kafka topics
 
-# Servlet Plugin
-plugins:
+  # Servlet Plugin
   servlet:
     slowRequestThreshold: 2000  # ms; log requests slower than this
     logUri: true                # log request URIs
 
-# MethodTiming Plugin
-plugins:
-  timing:
+  # MethodTiming Plugin (name() is "method-timing", not "timing")
+  method-timing:
     slowThreshold: 100          # ms; log methods slower than this
 
-# Logging Plugin
-plugins:
+  # Logging Plugin
   logging:
     logLevel: INFO              # capture logs at this level and above
 
-# ExceptionMonitor Plugin
-plugins:
-  exception:
+  # ExceptionMonitor Plugin (name() is "exception-monitor")
+  exception-monitor:
     maxStackTraceLength: 1000   # truncate stack traces longer than this
 
-# HttpClient Plugin
-plugins:
+  # HttpClient Plugin
   httpclient:
     slowThreshold: 2000         # ms; log requests slower than this
     logUrl: true                # log request URLs
 
-# gRPC Plugin
-plugins:
+  # gRPC Plugin
   grpc:
     slowThreshold: 1000         # ms; log calls slower than this
 
-# MongoDB Plugin
-plugins:
+  # MongoDB Plugin
   mongo:
     slowThreshold: 1000         # ms; log operations slower than this
 
-# TraceCorrelation Plugin
-plugins:
+  # TraceCorrelation Plugin
   trace-correlation:
     headerName: X-Trace-Id      # HTTP header for trace ID propagation
 
-# Spring Plugin
-plugins:
+  # Spring Plugin
   spring:
     slowThreshold: 500          # ms; log bean method calls slower than this
 ```
+
+### Capability options at the top level
+
+Runtime capabilities (`metrics-port`, `management-api`, `jmx`, `span-export`, `plugin-watcher`,
+...) are configured with plain scalar keys, exactly as they would be passed as agent arguments.
+Any top-level key that is not an agent setting listed above is handed to the plugins; nested maps
+are not, so a capability option is always a scalar.
+
+```yaml
+metricsPort: 9400
+apiPort: 9402
+watch: true                  # hot reload
+otlpEndpoint: http://collector:4318/v1/traces
+```
+
+These merge into the same launch map as agent arguments, and an agent argument with the same key
+wins. A map-valued top-level key that is not `plugins:` (or another structured agent setting) is
+logged and ignored.
+
+### Plugin directory
+
+`plugins:` is also the agent's switch for loading plugin jars from a directory:
+
+```yaml
+plugins: /opt/weaver-girl/plugins
+```
+
+This is equivalent to `-javaagent:...=plugins=/opt/weaver-girl/plugins` and takes the collector
+plugin path rather than the map form. A plugin loaded this way is loaded once; the agent does not
+also preload the same directory into its own class loader.
 
 ## Hot Reload
 

@@ -17,6 +17,19 @@ class WeaverGirlAgentTest {
   }
 
   @Test
+  void sameDirectory_toleratesRelativeAndDotPaths() throws Exception {
+    java.io.File dir = java.nio.file.Files.createTempDirectory("wg-agent-").toFile();
+    try {
+      java.io.File dotted = new java.io.File(dir, ".");
+      assertTrue(WeaverGirlAgent.sameDirectory(dir, dotted));
+      assertTrue(WeaverGirlAgent.sameDirectory(dotted, dir.getAbsoluteFile()));
+      assertFalse(WeaverGirlAgent.sameDirectory(dir, new java.io.File(dir, "plugins")));
+    } finally {
+      dir.delete();
+    }
+  }
+
+  @Test
   void parseConfigPath() throws Exception {
     Map<String, String> result = invokeParseAgentArgs("config=/path/to/weaver.yml");
     assertEquals("/path/to/weaver.yml", result.get("config"));

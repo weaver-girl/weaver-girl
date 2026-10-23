@@ -334,11 +334,21 @@ public class PluginLoader {
     // Summary report. A plugin that is present but switched off by its own isEnabled() check is
     // inactive, not failed — only one that threw counts as a failure. Both lists are filled from the
     // loader threads, so the report reads a snapshot rather than the live lists.
+    // Count only this batch. loadedPlugins and inactivePlugins are cumulative across a directory
+    // rescan, so using their sizes here reported the previous run's plugins again and could make
+    // "failed" negative.
     int total = sorted.size();
     java.util.Set<WeaverPlugin> succeededSet = new java.util.HashSet<>(loadedPlugins);
     java.util.List<WeaverPlugin> inactiveSnapshot = new java.util.ArrayList<>(inactivePlugins);
-    int succeeded = succeededSet.size();
-    int inactive = inactiveSnapshot.size();
+    int succeeded = 0;
+    int inactive = 0;
+    for (WeaverPlugin plugin : sorted) {
+      if (succeededSet.contains(plugin)) {
+        succeeded++;
+      } else if (inactiveSnapshot.contains(plugin)) {
+        inactive++;
+      }
+    }
     int failed = total - succeeded - inactive;
     log.info(
         "Loaded {} plugins ({} succeeded, {} inactive, {} failed) out of {} discovered",

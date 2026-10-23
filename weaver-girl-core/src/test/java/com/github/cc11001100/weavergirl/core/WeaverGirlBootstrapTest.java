@@ -137,27 +137,6 @@ class WeaverGirlBootstrapTest {
   }
 
   @Test
-  void dynamicRefreshCoversEveryConfigShape() {
-    WeaverGirl agent = WeaverGirl.bootstrap(instrumentation());
-    try {
-      // Absent, blank, not a number, and non-positive all decline to schedule anything.
-      assertDoesNotThrow(() -> agent.initDynamicRefresh(null));
-      agent.initDynamicRefresh(Collections.<String, String>emptyMap());
-      agent.initDynamicRefresh(config("weavergirl.dynamic.refreshIntervalSeconds", "   "));
-      agent.initDynamicRefresh(config("weavergirl.dynamic.refreshIntervalSeconds", "soon"));
-      agent.initDynamicRefresh(config("weavergirl.dynamic.refreshIntervalSeconds", "0"));
-      agent.initDynamicRefresh(config("weavergirl.dynamic.refreshIntervalSeconds", "-5"));
-
-      // A positive interval arms the scheduler; stopping it twice is a no-op the second time.
-      agent.initDynamicRefresh(config("weavergirl.dynamic.refreshIntervalSeconds", "3600"));
-      agent.stopDynamicRefresh();
-      agent.stopDynamicRefresh();
-    } finally {
-      agent.shutdown();
-    }
-  }
-
-  @Test
   void refreshAndRetransformReportThroughTheInstalledTransformer() {
     WeaverGirl agent = WeaverGirl.bootstrap(instrumentation());
     try {
@@ -299,35 +278,6 @@ class WeaverGirlBootstrapTest {
   }
 
   @Test
-  void shutdownStopsComponentsThatWereLazilyStarted() {
-    WeaverGirl agent = WeaverGirl.bootstrap(instrumentation());
-    try {
-      // These are created on demand, so a plain shutdown never reaches their stop branches.
-      agent.initSamplingMonitor();
-      agent.initConfigWatcher();
-      assertNotNull(agent.getPluginManager());
-    } finally {
-      agent.shutdown();
-    }
-    // A watcher installed by hand is stopped too, and stopping twice stays safe.
-    agent.setConfigWatcher(
-        new com.github.cc11001100.weavergirl.core.config.ConfigWatcher(null, agent.getRegistry()));
-    assertDoesNotThrow(agent::shutdown);
-  }
-
-  @Test
-  void dynamicRefreshRunsTheScheduledTask() throws Exception {
-    WeaverGirl agent = WeaverGirl.create();
-    try {
-      agent.initDynamicRefresh(config("weavergirl.dynamic.refreshIntervalSeconds", "1"));
-      // The first fire is one interval away, so a short wait lets the task body run.
-      Thread.sleep(1500);
-    } finally {
-      agent.stopDynamicRefresh();
-    }
-  }
-
-  @Test
   void builderAndExpressionCallbacksAllRun() {
     WeaverGirl agent = WeaverGirl.create();
     com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation invocation =
@@ -396,15 +346,4 @@ class WeaverGirlBootstrapTest {
     assertDoesNotThrow(() -> manager.remove("samplingRate", "test"));
   }
 
-  @Test
-  void singleArgumentBootstrapDelegates() {
-    WeaverGirl agent = WeaverGirl.bootstrap(instrumentation());
-    try {
-      assertNull(agent.getSpanExporter());
-    } finally {
-      agent.shutdown();
-    }
-    // Shutting down twice is safe: every component tolerates a second stop.
-    agent.shutdown();
-  }
 }

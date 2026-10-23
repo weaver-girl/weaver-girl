@@ -10,16 +10,26 @@ import com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression;
 import com.github.cc11001100.weavergirl.api.pointcut.PointcutParser;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.Constructor;
 import org.yaml.snakeyaml.error.YAMLException;
+import org.yaml.snakeyaml.introspector.PropertyUtils;
 
 /** Loads interceptor definitions from YAML configuration files. */
 public class YamlConfigLoader {
@@ -27,6 +37,27 @@ public class YamlConfigLoader {
   private static final Logger log = LoggerFactory.getLogger(YamlConfigLoader.class);
 
   private final ConcurrentHashMap<String, Interceptor> adviceCache = new ConcurrentHashMap<>();
+
+  /**
+   * Top-level keys this class maps onto {@link WeaverConfig} fields. Everything else in the document
+   * is a plugin option and is passed through unchanged, so a capability that is configured in YAML
+   * sees the same key it would see as an agent argument.
+   */
+  private static final Set<String> AGENT_KEYS =
+      new HashSet<>(
+          Arrays.asList(
+              "interceptors",
+              "samplingThreshold",
+              "circuitBreakerFailures",
+              "circuitBreakerCooldown",
+              "excludedClasses",
+              "logLevel",
+              "maxTransformations",
+              "onlyInterceptPackages",
+              "disabledPlugins",
+              "enabledPlugins",
+              "alertRules",
+              "plugins"));
 
   /**
    * Parse a YAML config file without registering interceptors. Useful when you need the
@@ -42,12 +73,14 @@ public class YamlConfigLoader {
       return new WeaverConfig();
     }
 
-    try (Reader reader = Files.newBufferedReader(path)) {
-      Yaml yaml = new Yaml();
-      WeaverConfig config = yaml.loadAs(reader, WeaverConfig.class);
+    try {
+      String text = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+      Yaml yaml = lenientYaml();
+      WeaverConfig config = yaml.loadAs(new StringReader(text), WeaverConfig.class);
       if (config == null) {
         config = new WeaverConfig();
       }
+      collectPluginOptions(yaml.load(text), config);
       applyDefaults(config);
       validate(config);
       return config;
@@ -58,6 +91,54 @@ public class YamlConfigLoader {
       log.error("Failed to parse YAML config: {}", e.getMessage());
       return new WeaverConfig();
     }
+  }
+
+  /**
+   * A parser that tolerates keys {@link WeaverConfig} does not model.
+   *
+   * <p>Plugin settings ({@code plugins:}) and capability options ({@code metricsPort:}) live in the
+   * same file as the agent settings. With the default constructor, SnakeYAML rejects the whole
+   * document on the first key it cannot bind, so one plugin option used to cost every interceptor
+   * definition in the file. The unknown keys are collected separately by {@link
+   * #collectPluginOptions(Object, WeaverConfig)} and handed to plugins.
+   */
+  private static Yaml lenientYaml() {
+    Constructor constructor = new Constructor(new LoaderOptions());
+    PropertyUtils propertyUtils = new PropertyUtils();
+    propertyUtils.setSkipMissingProperties(true);
+    constructor.setPropertyUtils(propertyUtils);
+    return new Yaml(constructor);
+  }
+
+  /**
+   * Keep the top-level keys that are not agent settings as plugin launch options. A scalar like
+   * {@code metricsPort: 9400} or {@code watch: true} is exactly what a runtime plugin looks for, and
+   * before this pass it was dropped by the typed binding without a word.
+   */
+  private void collectPluginOptions(Object root, WeaverConfig config) {
+    if (!(root instanceof Map)) {
+      return;
+    }
+    Map<String, String> options = new LinkedHashMap<>();
+    for (Map.Entry<?, ?> entry : ((Map<?, ?>) root).entrySet()) {
+      if (entry.getKey() == null) {
+        continue;
+      }
+      String key = String.valueOf(entry.getKey());
+      if (AGENT_KEYS.contains(key)) {
+        continue;
+      }
+      Object value = entry.getValue();
+      if (value == null
+          || value instanceof Map
+          || value instanceof Collection
+          || value.getClass().isArray()) {
+        log.warn("Ignoring unsupported YAML option '{}': expected a scalar value", key);
+        continue;
+      }
+      options.put(key, String.valueOf(value));
+    }
+    config.setPluginOptions(options);
   }
 
   public WeaverConfig loadFromFile(String filePath, InterceptorRegistry registry) {
@@ -81,7 +162,7 @@ public class YamlConfigLoader {
 
   public WeaverConfig loadFromReader(Reader reader, InterceptorRegistry registry) {
     try {
-      Yaml yaml = new Yaml();
+      Yaml yaml = lenientYaml();
       WeaverConfig config = yaml.loadAs(reader, WeaverConfig.class);
       if (config == null) {
         config = new WeaverConfig();

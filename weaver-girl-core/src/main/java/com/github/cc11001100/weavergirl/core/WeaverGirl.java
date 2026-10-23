@@ -13,13 +13,8 @@ import com.github.cc11001100.weavergirl.api.plugin.PluginManager;
 import com.github.cc11001100.weavergirl.api.plugin.PluginManagerHolder;
 import com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
-import com.github.cc11001100.weavergirl.api.tracing.Tracer;
-import com.github.cc11001100.weavergirl.core.config.ConfigWatcher;
 import com.github.cc11001100.weavergirl.core.config.DefaultDynamicConfigManager;
 import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
-import com.github.cc11001100.weavergirl.core.exporter.OtlpHttpExporter;
-import com.github.cc11001100.weavergirl.core.exporter.SpanExporter;
-import com.github.cc11001100.weavergirl.core.exporter.SpanFormatter;
 import com.github.cc11001100.weavergirl.core.introduction.IntroductionStore;
 import com.github.cc11001100.weavergirl.core.management.AgentMonitor;
 import com.github.cc11001100.weavergirl.api.introduction.IntroductionDefinition;
@@ -31,10 +26,7 @@ import com.github.cc11001100.weavergirl.core.plugin.PluginLoader;
 import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.graceful.GracefulDegradationManager;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
-import com.github.cc11001100.weavergirl.core.sampling.SamplingMonitor;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
-import com.github.cc11001100.weavergirl.core.exporter.SpanExport;
-import com.github.cc11001100.weavergirl.core.trace.TracerSpanExporterBridge;
 import com.github.cc11001100.weavergirl.core.transformer.WeaverTransformer;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
@@ -45,10 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,23 +56,11 @@ public class WeaverGirl {
   private final IntroductionRegistry introductionRegistry;
   private Instrumentation instrumentation;
   private WeaverTransformer transformer;
-  private SamplingMonitor samplingMonitor;
-  private ConfigWatcher configWatcher;
 
   private final DefaultDynamicConfigManager dynamicConfigManager;
   private volatile DefaultPluginManager pluginManager;
   private volatile boolean pluginManagerInitialized = false;
   private final Object pluginManagerLock = new Object();
-  private volatile boolean samplingMonitorInitialized = false;
-  private final Object samplingMonitorLock = new Object();
-  private volatile boolean configWatcherInitialized = false;
-  private final Object configWatcherLock = new Object();
-
-  private SpanExporter spanExporter;
-  private TracerSpanExporterBridge spanExportBridge;
-  private SpanExport spanExport;
-  private volatile long dynamicRefreshIntervalSeconds = 0;
-  private java.util.concurrent.ScheduledExecutorService refreshScheduler;
 
   private WeaverGirl() {
     this.registry = new DefaultInterceptorRegistry();
@@ -104,32 +81,6 @@ public class WeaverGirl {
     }
   }
 
-  void initSamplingMonitor() {
-    if (!samplingMonitorInitialized) {
-      synchronized (samplingMonitorLock) {
-        if (!samplingMonitorInitialized) {
-          SamplingController controller = SamplingController.getInstance();
-          if (controller != null) {
-            SamplingMonitor monitor = new SamplingMonitor(controller);
-            monitor.start();
-            samplingMonitor = monitor;
-          }
-          samplingMonitorInitialized = true;
-        }
-      }
-    }
-  }
-
-  void initConfigWatcher() {
-    if (!configWatcherInitialized) {
-      synchronized (configWatcherLock) {
-        if (!configWatcherInitialized) {
-          configWatcher = new ConfigWatcher(null, registry);
-          configWatcherInitialized = true;
-        }
-      }
-    }
-  }
   // ------------------------------------------------------------------------------
 
   /**
@@ -176,23 +127,7 @@ public class WeaverGirl {
             .addReloadHook(() -> InterceptorHolder.invalidateSnapshot());
       }
 
-      // Merge disabledPlugins from WeaverConfig into the config map for PluginLoader
-      java.util.Map<String, String> pluginConfig =
-          config != null ? config : new java.util.HashMap<>();
-      if (weaverConfig != null
-          && weaverConfig.getDisabledPlugins() != null
-          && !weaverConfig.getDisabledPlugins().isEmpty()) {
-        String disabledStr = String.join(",", weaverConfig.getDisabledPlugins());
-        pluginConfig.put("disabledPlugins", disabledStr);
-        log.info("Disabled plugins from config: {}", disabledStr);
-      }
-      if (weaverConfig != null
-          && weaverConfig.getEnabledPlugins() != null
-          && !weaverConfig.getEnabledPlugins().isEmpty()) {
-        String enabledStr = String.join(",", weaverConfig.getEnabledPlugins());
-        pluginConfig.put("enabledPlugins", enabledStr);
-        log.info("Enabled plugins from config (exclusive): {}", enabledStr);
-      }
+      java.util.Map<String, String> pluginConfig = mergePluginConfig(config, weaverConfig);
 
       long pluginLoadStart = System.nanoTime();
       // The loader that defined this class, not the thread context loader. Under the isolated
@@ -298,8 +233,8 @@ public class WeaverGirl {
       monitor.setInterceptorDefinitionCount(weaverGirl.registry.getAllDefinitions().size());
       monitor.setPluginCount(weaverGirl.pluginLoader.getLoadedPlugins().size());
 
-      // P99: defer SamplingMonitor/PluginManager to first access so bootstrap does less work
-      // when these are not needed immediately.
+      // P99: defer the PluginManager to first access so bootstrap does less work when it is not
+      // needed immediately.
       com.github.cc11001100.weavergirl.core.management.StartupMetrics.recordPhase(
           "managementInit", System.nanoTime() - mgmtStart);
 
@@ -358,22 +293,52 @@ public class WeaverGirl {
   }
 
   /**
+   * Combine the two plugin configuration sources into the flat map {@code PluginContext} reads.
+   *
+   * <p>YAML can scope a setting to one plugin ({@code plugins.<name>.<key>}) and carries launch
+   * options for capability plugins; agent arguments are explicit for this launch and win over an
+   * equal YAML key. {@code disabledPlugins}/{@code enabledPlugins} are lists in the YAML model, so
+   * they are folded into the same map unless the launch already supplied them.
+   *
+   * @param config agent arguments, possibly null
+   * @param weaverConfig parsed YAML, possibly null
+   * @return a new mutable map, never null
+   */
+  static java.util.Map<String, String> mergePluginConfig(
+      java.util.Map<String, String> config, WeaverConfig weaverConfig) {
+    java.util.Map<String, String> pluginConfig = new java.util.HashMap<>();
+    if (weaverConfig != null) {
+      pluginConfig.putAll(weaverConfig.getPluginConfig());
+    }
+    if (config != null) {
+      pluginConfig.putAll(config);
+    }
+    if (weaverConfig != null
+        && weaverConfig.getDisabledPlugins() != null
+        && !weaverConfig.getDisabledPlugins().isEmpty()
+        && !pluginConfig.containsKey("disabledPlugins")) {
+      String disabledStr = String.join(",", weaverConfig.getDisabledPlugins());
+      pluginConfig.put("disabledPlugins", disabledStr);
+      log.info("Disabled plugins from config: {}", disabledStr);
+    }
+    if (weaverConfig != null
+        && weaverConfig.getEnabledPlugins() != null
+        && !weaverConfig.getEnabledPlugins().isEmpty()
+        && !pluginConfig.containsKey("enabledPlugins")) {
+      String enabledStr = String.join(",", weaverConfig.getEnabledPlugins());
+      pluginConfig.put("enabledPlugins", enabledStr);
+      log.info("Enabled plugins from config (exclusive): {}", enabledStr);
+    }
+    return pluginConfig;
+  }
+
+  /**
    * Shutdown the agent — destroy all plugins and clean up. Should be called from a shutdown hook.
    */
   public void shutdown() {
     log.info("WeaverGirl agent shutting down...");
     // Span export and the version check stop with their plugins, inside destroyAll() below. Stopping
     // them here would only reach a copy bootstrap no longer starts.
-
-    ConfigWatcher localConfigWatcher = this.configWatcher;
-    if (localConfigWatcher != null) {
-      localConfigWatcher.stop();
-    }
-
-    SamplingMonitor localSamplingMonitor = this.samplingMonitor;
-    if (localSamplingMonitor != null) {
-      localSamplingMonitor.stop();
-    }
 
     if (dynamicConfigManager != null) {
       dynamicConfigManager.shutdown();
@@ -573,76 +538,8 @@ public class WeaverGirl {
     return pluginManager;
   }
 
-  /**
-   * Wire span batch export (P79). Delegates to {@link SpanExport}, which the span-export runtime
-   * plugin drives. Bootstrap does not call this: the plugin starts the exporter when {@code
-   * otlpEndpoint} or {@code spanExport=true} is set and stops it on destroy, so calling it here too
-   * would run a second exporter. It remains for callers that wire an exporter themselves. {@code
-   * otlpEndpoint} sends spans to a
-   * collector; {@code spanExport=true} without an endpoint enables log-only export. Without either
-   * key nothing is created (zero overhead, no background thread).
-   *
-   * <p>The bridge registers with {@link Tracer#addCompletionListener} (additive, so it coexists
-   * with other consumers such as the topology bridge) and the exporter is stopped on {@link
-   * #shutdown()}.
-   *
-   * <p>Optional tuning keys: {@code spanExportBatchSize} (default 100), {@code
-   * spanExportIntervalMs} (default 5000), {@code spanExportBufferSize} (default 10000).
-   */
-  void initSpanExport(java.util.Map<String, String> config) {
-    SpanExport export = new SpanExport();
-    if (export.start(config)) {
-      spanExport = export;
-      spanExportBridge = null;
-      spanExporter = export.exporter();
-    }
-  }
-
-  /**
-   * A positive integer from config text, or the default when it is missing, blank, not a number, or
-   * not positive. Parsing lives in {@link SpanExport}; this stays so existing callers keep working.
-   */
-  static int parsePositiveInt(String value, int defaultValue) {
-    return SpanExport.parsePositiveInt(value, defaultValue);
-  }
-
-  /** A positive long from config text, or the default. See {@link #parsePositiveInt}. */
-  static long parsePositiveLong(String value, long defaultValue) {
-    return SpanExport.parsePositiveLong(value, defaultValue);
-  }
-
-  /**
-   * Returns the span batch exporter created by {@link #initSpanExport}, or null when span export is
-   * not enabled. Primarily for tests and diagnostics.
-   *
-   * @return the active span exporter, or null
-   */
-  public SpanExporter getSpanExporter() {
-    return spanExporter;
-  }
-
-  /**
-   * Detach the span export bridge and stop the exporter. Called from {@link #shutdown()};
-   * package-visible for tests.
-   */
-  void stopSpanExport() {
-    if (spanExport != null) {
-      spanExport.stop();
-      spanExport = null;
-      spanExporter = null;
-    }
-  }
-
   // --- P103: Dynamic refresh support -----------------------------------------------
 
-  /**
-   * Trigger a manual refresh of the interceptor registry snapshot cache. This forces {@link
-   * InterceptorHolder} to rebuild its cached class→interceptors mapping on the next interception,
-   * ensuring dynamic register/unregister changes take effect immediately.
-   *
-   * <p>Also triggers retransformation of already-loaded classes so new/removed interceptors are
-   * applied to already-loaded classes.
-   */
   /**
    * Load jars added to the plugin directory since the last scan, reload a jar whose content changed,
    * and unload plugins whose jar has been removed. Classes already loaded are retransformed afterwards,
@@ -674,6 +571,13 @@ public class WeaverGirl {
     }
   }
 
+  /**
+   * Trigger a manual refresh of the interceptor registry snapshot cache. This forces {@link
+   * InterceptorHolder} to rebuild its cached class→interceptors mapping on the next interception,
+   * ensuring dynamic register/unregister changes take effect immediately.
+   *
+   * <p>Also retransforms already-loaded classes so new/removed interceptors are applied to them.
+   */
   public void refresh() {
     InterceptorHolder.invalidateSnapshot();
     if (transformer != null) {
@@ -682,56 +586,7 @@ public class WeaverGirl {
     log.info("Interceptor registry manually refreshed");
   }
 
-  /**
-   * Initialize optional periodic auto-refresh based on {@code weavergirl.dynamic.refreshIntervalSeconds}.
-   * Default 0 (disabled). When > 0, a daemon thread calls {@link #refresh()} at the configured interval.
-   */
-  void initDynamicRefresh(java.util.Map<String, String> config) {
-    if (config == null) return;
-    String intervalStr = config.get("weavergirl.dynamic.refreshIntervalSeconds");
-    if (intervalStr == null || intervalStr.trim().isEmpty()) {
-      return;
-    }
-    long intervalSeconds;
-    try {
-      intervalSeconds = Long.parseLong(intervalStr.trim());
-    } catch (NumberFormatException e) {
-      log.warn("Invalid weavergirl.dynamic.refreshIntervalSeconds '{}', skipping auto-refresh", intervalStr);
-      return;
-    }
-    if (intervalSeconds <= 0) {
-      return;
-    }
-    this.dynamicRefreshIntervalSeconds = intervalSeconds;
-    refreshScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-      Thread t = new Thread(r, "weaver-girl-dynamic-refresh");
-      t.setDaemon(true);
-      return t;
-    });
-    refreshScheduler.scheduleAtFixedRate(() -> {
-      try {
-        refresh();
-      } catch (Throwable t) {
-        log.warn("[DynamicRefresh] Scheduled refresh failed: {}", t.getMessage());
-      }
-    }, intervalSeconds, intervalSeconds, TimeUnit.SECONDS);
-    log.info("Dynamic auto-refresh enabled: interval={}s", intervalSeconds);
-  }
-
-  /** Stop the dynamic refresh scheduler. Called from {@link #shutdown()}. */
-  void stopDynamicRefresh() {
-    if (refreshScheduler != null) {
-      refreshScheduler.shutdownNow();
-      refreshScheduler = null;
-    }
-  }
-
   // -------------------------------------------------------------------------------
-
-  /** Set the ConfigWatcher so it can be stopped during shutdown. */
-  public void setConfigWatcher(ConfigWatcher watcher) {
-    this.configWatcher = watcher;
-  }
 
   /**
    * Returns a list of class names that have been transformed by this agent. Useful for diagnostic

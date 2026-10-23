@@ -360,13 +360,13 @@ Agent 自身健康状态的深度诊断能力。
 - ✅ Trace/Span 数据批量导出接口 (SpanData, SpanExporter, SpanFormatter)
 - ✅ OTLP 格式导出 (OtlpHttpExporter: HTTP POST + 自定义头 + 超时 + 统计)
 - ✅ Tracer → SpanExporter 联通 (TracerSpanExporterBridge)
-- ✅ bootstrap 自动装配: `otlpEndpoint`/`spanExport` 开关 + 批量/周期/缓冲调优键 + shutdown 生命周期 (WeaverGirl.initSpanExport/stopSpanExport, ConfigValidator 新键, WeaverGirlSpanExportTest 8 tests)
+- ✅ 由 `span-export` runtime 插件自动装配: `otlpEndpoint`/`spanExport` 开关 + 批量/周期/缓冲调优键 + destroy 时停止 (核心不再内置 `initSpanExport/stopSpanExport`，避免与插件各启一份 exporter)
 
 ### P80: Agent 自更新机制 [LOW] ✅
 
 - ✅ 版本检测和更新提示 (VersionInfo + UpdateChecker: 周期轮询 JSON 端点, semver 比较, 监听器通知, 失败永不抛异常)
 - ✅ 滚动升级支持 (AgentUpdater: 下载 → SHA-256 校验 → staging + 重启指引; JVM 内存映射限制已在文档中说明)
-- ✅ bootstrap 自动装配: `updateCheckEndpoint` 开关 + `updateCheckIntervalMs`/`updateAutoStage`/`updateStagingDir`/`updateHeaders` 调优键 + shutdown 生命周期 (WeaverGirl.initUpdateCheck/stopUpdateCheck, ConfigValidator 新键, 33 tests)
+- ✅ 由版本检查 runtime 插件自动装配: `updateCheckEndpoint` 开关 + `updateCheckIntervalMs`/`updateAutoStage`/`updateStagingDir`/`updateHeaders` 调优键 + destroy 时停止 (33 tests)
 
 ## 第八阶段：成熟度提升 (P71-P75) 🔄
 

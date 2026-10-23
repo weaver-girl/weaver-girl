@@ -33,34 +33,6 @@ class WeaverGirlInternalStateTest {
   }
 
   @Test
-  void weaverGirl_initSamplingMonitor_isIdempotent() throws Exception {
-    WeaverGirl wg = WeaverGirl.create();
-
-    Method initMethod = WeaverGirl.class.getDeclaredMethod("initSamplingMonitor");
-    initMethod.setAccessible(true);
-
-    assertDoesNotThrow(
-        () -> {
-          initMethod.invoke(wg);
-          initMethod.invoke(wg);
-        });
-  }
-
-  @Test
-  void weaverGirl_initConfigWatcher_isIdempotent() throws Exception {
-    WeaverGirl wg = WeaverGirl.create();
-
-    Method initMethod = WeaverGirl.class.getDeclaredMethod("initConfigWatcher");
-    initMethod.setAccessible(true);
-
-    assertDoesNotThrow(
-        () -> {
-          initMethod.invoke(wg);
-          initMethod.invoke(wg);
-        });
-  }
-
-  @Test
   void weaverGirl_getPluginManager_triggersInit() {
     WeaverGirl wg = WeaverGirl.create();
 

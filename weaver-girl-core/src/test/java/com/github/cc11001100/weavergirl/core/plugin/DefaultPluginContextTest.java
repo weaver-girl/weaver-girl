@@ -101,6 +101,56 @@ class DefaultPluginContextTest {
   }
 
   @Test
+  void getConfig_withDefaultValue_stillReadsSystemProperties() {
+    Map<String, String> config = new HashMap<>();
+    DefaultPluginContext context = new DefaultPluginContext(mockRegistry, config, "myplugin");
+    System.setProperty("weavergirl.plugin.myplugin.threshold", "250");
+
+    try {
+      assertEquals("250", context.getConfig("threshold", "1000"));
+    } finally {
+      System.clearProperty("weavergirl.plugin.myplugin.threshold");
+    }
+  }
+
+  @Test
+  void getConfig_withDefaultValue_readsPluginSection() {
+    Map<String, String> config = new HashMap<>();
+    config.put("plugins.myplugin.threshold", "250");
+    DefaultPluginContext context = new DefaultPluginContext(mockRegistry, config, "myplugin");
+
+    assertEquals("250", context.getConfig("threshold", "1000"));
+  }
+
+  @Test
+  void getConfig_pluginSectionWinsOverAnotherPluginsGlobalKey() {
+    Map<String, String> config = new HashMap<>();
+    config.put("threshold", "1000");
+    config.put("plugins.other.threshold", "999");
+    config.put("plugins.myplugin.threshold", "250");
+    DefaultPluginContext context = new DefaultPluginContext(mockRegistry, config, "myplugin");
+
+    assertEquals("250", context.getConfig("threshold"));
+    // A different plugin is not affected by this plugin's scoped entry.
+    DefaultPluginContext other = new DefaultPluginContext(mockRegistry, config, "other");
+    assertEquals("999", other.getConfig("threshold"));
+  }
+
+  @Test
+  void getConfig_namespacedPropertyWinsOverPluginSection() {
+    Map<String, String> config = new HashMap<>();
+    config.put("plugins.myplugin.threshold", "250");
+    DefaultPluginContext context = new DefaultPluginContext(mockRegistry, config, "myplugin");
+    System.setProperty("weavergirl.plugin.myplugin.threshold", "42");
+
+    try {
+      assertEquals("42", context.getConfig("threshold"));
+    } finally {
+      System.clearProperty("weavergirl.plugin.myplugin.threshold");
+    }
+  }
+
+  @Test
   void getAllConfig_returnsUnmodifiableMap() {
     Map<String, String> config = new HashMap<>();
     config.put("key", "value");

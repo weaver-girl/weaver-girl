@@ -43,6 +43,10 @@ public class MyPlugin extends AbstractPlugin {
 }
 ```
 
+`registerInterceptors` is optional. A capability plugin — one that starts a server, an exporter, a
+background checker, or publishes a service other plugins use — overrides `name()` (and `init` /
+`destroy`) without weaving anything. The default implementation is a no-op.
+
 ### Step 3: Register SPI
 
 Create `META-INF/services/com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin`:
@@ -66,7 +70,7 @@ The agent will discover and load your plugin automatically.
 2. **Dependency Resolution** -- Plugins sorted by `depends()` declarations
 3. **Initialization** -- `init(PluginContext)` called with config access
 4. **Enable check** -- `isEnabled(PluginContext)`; returning `false` marks the plugin inactive, not failed, and skips registration
-5. **Registration** -- `registerInterceptors(InterceptorRegistry)` called
+5. **Registration** -- `registerInterceptors(InterceptorRegistry)` called; the default no-op means a capability plugin can skip it
 6. **Runtime** -- Interceptors invoked as matched methods are called
 7. **Destroy** -- `destroy()` called at agent shutdown
 
@@ -78,10 +82,22 @@ The agent will discover and load your plugin automatically.
 @Override
 public void init(PluginContext context) {
     String threshold = context.getConfig("threshold", "1000");
-    // System property: weavergirl.plugin.my-plugin.threshold=500
-    // YAML: plugins.my-plugin.threshold: 500
 }
 ```
+
+`name()` is the only thing a key is scoped by, and the lookup order is first match wins:
+
+1. system property `weavergirl.plugin.my-plugin.threshold`
+2. YAML `plugins.my-plugin.threshold`
+3. plain system property `threshold`
+4. agent argument `threshold=...` and top-level YAML keys
+5. the default you pass
+
+So `plugins.<name>.<key>` in YAML and `weavergirl.plugin.<name>.<key>` as a system property both
+address *your* plugin and do not leak into another plugin that happens to read the same key. A
+scalar top-level YAML key such as `metricsPort: 9400` reaches every plugin as `metricsPort`, which
+is how the runtime capability plugins are configured; `getAllConfig()` returns that flat launch
+map with the namespaced keys written out in full.
 
 ## Interceptor API
 
@@ -291,7 +307,7 @@ try {
 3. **Contract check** — a jar that declares `plugin.apiVersion` newer than the running agent is refused and not activated. Jars that declare nothing are loaded.
 4. **`init(PluginContext)`** — always called, and called *before* the enable check.
 5. **`isEnabled(PluginContext)`** — return `false` and the plugin is recorded as inactive, not as a failure. Its interceptors are not registered.
-6. **`registerInterceptors`** — only when enabled.
+6. **`registerInterceptors`** — only when enabled. Optional: the default is a no-op, so a capability-only plugin does not need an empty method.
 7. **`destroy()`** — at agent shutdown.
 
 Because `init` runs even when the plugin is switched off, it must not start servers, open sockets, or register anything that `destroy` would have to undo. Read configuration there; do the real work in `registerInterceptors` or behind the `isEnabled` check.

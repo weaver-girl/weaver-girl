@@ -30,10 +30,11 @@ import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
  *
  * <h3>Default methods</h3>
  *
- * <p>{@link #init(PluginContext)} and {@link #destroy()} have default no-op implementations. Only
- * {@link #name()} and {@link #registerInterceptors(InterceptorRegistry)} must be implemented. For
- * convenience, consider extending {@link AbstractPlugin} which provides a fluent builder API for
- * interceptor registration.
+ * <p>{@link #name()} is the only method that must be implemented. {@link
+ * #registerInterceptors(InterceptorRegistry)} is a no-op by default, so a capability plugin — one
+ * that starts a server, watches a file or publishes events from {@link #init(PluginContext)} — does
+ * not have to write an empty method. For convenience, consider extending {@link AbstractPlugin},
+ * which provides a fluent builder API for interceptor registration.
  *
  * <h3>Usage example</h3>
  *
@@ -110,13 +111,18 @@ public interface WeaverPlugin {
   /**
    * Register interceptor definitions with the registry.
    *
-   * <p>Called once during agent startup, after {@link #init(PluginContext)}. This is the only
-   * required method (besides {@link #name()}). All interceptor definitions that the plugin wishes
-   * to activate must be registered here.
+   * <p>Called once during agent startup, after {@link #init(PluginContext)}. All interceptor
+   * definitions that the plugin wishes to activate must be registered here.
+   *
+   * <p>Default implementation registers nothing. A capability plugin — one whose work happens in
+   * {@link #init(PluginContext)}, such as an endpoint or a watcher — overrides this only when it
+   * also weaves something.
    *
    * @param registry the interceptor registry to register definitions with
    */
-  void registerInterceptors(InterceptorRegistry registry);
+  default void registerInterceptors(InterceptorRegistry registry) {
+    // no-op by default: capability plugins may not weave at all
+  }
 
   /**
    * Declare the names of plugins that must be loaded before this plugin. The framework will ensure

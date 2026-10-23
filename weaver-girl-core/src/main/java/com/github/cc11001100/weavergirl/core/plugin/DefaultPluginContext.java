@@ -50,23 +50,42 @@ public class DefaultPluginContext implements PluginContext {
 
   @Override
   public String getConfig(String key) {
-    ValidationUtils.requireNonEmpty(key, "key");
-    // Check namespaced system property first
-    String namespacedKey = "weavergirl.plugin." + pluginName + "." + key;
-    String value = System.getProperty(namespacedKey);
-    if (value != null) return value;
-
-    // Check plain system property
-    value = System.getProperty(key);
-    if (value != null) return value;
-
-    // Check config map
-    return config.get(key);
+    return lookup(key);
   }
 
   @Override
   public String getConfig(String key, String defaultValue) {
-    return config.getOrDefault(key, defaultValue);
+    String value = lookup(key);
+    return value != null ? value : defaultValue;
+  }
+
+  /**
+   * Resolve one key through the full precedence chain, most specific first:
+   *
+   * <ol>
+   *   <li>{@code -Dweavergirl.plugin.<name>.<key>} — this plugin only
+   *   <li>YAML {@code plugins.<name>.<key>} — this plugin only
+   *   <li>{@code -D<key>} — a plain system property, kept for backward compatibility
+   *   <li>the global config map, which carries the agent arguments
+   * </ol>
+   *
+   * <p>Both accessors share this chain. A plugin whose key happens to collide with one another
+   * capability reads is isolated by the namespaced entries, while existing launch lines that pass
+   * plain keys such as {@code metricsPort=9400} keep working.
+   */
+  private String lookup(String key) {
+    ValidationUtils.requireNonEmpty(key, "key");
+    String namespacedKey = "weavergirl.plugin." + pluginName + "." + key;
+    String value = System.getProperty(namespacedKey);
+    if (value != null) return value;
+
+    value = config.get("plugins." + pluginName + "." + key);
+    if (value != null) return value;
+
+    value = System.getProperty(key);
+    if (value != null) return value;
+
+    return config.get(key);
   }
 
   @Override

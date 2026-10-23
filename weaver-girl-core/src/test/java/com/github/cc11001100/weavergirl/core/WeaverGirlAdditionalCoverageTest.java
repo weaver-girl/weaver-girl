@@ -14,67 +14,6 @@ import org.junit.jupiter.api.Test;
 class WeaverGirlAdditionalCoverageTest {
 
   @Test
-  void parsePositiveInt_withWhitespace_returnsDefault() throws Exception {
-    WeaverGirl wg = WeaverGirl.create();
-    Method method = WeaverGirl.class.getDeclaredMethod("parsePositiveInt", String.class, int.class);
-    method.setAccessible(true);
-
-    int result = (int) method.invoke(wg, "  123  ", 50);
-    // String.trim() handles whitespace, so it parses successfully
-    assertEquals(123, result);
-  }
-
-  @Test
-  void parsePositiveLong_withWhitespace_returnsDefault() throws Exception {
-    WeaverGirl wg = WeaverGirl.create();
-    Method method = WeaverGirl.class.getDeclaredMethod("parsePositiveLong", String.class, long.class);
-    method.setAccessible(true);
-
-    long result = (long) method.invoke(wg, "  123  ", 1000L);
-    // String.trim() handles whitespace, so it parses successfully
-    assertEquals(123L, result);
-  }
-
-  @Test
-  void initSpanExport_withBatchSize() {
-    WeaverGirl wg = WeaverGirl.create();
-    Map<String, String> config = new ConcurrentHashMap<>();
-    config.put("spanExport", "true");
-    config.put("spanExportBatchSize", "200");
-
-    assertDoesNotThrow(() -> wg.initSpanExport(config));
-  }
-
-  @Test
-  void initSpanExport_withInterval() {
-    WeaverGirl wg = WeaverGirl.create();
-    Map<String, String> config = new ConcurrentHashMap<>();
-    config.put("spanExport", "true");
-    config.put("spanExportIntervalMs", "10000");
-
-    assertDoesNotThrow(() -> wg.initSpanExport(config));
-  }
-
-  @Test
-  void initSpanExport_withBufferSize() {
-    WeaverGirl wg = WeaverGirl.create();
-    Map<String, String> config = new ConcurrentHashMap<>();
-    config.put("spanExport", "true");
-    config.put("spanExportBufferSize", "50000");
-
-    assertDoesNotThrow(() -> wg.initSpanExport(config));
-  }
-
-  @Test
-  void initDynamicRefresh_withInvalidInterval() {
-    WeaverGirl wg = WeaverGirl.create();
-    Map<String, String> config = new ConcurrentHashMap<>();
-    config.put("dynamicRefreshInterval", "invalid");
-
-    assertDoesNotThrow(() -> wg.initDynamicRefresh(config));
-  }
-
-  @Test
   void applyCoreConfig_withSamplingRate() throws Exception {
     Method method = WeaverGirl.class.getDeclaredMethod("applyCoreConfig", Map.class);
     method.setAccessible(true);

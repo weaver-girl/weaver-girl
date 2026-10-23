@@ -249,6 +249,92 @@ class YamlConfigLoaderTest {
     }
   }
 
+  /**
+   * A plugin section used to make the typed binding reject the whole document, so the interceptor
+   * definitions in the same file were lost along with it.
+   */
+  @Test
+  void loadFromString_pluginSectionCoexistsWithInterceptorDefinitions() {
+    String yaml =
+        "plugins:\n"
+            + "  jdbc:\n"
+            + "    slowQueryThreshold: 1000\n"
+            + "interceptors:\n"
+            + "  - className: com.example.Svc\n"
+            + "    method: run\n"
+            + "    before: '"
+            + VALID_ADVICE
+            + "'\n";
+
+    WeaverConfig config = loader.loadFromString(yaml, registry);
+
+    assertEquals(1, config.getInterceptors().size());
+    assertEquals(1, registry.getAllDefinitions().size());
+  }
+
+  @Test
+  void parseFromFile_flattensPluginSectionsIntoNamespacedKeys() throws Exception {
+    Path file = Files.createTempFile("weaver-girl-plugins", ".yml");
+    try {
+      Files.write(
+          file,
+          ("plugins:\n"
+                  + "  jdbc:\n"
+                  + "    slowQueryThreshold: 1000\n"
+                  + "    logSql: true\n"
+                  + "  method-timing:\n"
+                  + "    slowThreshold: 100\n")
+              .getBytes(StandardCharsets.UTF_8));
+
+      WeaverConfig config = loader.parseFromFile(file.toString());
+
+      assertEquals("1000", config.getPluginConfig().get("plugins.jdbc.slowQueryThreshold"));
+      assertEquals("true", config.getPluginConfig().get("plugins.jdbc.logSql"));
+      assertEquals("100", config.getPluginConfig().get("plugins.method-timing.slowThreshold"));
+    } finally {
+      Files.deleteIfExists(file);
+    }
+  }
+
+  @Test
+  void parseFromFile_keepsTopLevelCapabilityKeysAsLaunchOptions() throws Exception {
+    Path file = Files.createTempFile("weaver-girl-capabilities", ".yml");
+    try {
+      Files.write(
+          file,
+          ("metricsPort: 9400\n"
+                  + "apiPort: 9402\n"
+                  + "watch: true\n"
+                  + "samplingThreshold: 500\n")
+              .getBytes(StandardCharsets.UTF_8));
+
+      WeaverConfig config = loader.parseFromFile(file.toString());
+
+      assertEquals("9400", config.getPluginConfig().get("metricsPort"));
+      assertEquals("9402", config.getPluginConfig().get("apiPort"));
+      assertEquals("true", config.getPluginConfig().get("watch"));
+      // A real agent setting stays an agent setting and is not handed to plugins as well.
+      assertFalse(config.getPluginConfig().containsKey("samplingThreshold"));
+      assertEquals(500, config.getSamplingThreshold());
+    } finally {
+      Files.deleteIfExists(file);
+    }
+  }
+
+  @Test
+  void parseFromFile_acceptsPluginDirectoryAsScalar() throws Exception {
+    Path file = Files.createTempFile("weaver-girl-plugin-dir", ".yml");
+    try {
+      Files.write(file, "plugins: /opt/agent/plugins\n".getBytes(StandardCharsets.UTF_8));
+
+      WeaverConfig config = loader.parseFromFile(file.toString());
+
+      assertEquals("/opt/agent/plugins", config.getPluginConfig().get("plugins"));
+    } finally {
+      Files.deleteIfExists(file);
+    }
+  }
+
   @Test
   void loadFromFile_readsARealFileAndRejectsBrokenRegexes() throws Exception {
     Path file = Files.createTempFile("weaver-girl", ".yml");

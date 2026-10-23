@@ -266,6 +266,20 @@ public class WeaverGirlAgent {
     if (pluginDir == null) {
       return java.util.Collections.emptyList();
     }
+    // When the explicit plugin directory is the one that shipped next to the agent, leave the jars
+    // to PluginLoader.loadPluginsFromDirectory. That path gives each jar its own isolated class
+    // loader and watches the directory, while this path would put the same jars on the agent loader
+    // as well: two plugin instances, two init() calls, two sets of registered interceptors.
+    String configuredDir = selection.get("plugins");
+    if (configuredDir != null
+        && !configuredDir.trim().isEmpty()
+        && sameDirectory(new java.io.File(configuredDir.trim()), pluginDir)) {
+      log.info(
+          "Plugin directory {} is loaded in isolation by the plugin loader; skipping the agent-loader"
+              + " preload",
+          pluginDir);
+      return java.util.Collections.emptyList();
+    }
     java.io.File[] found =
         pluginDir.listFiles(
             (java.io.FileFilter) file -> file.isFile() && file.getName().endsWith(".jar"));
@@ -276,6 +290,15 @@ public class WeaverGirlAgent {
     String enabled = selection.get("enabledPlugins");
     return com.github.cc11001100.weavergirl.core.plugin.PluginJarSelector.select(
         java.util.Arrays.asList(found), disabled, enabled);
+  }
+
+  /** Whether two paths name the same directory, tolerating relative paths and symlinks. */
+  static boolean sameDirectory(java.io.File first, java.io.File second) {
+    try {
+      return first.getCanonicalFile().equals(second.getCanonicalFile());
+    } catch (java.io.IOException e) {
+      return first.getAbsoluteFile().equals(second.getAbsoluteFile());
+    }
   }
 
   /**
@@ -295,6 +318,9 @@ public class WeaverGirlAgent {
     }
     if (args.get("enabledPlugins") != null) {
       selection.put("enabledPlugins", args.get("enabledPlugins"));
+    }
+    if (args.get("plugins") != null) {
+      selection.put("plugins", args.get("plugins"));
     }
     String configPath = args.get("config");
     if (configPath == null) {
@@ -321,7 +347,13 @@ public class WeaverGirlAgent {
           }
           String name = line.substring(0, colon).trim();
           String inline = line.substring(colon + 1).trim();
-          if ("disabledPlugins".equals(name) || "enabledPlugins".equals(name)) {
+          if ("plugins".equals(name)) {
+            // A scalar plugins: value is the drop-in directory. A nested map is per-plugin settings
+            // and is not a directory, so it is left to the typed loader.
+            if (!inline.isEmpty()) {
+              selection.put("plugins", unquote(inline));
+            }
+          } else if ("disabledPlugins".equals(name) || "enabledPlugins".equals(name)) {
             if (inline.isEmpty()) {
               key = name;
               values = new java.util.ArrayList<>();

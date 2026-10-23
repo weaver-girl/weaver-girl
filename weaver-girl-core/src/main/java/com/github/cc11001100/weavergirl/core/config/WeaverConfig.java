@@ -1,7 +1,9 @@
 package com.github.cc11001100.weavergirl.core.config;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /** Data model for weaver-girl YAML configuration. */
 public class WeaverConfig {
@@ -21,6 +23,20 @@ public class WeaverConfig {
 
   /** Alert rule configurations. */
   private List<AlertRuleConfig> alertRules = new ArrayList<>();
+
+  /**
+   * The {@code plugins:} block. Either a map of plugin name to its settings ({@code plugins: {jdbc:
+   * {slowQueryThreshold: 1000}}}) or, as a convenience, the plugin directory ({@code plugins:
+   * /opt/agent/plugins}).
+   */
+  private Object plugins;
+
+  /**
+   * Top-level YAML keys that are not agent settings, kept as launch configuration for plugins. The
+   * loader fills this so a capability key such as {@code metricsPort: 9400} written in YAML behaves
+   * like the agent argument of the same name.
+   */
+  private Map<String, String> pluginOptions = new LinkedHashMap<>();
 
   public List<InterceptorConfig> getInterceptors() {
     return interceptors;
@@ -104,6 +120,62 @@ public class WeaverConfig {
 
   public void setEnabledPlugins(List<String> enabledPlugins) {
     this.enabledPlugins = enabledPlugins;
+  }
+
+  /** The raw {@code plugins:} block; a settings map, a plugin directory, or null when absent. */
+  public Object getPlugins() {
+    return plugins;
+  }
+
+  public void setPlugins(Object plugins) {
+    this.plugins = plugins;
+  }
+
+  /** Top-level plugin launch options collected from YAML by the loader. */
+  public Map<String, String> getPluginOptions() {
+    return pluginOptions;
+  }
+
+  public void setPluginOptions(Map<String, String> pluginOptions) {
+    this.pluginOptions = pluginOptions != null ? pluginOptions : new LinkedHashMap<>();
+  }
+
+  /**
+   * The plugin configuration in the flat form {@code PluginContext} reads.
+   *
+   * <p>Nested settings are expanded to dotted keys: {@code plugins.jdbc.slowQueryThreshold} is the
+   * key a plugin named {@code jdbc} reads with {@code getConfig("slowQueryThreshold")}. A {@code
+   * plugins:} string is kept under the plain {@code plugins} key, which is the drop-in directory the
+   * loader watches. Top-level options keep their plain key.
+   *
+   * @return flattened configuration, never null
+   */
+  public Map<String, String> getPluginConfig() {
+    Map<String, String> flat = new LinkedHashMap<>();
+    if (!(plugins instanceof Map) && plugins != null) {
+      flat.put("plugins", String.valueOf(plugins));
+    }
+    flat.putAll(pluginOptions);
+    // The explicit block wins over an equally named top-level option.
+    if (plugins instanceof Map) {
+      flatten("plugins", (Map<?, ?>) plugins, flat);
+    }
+    return flat;
+  }
+
+  private static void flatten(String prefix, Map<?, ?> source, Map<String, String> out) {
+    for (Map.Entry<?, ?> entry : source.entrySet()) {
+      if (entry.getKey() == null) {
+        continue;
+      }
+      String key = prefix + "." + entry.getKey();
+      Object value = entry.getValue();
+      if (value instanceof Map) {
+        flatten(key, (Map<?, ?>) value, out);
+      } else if (value != null) {
+        out.put(key, String.valueOf(value));
+      }
+    }
   }
 
   public List<AlertRuleConfig> getAlertRules() {

@@ -13,37 +13,6 @@ import org.junit.jupiter.api.Test;
 class WeaverGirlUltraCoverageTest {
 
   @Test
-  void parsePositiveInt_withVeryLargeNumber() throws Exception {
-    WeaverGirl wg = WeaverGirl.create();
-    Method method = WeaverGirl.class.getDeclaredMethod("parsePositiveInt", String.class, int.class);
-    method.setAccessible(true);
-
-    // Number larger than Integer.MAX_VALUE
-    int result = (int) method.invoke(wg, "999999999999999", 100);
-    assertEquals(100, result); // Should fall back to default
-  }
-
-  @Test
-  void parsePositiveLong_withVeryLargeNumber() throws Exception {
-    WeaverGirl wg = WeaverGirl.create();
-    Method method = WeaverGirl.class.getDeclaredMethod("parsePositiveLong", String.class, long.class);
-    method.setAccessible(true);
-
-    long result = (long) method.invoke(wg, "99999999999999999999999999999", 1000L);
-    assertEquals(1000L, result);
-  }
-
-  @Test
-  void initSpanExport_withOtlpAndLogOnly() {
-    WeaverGirl wg = WeaverGirl.create();
-    Map<String, String> config = new ConcurrentHashMap<>();
-    config.put("otlpEndpoint", "http://localhost:4317");
-    config.put("spanExport", "true"); // Both set, OTLP should take precedence
-
-    assertDoesNotThrow(() -> wg.initSpanExport(config));
-  }
-
-  @Test
   void applyCoreConfig_withAllOptions() throws Exception {
     Method method = WeaverGirl.class.getDeclaredMethod("applyCoreConfig", Map.class);
     method.setAccessible(true);

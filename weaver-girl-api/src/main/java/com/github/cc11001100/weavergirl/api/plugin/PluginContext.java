@@ -12,14 +12,20 @@ import java.util.Map;
  *
  * <h3>Configuration sources</h3>
  *
- * <p>Configuration keys come from two sources, resolved in this priority order:
+ * <p>Configuration keys are resolved in this priority order, most specific first:
  *
  * <ol>
- *   <li><strong>System properties</strong> &mdash; keys prefixed with {@code
- *       weavergirl.plugin.&lt;pluginName&gt;.} override YAML values
- *   <li><strong>YAML config file</strong> &mdash; the {@code plugins.&lt;pluginName&gt;} section of
- *       the weaver-girl YAML configuration
+ *   <li><strong>Namespaced system property</strong> &mdash; {@code
+ *       weavergirl.plugin.&lt;pluginName&gt;.&lt;key&gt;}
+ *   <li><strong>YAML plugin section</strong> &mdash; {@code plugins.&lt;pluginName&gt;.&lt;key&gt;}
+ *   <li><strong>Plain system property</strong> &mdash; {@code -D&lt;key&gt;=...}, kept for launch
+ *       lines written before plugin sections existed
+ *   <li><strong>Agent arguments / top-level YAML options</strong> &mdash; the global key, for example
+ *       {@code metricsPort=9400}
  * </ol>
+ *
+ * <p>Both {@link #getConfig(String)} and {@link #getConfig(String, String)} use this chain, so a
+ * default value never hides a system property or a plugin-scoped YAML entry.
  *
  * <h3>Thread safety</h3>
  *
@@ -76,12 +82,14 @@ public interface PluginContext {
   String getConfig(String key, String defaultValue);
 
   /**
-   * Get all configuration properties as an unmodifiable map.
+   * Get the configuration map as an unmodifiable view.
    *
-   * <p>The returned map contains the merged view of YAML config and system properties, with system
-   * properties taking precedence over YAML values.
+   * <p>This is the flat map the agent was launched with: YAML plugin sections appear as {@code
+   * plugins.&lt;name&gt;.&lt;key&gt;} entries and agent arguments keep their plain keys. System
+   * properties are not copied into it, because they can change after startup; use {@link
+   * #getConfig(String)} to read a key through the full precedence chain.
    *
-   * @return an unmodifiable view of all configuration properties
+   * @return an unmodifiable view of the merged YAML and launch configuration
    */
   Map<String, String> getAllConfig();
 

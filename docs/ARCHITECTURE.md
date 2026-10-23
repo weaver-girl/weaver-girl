@@ -176,7 +176,7 @@ PluginLoader.loadPlugins(ClassLoader, InterceptorRegistry, Map<String,String>)
     |-- 4. For each plugin in dependency order:
     |       a. plugin.init(context)        -- pass DefaultPluginContext with config
     |       b. plugin.isEnabled(context)   -- false skips it (inactive, not a failure)
-    |       c. plugin.registerInterceptors(registry)  -- register InterceptorDefinitions
+    |       c. plugin.registerInterceptors(registry)  -- optional; no-op default for capability plugins
     |-- 5. Log summary: succeeded / inactive / failed counts
 ```
 
@@ -224,6 +224,7 @@ What a product plugin registers and what it reports both go through that module:
   `AdviceMode.CATCH` and `CatchInterceptor`. A field or catch interceptor registered as a plain method
   definition is never called.
 - **Ordering and compatibility.** `depends()` is resolved across jars, not inside each one, so a product plugin can depend on a built-in plugin. A jar that declares `plugin.apiVersion` in `META-INF/weaver-girl-plugin.properties` is refused when it is newer than `WeaverPlugin.API_VERSION`; jars that declare nothing load as before.
+- **Configuration.** Every key is read through `PluginContext`, which resolves `weavergirl.plugin.<name>.<key>` (system property), then YAML `plugins.<name>.<key>`, then plain `<key>` system property, then the agent argument / top-level YAML launch map, then the caller's default. The YAML `plugins:` map is flattened into the namespaced keys before plugins start, and scalar top-level keys are passed through as capability options; a plugin cannot see another plugin's scoped key.
 - **Logging.** `PluginContext.getLogger()` returns a logger bound to the agent's logging, because a plugin's own class loader would bind one to the application's instead.
 - **Product services.** `Tracer`, `MetricRegistry`, `ExporterRegistry`/`DataExporter`,
   `TopologyGraph`, `AlertEngine`, `InterceptorEventPublisher` and `Taint`/`TaintPropagation`/
@@ -240,7 +241,7 @@ Each plugin goes through these phases:
 1. **Discovery** -- loaded via `ServiceLoader`
 2. **Initialization** -- `init(PluginContext)` called once at startup; read config, allocate resources
 3. **Enable check** -- `isEnabled(PluginContext)` decides whether the plugin actually activates; a plugin that returns false is inactive, not failed
-4. **Registration** -- `registerInterceptors(InterceptorRegistry)` called once after the enable check; register all `InterceptorDefinition` instances
+4. **Registration** -- `registerInterceptors(InterceptorRegistry)` called once after the enable check; register all `InterceptorDefinition` instances. The interface default is a no-op, so a capability plugin that only starts a service does not override it
 5. **Runtime** -- interceptors are invoked as matched methods are called; the plugin itself has no active role
 6. **Destroy** -- `destroy()` called at agent shutdown; release resources, flush buffers
 
