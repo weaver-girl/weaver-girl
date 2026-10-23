@@ -262,7 +262,7 @@ These services are static and live in `weaver-girl-api`, so a plugin can use the
 | A metric with a time window and percentiles | `MetricRegistry.record(name, value)`, `MetricRegistry.snapshot(name)` |
 | Ship events to your own backend | implement `DataExporter`, then `ExporterRegistry.register` and `activate` |
 | A service calling another | `TopologyGraph.recordCall(source, target, protocol, durationMs, error)` |
-| Fire when a metric crosses a line | `AlertEngine.addRule`, `AlertEngine.addChannel` |
+| Fire when a metric crosses a line | `AlertEngine.addRule`, `AlertEngine.addChannel` (prefer the `PluginContext` registration below) |
 | Tell every other plugin that something happened | `InterceptorEventPublisher.getInstance().publish(...)` |
 | Track untrusted input to a dangerous call | `Taint`, `TaintPropagation`, `TaintFindings` |
 | Filter, redact or enrich spans before anything consumes them | `PluginContext.registerSpanProcessor(SpanProcessor)` |
@@ -270,15 +270,20 @@ These services are static and live in `weaver-girl-api`, so a plugin can use the
 | Produce Prometheus metrics at scrape time | `PluginContext.registerMetricSource(MetricSource)` |
 | Expose a latency distribution as a Prometheus histogram | `MetricCollector.histogram(name, help, bounds, cumulativeCounts, sum)` inside your source |
 | Add runtime metadata to OTLP resource attributes | `PluginContext.registerResourceAttributes(provider)` |
+| Report whether a component you own is healthy | `PluginContext.registerHealthCheck(HealthCheck)` |
+| Send alerts to your own system | `PluginContext.registerAlertChannel(AlertChannel)` |
+| Define an alert threshold for a metric you produce | `PluginContext.registerAlertRule(AlertRule)` |
 
-The last four are the observability extension points. Register them through the `PluginContext`
-you were given, not through the static helpers, so the engine withdraws them when your plugin is
-unloaded or hot-replaced. A `SpanProcessor` runs inside `Tracer.endSpan` before any consumer, so
-returning `null` drops the span for the built-in exporter and every sink at once; it also runs
-synchronously on the application thread, so keep it to attribute work only.
-`SpanSink.onSpanEnd` runs on that same thread after the processor chain — queue the record and ship
-it from your own thread rather than doing IO inline. Metrics sources are pulled on every scrape and
-need no thread. Full rules, precedence, and a complete example plugin are in
+The rows below `registerSpanProcessor` are the observability extension points (the histogram row is
+a capability of `MetricSource`). Register them through the `PluginContext` you were given, not
+through the static helpers, so the engine withdraws them when your plugin is unloaded or
+hot-replaced. A `SpanProcessor` runs inside `Tracer.endSpan` before any consumer, so returning
+`null` drops the span for the built-in exporter and every sink at once; it also runs synchronously
+on the application thread, so keep it to attribute work only. `SpanSink.onSpanEnd` runs on that same
+thread after the processor chain — queue the record and ship it from your own thread rather than
+doing IO inline. Metrics sources and health checks are pulled on every scrape or probe and need no
+thread of their own. Alert channels are notified on the thread that evaluates a rule, so queue
+there too. Full rules, precedence, and a complete example plugin are in
 [observability.md §9](observability.md#9-扩展点插件自定义可观测) and
 [examples/CustomObservabilityPlugin.java](examples/CustomObservabilityPlugin.java).
 

@@ -84,6 +84,62 @@ class HealthPluginTest {
   }
 
   @Test
+  void healthChecksAreIncludedInProbesAndFailTheChecksEndpointWhenDown() throws Exception {
+    ServerSocket free = new ServerSocket(0);
+    int port = free.getLocalPort();
+    free.close();
+
+    com.github.cc11001100.weavergirl.api.observability.HealthChecks.register(
+        check("orders-db", com.github.cc11001100.weavergirl.api.observability.HealthCheckResult::up));
+    com.github.cc11001100.weavergirl.api.observability.HealthChecks.register(
+        check(
+            "payments",
+            () ->
+                com.github.cc11001100.weavergirl.api.observability.HealthCheckResult.down(
+                    "gateway unreachable")));
+
+    InterceptorHolder.setRegistry(registry());
+    HealthPlugin plugin = new HealthPlugin();
+    try {
+      plugin.init(context(config("healthPort", Integer.toString(port))));
+
+      HttpURLConnection health = get("http://localhost:" + port + "/health");
+      assertEquals(200, health.getResponseCode(), "liveness must not depend on a plugin check");
+      String body = read(health.getInputStream());
+      assertTrue(body.contains("\"checks\":{"), body);
+      assertTrue(body.contains("\"orders-db\":{\"status\":\"UP\""), body);
+      assertTrue(body.contains("gateway unreachable"), body);
+
+      HttpURLConnection checks = get("http://localhost:" + port + "/health/checks");
+      assertEquals(503, checks.getResponseCode());
+      String checksBody = read(checks.getErrorStream());
+      assertTrue(checksBody.contains("\"status\":\"DOWN\""), checksBody);
+    } finally {
+      plugin.destroy();
+      InterceptorHolder.setRegistry(null);
+      com.github.cc11001100.weavergirl.api.observability.HealthChecks.clear();
+    }
+  }
+
+  private static com.github.cc11001100.weavergirl.api.observability.HealthCheck check(
+      String name,
+      java.util.function.Supplier<
+              com.github.cc11001100.weavergirl.api.observability.HealthCheckResult>
+          body) {
+    return new com.github.cc11001100.weavergirl.api.observability.HealthCheck() {
+      @Override
+      public String name() {
+        return name;
+      }
+
+      @Override
+      public com.github.cc11001100.weavergirl.api.observability.HealthCheckResult check() {
+        return body.get();
+      }
+    };
+  }
+
+  @Test
   void notReadyBeforeAnythingIsRegistered() throws Exception {
     ServerSocket free = new ServerSocket(0);
     int port = free.getLocalPort();

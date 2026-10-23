@@ -1,5 +1,10 @@
 package com.github.cc11001100.weavergirl.docs.examples;
 
+import com.github.cc11001100.weavergirl.api.alert.AlertChannel;
+import com.github.cc11001100.weavergirl.api.alert.AlertEvent;
+import com.github.cc11001100.weavergirl.api.alert.AlertRule;
+import com.github.cc11001100.weavergirl.api.observability.HealthCheck;
+import com.github.cc11001100.weavergirl.api.observability.HealthCheckResult;
 import com.github.cc11001100.weavergirl.api.observability.MetricCollector;
 import com.github.cc11001100.weavergirl.api.observability.MetricSource;
 import com.github.cc11001100.weavergirl.api.observability.SpanRecord;
@@ -20,7 +25,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Example: a plugin that plugs into all four observability extension points.
+ * Example: a plugin that plugs into all six observability extension points.
  *
  * <ul>
  *   <li>{@link SpanProcessor} governs spans before anyone sees them: it drops health checks and
@@ -31,9 +36,13 @@ import java.util.logging.Logger;
  *   <li>{@link MetricSource} is pulled at every Prometheus scrape, so it needs no thread of its own.
  *   <li>{@link com.github.cc11001100.weavergirl.api.observability.ResourceAttributeProvider}
  *       contributes runtime metadata to every OTLP export.
+ *   <li>{@link HealthCheck} reports whether this plugin's own machinery is healthy; the result
+ *       appears in {@code /health}, {@code /health/checks} and the Prometheus health gauges.
+ *   <li>{@link AlertChannel} plus an {@link AlertRule} route threshold crossings on the plugin's own
+ *       metric to a chat webhook or pager, without the host application wiring anything up.
  * </ul>
  *
- * <p>All four are registered through {@link PluginContext}, which means the engine withdraws them
+ * <p>All six are registered through {@link PluginContext}, which means the engine withdraws them
  * automatically when the plugin is unloaded or hot-replaced. Registering through the static
  * helpers works too, but then {@link #destroy()} has to unregister them by hand.
  *
@@ -142,6 +151,46 @@ public class CustomObservabilityPlugin implements WeaverPlugin {
           }
         });
 
+    context.registerHealthCheck(
+        new HealthCheck() {
+          @Override
+          public String name() {
+            return "custom-observability";
+          }
+
+          @Override
+          public HealthCheckResult check() {
+            // Called on the probe thread: no blocking calls to the backend here.
+            if (!running) {
+              return HealthCheckResult.down("flusher stopped");
+            }
+            if (queue.size() == capacity) {
+              return HealthCheckResult.degraded("span buffer is full; the backend is not draining");
+            }
+            return HealthCheckResult.up();
+          }
+        });
+
+    context.registerAlertChannel(
+        new AlertChannel() {
+          @Override
+          public void onAlert(AlertEvent alert) {
+            // Notified on the rule-evaluation thread: enqueue and let your own thread ship it.
+            LOG.warning(alert.toString());
+          }
+        });
+
+    context.registerAlertRule(
+        AlertRule.builder()
+            .name("custom-observability-buffer-filling")
+            .type("custom")
+            .metric("custom_observability_buffer_depth")
+            .operator("gte")
+            .threshold(capacity * 0.8)
+            .severity("warning")
+            .message("The custom observability buffer is close to overflowing")
+            .build());
+
     context.registerResourceAttributes(
         () -> {
           Map<String, String> attributes = new LinkedHashMap<String, String>();
@@ -185,8 +234,9 @@ public class CustomObservabilityPlugin implements WeaverPlugin {
 
   @Override
   public void destroy() {
-    // The context withdraws the sink, metric source and resource provider on unload. This method
-    // only owns the buffer thread and any connection it opened.
+    // The context withdraws the processor, sink, metric source, resource provider, health check
+    // and alert channel/rule on unload. This method only owns the buffer thread and any connection
+    // it opened.
     running = false;
     if (flusher != null) {
       flusher.interrupt();

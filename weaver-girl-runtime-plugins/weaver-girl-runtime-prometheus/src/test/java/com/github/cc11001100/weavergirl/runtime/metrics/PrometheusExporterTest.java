@@ -24,6 +24,7 @@ class PrometheusExporterTest {
   void tearDown() {
     exporter.stop();
     com.github.cc11001100.weavergirl.api.observability.MetricSources.clear();
+    com.github.cc11001100.weavergirl.api.observability.HealthChecks.clear();
     com.github.cc11001100.weavergirl.api.status.AgentStatusHolder.set(null);
     com.github.cc11001100.weavergirl.api.plugin.PluginHealthRegistry.clear();
     com.github.cc11001100.weavergirl.api.observability.SpanSinks.clear();
@@ -312,6 +313,48 @@ class PrometheusExporterTest {
         metrics);
     assertTrue(
         metrics.contains("# TYPE weavergirl_span_processor_dropped_total counter"), metrics);
+  }
+
+  @Test
+  void renderMetrics_rendersPluginHealthChecks() {
+    com.github.cc11001100.weavergirl.api.observability.HealthChecks.register(
+        new com.github.cc11001100.weavergirl.api.observability.HealthCheck() {
+          @Override
+          public String name() {
+            return "orders-db";
+          }
+
+          @Override
+          public com.github.cc11001100.weavergirl.api.observability.HealthCheckResult check() {
+            return com.github.cc11001100.weavergirl.api.observability.HealthCheckResult.down(
+                "pool exhausted");
+          }
+        });
+    com.github.cc11001100.weavergirl.api.observability.HealthChecks.register(
+        new com.github.cc11001100.weavergirl.api.observability.HealthCheck() {
+          @Override
+          public String name() {
+            return "cache";
+          }
+
+          @Override
+          public com.github.cc11001100.weavergirl.api.observability.HealthCheckResult check() {
+            return com.github.cc11001100.weavergirl.api.observability.HealthCheckResult.up();
+          }
+        });
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(metrics.contains("weavergirl_health_overall{status=\"down\"} 1"), metrics);
+    assertTrue(
+        metrics.contains(
+            "weavergirl_health_check{component=\"orders-db\",status=\"down\"} 1"),
+        metrics);
+    assertTrue(
+        metrics.contains("weavergirl_health_check{component=\"cache\",status=\"up\"} 1"), metrics);
+    assertTrue(
+        metrics.contains("weavergirl_health_check_timestamp_seconds{component=\"orders-db\"} "),
+        metrics);
   }
 
   @Test

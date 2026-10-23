@@ -208,10 +208,33 @@ class DefaultPluginContextTest {
           }
         };
 
+    com.github.cc11001100.weavergirl.api.observability.HealthCheck healthCheck =
+        new com.github.cc11001100.weavergirl.api.observability.HealthCheck() {
+          @Override
+          public String name() {
+            return "test-health";
+          }
+
+          @Override
+          public com.github.cc11001100.weavergirl.api.observability.HealthCheckResult check() {
+            return com.github.cc11001100.weavergirl.api.observability.HealthCheckResult.up();
+          }
+        };
+    com.github.cc11001100.weavergirl.api.alert.AlertChannel channel = alert -> {};
+    com.github.cc11001100.weavergirl.api.alert.AlertRule rule =
+        com.github.cc11001100.weavergirl.api.alert.AlertRule.builder()
+            .name("test-rule")
+            .metric("test_metric")
+            .threshold(1)
+            .build();
+
     DefaultPluginContext context =
         new DefaultPluginContext(mockRegistry, null, "test-plugin");
     context.registerSpanSink(sink);
     context.registerSpanProcessor(processor);
+    context.registerHealthCheck(healthCheck);
+    context.registerAlertChannel(channel);
+    context.registerAlertRule(rule);
     context.registerMetricSource(source);
     context.registerResourceAttributes(provider);
 
@@ -220,6 +243,13 @@ class DefaultPluginContextTest {
     assertTrue(
         com.github.cc11001100.weavergirl.api.tracing.SpanProcessors.getProcessors()
             .contains(processor));
+    assertTrue(
+        com.github.cc11001100.weavergirl.api.observability.HealthChecks.getChecks()
+            .contains(healthCheck));
+    assertTrue(
+        com.github.cc11001100.weavergirl.api.alert.AlertEngine.getChannels().contains(channel));
+    assertTrue(
+        com.github.cc11001100.weavergirl.api.alert.AlertEngine.getRules().contains(rule));
     assertTrue(
         com.github.cc11001100.weavergirl.api.observability.MetricSources.getSources()
             .contains(source));
@@ -237,6 +267,16 @@ class DefaultPluginContextTest {
         com.github.cc11001100.weavergirl.api.tracing.SpanProcessors.getProcessors()
             .contains(processor),
         "an unloaded plugin must not keep rewriting spans");
+    assertFalse(
+        com.github.cc11001100.weavergirl.api.observability.HealthChecks.getChecks()
+            .contains(healthCheck),
+        "an unloaded plugin must not keep answering health probes");
+    assertFalse(
+        com.github.cc11001100.weavergirl.api.alert.AlertEngine.getChannels().contains(channel),
+        "an unloaded plugin must not keep receiving alerts");
+    assertFalse(
+        com.github.cc11001100.weavergirl.api.alert.AlertEngine.getRules().contains(rule),
+        "an unloaded plugin must not keep firing alerts");
     assertFalse(
         com.github.cc11001100.weavergirl.api.observability.MetricSources.getSources()
             .contains(source),

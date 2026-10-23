@@ -1,6 +1,11 @@
 package com.github.cc11001100.weavergirl.core.plugin;
 
 import com.github.cc11001100.weavergirl.api.ValidationUtils;
+import com.github.cc11001100.weavergirl.api.alert.AlertChannel;
+import com.github.cc11001100.weavergirl.api.alert.AlertEngine;
+import com.github.cc11001100.weavergirl.api.alert.AlertRule;
+import com.github.cc11001100.weavergirl.api.observability.HealthCheck;
+import com.github.cc11001100.weavergirl.api.observability.HealthChecks;
 import com.github.cc11001100.weavergirl.api.observability.MetricSource;
 import com.github.cc11001100.weavergirl.api.observability.MetricSources;
 import com.github.cc11001100.weavergirl.api.observability.ResourceAttributeProvider;
@@ -35,6 +40,11 @@ public class DefaultPluginContext implements PluginContext {
 
   private final List<SpanProcessor> spanProcessors = new CopyOnWriteArrayList<>();
 
+  private final List<HealthCheck> healthChecks = new CopyOnWriteArrayList<>();
+
+  private final List<AlertChannel> alertChannels = new CopyOnWriteArrayList<>();
+  private final List<AlertRule> alertRules = new CopyOnWriteArrayList<>();
+
   private final List<MetricSource> metricSources = new CopyOnWriteArrayList<>();
   private final List<ResourceAttributeProvider> resourceAttributeProviders =
       new CopyOnWriteArrayList<>();
@@ -62,6 +72,24 @@ public class DefaultPluginContext implements PluginContext {
   public void registerSpanProcessor(SpanProcessor processor) {
     SpanProcessors.register(processor);
     spanProcessors.add(processor);
+  }
+
+  @Override
+  public void registerHealthCheck(HealthCheck check) {
+    HealthChecks.register(check);
+    healthChecks.add(check);
+  }
+
+  @Override
+  public void registerAlertChannel(AlertChannel channel) {
+    AlertEngine.addChannel(channel);
+    alertChannels.add(channel);
+  }
+
+  @Override
+  public void registerAlertRule(AlertRule rule) {
+    AlertEngine.addRule(rule);
+    alertRules.add(rule);
   }
 
   @Override
@@ -93,6 +121,19 @@ public class DefaultPluginContext implements PluginContext {
       SpanProcessors.unregister(processor);
     }
     spanProcessors.clear();
+    for (HealthCheck check : healthChecks) {
+      HealthChecks.unregister(check);
+    }
+    healthChecks.clear();
+    for (AlertChannel channel : alertChannels) {
+      AlertEngine.removeChannel(channel);
+    }
+    alertChannels.clear();
+    for (AlertRule rule : alertRules) {
+      // Only withdraw our instance: a replacement registered later under the same name stays.
+      AlertEngine.removeRule(rule);
+    }
+    alertRules.clear();
     for (MetricSource source : metricSources) {
       MetricSources.unregister(source);
     }

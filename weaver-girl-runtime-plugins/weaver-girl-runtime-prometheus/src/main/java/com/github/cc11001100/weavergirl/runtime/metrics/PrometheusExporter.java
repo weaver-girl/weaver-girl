@@ -4,6 +4,9 @@ import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventListener;
 import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
 import com.github.cc11001100.weavergirl.api.metrics.MetricSnapshot;
+import com.github.cc11001100.weavergirl.api.observability.HealthCheckResult;
+import com.github.cc11001100.weavergirl.api.observability.HealthChecks;
+import com.github.cc11001100.weavergirl.api.observability.HealthReport;
 import com.github.cc11001100.weavergirl.api.observability.MetricCollector;
 import com.github.cc11001100.weavergirl.api.observability.MetricSource;
 import com.github.cc11001100.weavergirl.api.observability.MetricSources;
@@ -337,6 +340,7 @@ public class PrometheusExporter implements InterceptorEventListener {
 
     appendInterceptorMetrics(sb);
     appendAgentMetrics(sb);
+    appendHealthCheckMetrics(sb);
     appendPluginHealthMetrics(sb);
     appendPluginStateMetrics(sb);
     appendSpanProcessorMetrics(sb);
@@ -1060,6 +1064,56 @@ public class PrometheusExporter implements InterceptorEventListener {
           .append("\n");
     }
     sb.append("\n");
+  }
+
+  /**
+   * Health checks contributed through {@code PluginContext.registerHealthCheck}.
+   *
+   * <p>Evaluated on this scrape thread, exactly like {@code MetricSource}; checks are expected to be
+   * cheap. Only the active result and its timestamp are exported — no history. An empty registry
+   * produces no series, so a deployment without checks looks the same as before.
+   */
+  private void appendHealthCheckMetrics(StringBuilder sb) {
+    HealthReport report;
+    try {
+      report = HealthChecks.checkAll();
+    } catch (RuntimeException e) {
+      return;
+    }
+    if (report == null || report.getComponentCount() == 0) {
+      return;
+    }
+
+    sb.append("# HELP weavergirl_health_overall Overall result of plugin health checks\n");
+    sb.append("# TYPE weavergirl_health_overall gauge\n");
+    sb.append("weavergirl_health_overall{status=\"")
+        .append(statusLabel(report.getOverallStatus()))
+        .append("\"} 1\n");
+
+    sb.append("# HELP weavergirl_health_check Result of one plugin health check\n");
+    sb.append("# TYPE weavergirl_health_check gauge\n");
+    for (Map.Entry<String, HealthCheckResult> entry : report.getComponents().entrySet()) {
+      sb.append("weavergirl_health_check{component=\"")
+          .append(escape(entry.getKey()))
+          .append("\",status=\"")
+          .append(statusLabel(entry.getValue().getStatus()))
+          .append("\"} 1\n");
+    }
+
+    sb.append("# HELP weavergirl_health_check_timestamp_seconds When this check last ran\n");
+    sb.append("# TYPE weavergirl_health_check_timestamp_seconds gauge\n");
+    for (String component : report.getComponents().keySet()) {
+      sb.append("weavergirl_health_check_timestamp_seconds{component=\"")
+          .append(escape(component))
+          .append("\"} ")
+          .append(formatNumber(report.getTimestamp() / 1000.0))
+          .append("\n");
+    }
+    sb.append("\n");
+  }
+
+  private static String statusLabel(HealthCheckResult.Status status) {
+    return status == null ? "unknown" : status.name().toLowerCase(java.util.Locale.ROOT);
   }
 
   /**

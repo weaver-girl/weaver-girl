@@ -1,5 +1,10 @@
 package com.github.cc11001100.weavergirl.api.plugin;
 
+import com.github.cc11001100.weavergirl.api.alert.AlertChannel;
+import com.github.cc11001100.weavergirl.api.alert.AlertEngine;
+import com.github.cc11001100.weavergirl.api.alert.AlertRule;
+import com.github.cc11001100.weavergirl.api.observability.HealthCheck;
+import com.github.cc11001100.weavergirl.api.observability.HealthChecks;
 import com.github.cc11001100.weavergirl.api.observability.MetricSource;
 import com.github.cc11001100.weavergirl.api.observability.MetricSources;
 import com.github.cc11001100.weavergirl.api.observability.ResourceAttributeProvider;
@@ -217,6 +222,54 @@ public interface PluginContext {
    */
   default void registerResourceAttributes(ResourceAttributeProvider provider) {
     ResourceAttributes.register(provider);
+  }
+
+  /**
+   * Contribute a health check for a component this plugin owns (a connection pool, a backend, a
+   * cache).
+   *
+   * <p>Probes and the Prometheus exporter both read the same registry, so one check serves every
+   * consumer. It runs on the caller's thread when health is evaluated — keep it fast and
+   * non-blocking. A check that throws is reported as {@code DOWN} without affecting others. The
+   * agent's implementation withdraws the check when the plugin is unloaded or destroyed.
+   *
+   * @param check the check to add
+   * @see HealthCheck
+   * @since 1.0.0
+   */
+  default void registerHealthCheck(HealthCheck check) {
+    HealthChecks.register(check);
+  }
+
+  /**
+   * Deliver alerts raised by {@link AlertEngine} to a channel this plugin owns (a chat webhook, a
+   * ticketing API, an on-call integration).
+   *
+   * <p>The agent's implementation withdraws the channel when the plugin is unloaded or destroyed.
+   * Channels are notified synchronously on the thread that evaluates the rule, so queue the work
+   * rather than blocking on IO.
+   *
+   * @param channel the channel to add
+   * @see AlertChannel
+   * @since 1.0.0
+   */
+  default void registerAlertChannel(AlertChannel channel) {
+    AlertEngine.addChannel(channel);
+  }
+
+  /**
+   * Contribute an alert rule for a metric this plugin produces.
+   *
+   * <p>The newest rule with a given name wins, and the agent's implementation withdraws this one on
+   * unload only if it is still the active rule for its name — a replacement registered later is left
+   * untouched.
+   *
+   * @param rule the rule to add
+   * @see AlertRule
+   * @since 1.0.0
+   */
+  default void registerAlertRule(AlertRule rule) {
+    AlertEngine.addRule(rule);
   }
 
   /**

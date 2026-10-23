@@ -30,6 +30,19 @@ public final class AlertEngine {
     if (name != null) rules.remove(name);
   }
 
+  /**
+   * Remove {@code rule} only while it is still the rule registered under its name.
+   *
+   * <p>Used when a plugin is unloaded: a rule another plugin registered later under the same name
+   * must survive the old plugin's withdrawal.
+   *
+   * @param rule the rule instance to remove
+   * @return true when this instance was registered and has been removed
+   */
+  public static boolean removeRule(AlertRule rule) {
+    return rule != null && rule.getName() != null && rules.remove(rule.getName(), rule);
+  }
+
   /** Add an alert notification channel. */
   public static void addChannel(AlertChannel channel) {
     if (channel != null) channels.add(channel);
@@ -73,6 +86,11 @@ public final class AlertEngine {
   /** Get all registered rules. */
   public static Collection<AlertRule> getRules() {
     return Collections.unmodifiableCollection(rules.values());
+  }
+
+  /** Get all registered channels, in registration order. */
+  public static Collection<AlertChannel> getChannels() {
+    return Collections.unmodifiableCollection(channels);
   }
 
   /** Get alert history. */

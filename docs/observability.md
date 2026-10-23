@@ -1,9 +1,9 @@
 # 可观测性设计（Observability）
 
-> 本文说明 weaver-girl 的 Trace、Metrics、Events 三类信号如何产生、如何导出，以及在
-> OpenTelemetry / Prometheus 体系里如何消费。实现分布在 `weaver-girl-api`（传播与指标注册）、
-> `weaver-girl-core`（Span 导出管线）和 `weaver-girl-runtime-*` 运行时插件（Prometheus、
-> OTLP 日志、JSON 事件）中。
+> 本文说明 weaver-girl 的 Trace、Metrics、Events、Health（含告警）四类信号如何产生、如何导出，
+> 以及在 OpenTelemetry / Prometheus 体系里如何消费。实现分布在 `weaver-girl-api`（传播与指标
+> 注册）、`weaver-girl-core`（Span 导出管线）和 `weaver-girl-runtime-*` 运行时插件（Prometheus、
+> OTLP 日志、JSON 事件、健康检查）中。
 
 ## 1. 设计原则
 
@@ -37,9 +37,11 @@
       OTLP/HTTP JSON → /v1/traces                    GET /metrics      /v1/logs        stdout JSON
 ```
 
-除此之外，插件还能通过三组扩展点直接参与信号生产：`SpanSink` 接收每个结束的 span、`MetricSource`
-在每次抓取时生产指标、`ResourceAttributeProvider` 在 OTLP 导出前补充资源属性。这些扩展点由插件
-体系托管（随插件卸载自动摘除），详见 [第 9 节](#9-扩展点插件自定义可观测)。
+除此之外，插件还能直接参与全部信号的生产：`SpanProcessor` 在导出前治理 span、`SpanSink` 接收
+每个结束的 span、`MetricSource` 在每次抓取时生产指标、`ResourceAttributeProvider` 在 OTLP 导出
+前补充资源属性、`HealthCheck` 为探针和 `/metrics` 提供组件健康、`AlertChannel` / `AlertRule`
+接入告警通知与规则。这些扩展点由插件体系托管（随插件卸载自动摘除），详见
+[第 9 节](#9-扩展点插件自定义可观测)。
 
 ## 3. Trace
 
@@ -242,7 +244,25 @@ weavergirl_plugin_interceptors{plugin="servlet"} 3
 `weavergirl_plugin_interceptors` 掉到 0 通常意味着插件注册失败。未安装 `PluginManager`
 （单独运行插件测试）时不输出。
 
-### 4.2.5 Span 处理器指标（SpanProcessor）
+### 4.2.5 组件健康检查（HealthCheck）
+
+`/metrics` 每次抓取都会调用所有插件注册的 `HealthCheck`（与 `MetricSource` 同一时机），把结果
+渲染成 gauge：
+
+```text
+# TYPE weavergirl_health_overall gauge
+weavergirl_health_overall{status="degraded"} 1
+# TYPE weavergirl_health_check gauge
+weavergirl_health_check{component="orders-db",status="up"} 1
+weavergirl_health_check{component="payments",status="down"} 1
+weavergirl_health_check_timestamp_seconds{component="orders-db"} 1730000000.123
+```
+
+告警：`weavergirl_health_check{status="down"} == 1`。与 `weavergirl_plugin_health`（4.2.2）不同，
+这里关心的是**业务依赖**（数据库、缓存、下游网关）而不是插件自身是否加载成功。没有注册任何
+检查时不输出。检查在抓取线程上同步执行，必须轻量。
+
+### 4.2.6 Span 处理器指标（SpanProcessor）
 
 插件通过 `SpanProcessor` 做过滤/脱敏/补属性时，最危险的情况是“过滤条件写错，把所有 span 都
 吃掉”。计数在这里暴露（见 9.5）：
@@ -446,8 +466,9 @@ curl -s http://localhost:9400/metrics | grep -E 'weavergirl_(agent|jvm|events)'
   histogram，分布看 p50/p90/p95/p99 窗口值；需要真正的分布桶请用 `MetricSource` 的
   `collector.histogram(...)`（4.5）。切面回调延迟有固定桶的 histogram（4.2.1）。
 - `MetricRegistry` 指标是滑动窗口值而非进程生命周期累计值；窗口内无样本时序列会消失。
-- `SpanSink` / `SpanProcessor` / `MetricSource` 都在调用方线程上同步执行：慢 sink 或慢处理器
-  会拖慢业务线程，慢 `collect` 会拖慢抓取。需要 IO 请在自己的实现里缓冲或异步化。
+- `SpanSink` / `SpanProcessor` / `MetricSource` / `HealthCheck` 都在调用方线程上同步执行：慢
+  sink 或慢处理器会拖慢业务线程，慢 `collect` 会拖慢抓取，慢检查会拖慢探针（探针超时可能导致
+  容器被重启）。需要 IO 请在自己的实现里缓冲或异步化。
 - `SpanProcessor` 只能看到已结束的 span。要真正少产生 span（例如按 trace 采样），仍需在
   collector 侧做；处理器负责的是“产生后、导出前”的治理。
 - JVM 指标反映的是**被织入进程**，一个 JVM 一个 scrape target。
@@ -457,10 +478,10 @@ curl -s http://localhost:9400/metrics | grep -E 'weavergirl_(agent|jvm|events)'
 ## 9. 扩展点：插件自定义可观测
 
 可观测能力本身就是插件：本仓库的 `span-export`、`otlp`、`prometheus`、`json-events`、
-`diagnostics` 都是 `weaver-girl-runtime-*` 插件，agent 入口没有硬编码任何后端。上层产品用同一套
-机制接入自己的采集端即可，不需要修改底座。
+`health`、`diagnostics` 都是 `weaver-girl-runtime-*` 插件，agent 入口没有硬编码任何后端。上层
+产品用同一套机制接入自己的采集端即可，不需要修改底座。
 
-### 9.1 四组扩展点
+### 9.1 扩展点总览
 
 | 扩展点 | 注册方法 | 调用时机 | 典型用途 |
 | --- | --- | --- | --- |
@@ -468,13 +489,18 @@ curl -s http://localhost:9400/metrics | grep -E 'weavergirl_(agent|jvm|events)'
 | `SpanSink` | `context.registerSpanSink(sink)` | 处理器链之后，同步回调 | 自有 APM/日志后端 |
 | `MetricSource` | `context.registerMetricSource(source)` | Prometheus 每次抓取时 | 队列深度、缓存命中率、连接池状态 |
 | `ResourceAttributeProvider` | `context.registerResourceAttributes(provider)` | OTLP 每次导出时 | 集群/区域/租户等运行时元数据 |
+| `HealthCheck` | `context.registerHealthCheck(check)` | 探针请求、`/metrics` 抓取时 | 数据库/缓存/下游依赖健康 |
+| `AlertChannel` | `context.registerAlertChannel(channel)` | 规则命中时同步通知 | 钉钉/Slack/工单/值班系统 |
+| `AlertRule` | `context.registerAlertRule(rule)` | 指标值进入 `AlertEngine.evaluate` 时 | 插件为自己产生的指标定义阈值 |
 
 ```text
 Tracer.endSpan ──► SpanProcessors ──► SpanSinks ──► 你的 SpanSink（同步）
                 │            └────► 其它 SpanCompletionListener（内置 OTLP 导出器）
                 └─ 返回 null 时整条链路都不再看到这个 span
 GET /metrics   ──► MetricSources ──► 你的 MetricSource.collect(...)
+GET /metrics   ──► HealthChecks  ──► 你的 HealthCheck.check()
 OTLP 导出批次  ──► ResourceAttributes ──► 你的 provider（覆盖默认值，可被显式配置覆盖）
+AlertEngine    ──► AlertChannels ──► 你的 AlertChannel.onAlert(...)
 ```
 
 `SpanProcessor` 是**唯一的统一治理点**：它位于所有消费者之前，所以一次过滤同时作用于内置
@@ -593,9 +619,62 @@ context.registerSpanProcessor(new SpanProcessor() {
 - 在业务线程上同步执行，保持轻量：不要做网络 IO，不要锁。
 - 不要修改 `traceId` / `spanId`：消费端靠它们做关联。`toBuilder()` 保留了全部字段，只改你需要
   改的。
-- 处理器不可用时 span 仍然正常发布（异常被隔离），可以通过 4.2.5 的计数确认它是否在工作。
+- 处理器不可用时 span 仍然正常发布（异常被隔离），可以通过 4.2.6 的计数确认它是否在工作。
 
-### 9.6 完整示例
+### 9.6 HealthCheck
+
+为插件负责的组件（连接池、缓存、下游客户端）注册健康检查。同一份结果同时供探针和 Prometheus
+使用：
+
+```java
+context.registerHealthCheck(new HealthCheck() {
+  @Override public String name() { return "orders-db"; }
+
+  @Override public HealthCheckResult check() {
+    if (!pool.isReachable()) {
+      return HealthCheckResult.down("connection refused");
+    }
+    return pool.idle() == 0
+        ? HealthCheckResult.degraded("pool exhausted, queries will queue")
+        : HealthCheckResult.up(Collections.singletonMap("idle", String.valueOf(pool.idle())));
+  }
+});
+```
+
+行为约定：
+
+- 状态为 `UP` / `DEGRADED` / `DOWN` / `UNKNOWN`；整体状态取最差值（`DOWN` > `DEGRADED` >
+  `UNKNOWN` > `UP`），没有注册检查时整体为 `UP`。
+- 单个检查抛异常或返回 `null` 只把**自己**标成 `DOWN`（详情里有 `error`/`message`），其它检查
+  照常运行。
+- 同名检查以**先注册者**为准；先注册的插件卸载后，后注册的同名检查自动接管。
+- 代码在探针/抓取线程上同步执行，必须轻量；耗时的探测请在自己的后台线程缓存结果。
+- `/health`（存活，始终 200）和 `/health/checks`（整体 `DOWN` 时 503）会渲染组件详情，见
+  `weaver-girl-runtime-health` 插件。
+
+### 9.7 AlertChannel / AlertRule
+
+```java
+context.registerAlertRule(
+    AlertRule.builder()
+        .name("orders-pool-exhausted")
+        .metric("orders_pool_idle")   // 与 MetricRegistry / MetricSource 中的名字一致
+        .operator("lt")
+        .threshold(1)
+        .severity("critical")
+        .message("orders 连接池已耗尽")
+        .build());
+
+context.registerAlertChannel(alert -> chatWebhook.send(alert)); // 不要在这里做阻塞 IO
+```
+
+- 规则按名字覆盖：后注册的同名规则生效；插件卸载时只移除**自己注册的那个实例**，不会误删后来
+  的替代规则。
+- 通知渠道在规则的评估线程上同步回调；慢渠道会拖慢评估方，请自行入队。
+- 与 `MetricSource` 配合即可形成“插件产生指标 → 插件定义规则 → 插件接收告警”的闭环，底座
+  不参与具体后端。
+
+### 9.8 完整示例
 
 一个同时注册多种扩展点的插件见
 [docs/examples/CustomObservabilityPlugin.java](examples/CustomObservabilityPlugin.java)。
