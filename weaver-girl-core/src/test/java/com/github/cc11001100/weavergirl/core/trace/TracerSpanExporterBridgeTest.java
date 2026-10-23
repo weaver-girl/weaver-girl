@@ -74,6 +74,27 @@ class TracerSpanExporterBridgeTest {
   }
 
   @Test
+  void endSpan_mapsTheSpanKindAttributeAndKeepsOtherAttributes() {
+    Tracer.startSpan("GET /orders");
+    Tracer.setAttribute(Tracer.SPAN_KIND_ATTRIBUTE, "server");
+    Tracer.setAttribute("http.method", "GET");
+    Tracer.endSpan(null, "OK");
+
+    exporter.flush();
+    SpanData data = inMemory.getSpans().get(0);
+    assertEquals(2, data.getKind());
+    assertEquals("GET", data.getAttributes().get("http.method"));
+    assertFalse(data.getAttributes().containsKey(Tracer.SPAN_KIND_ATTRIBUTE));
+  }
+
+  @Test
+  void unknownSpanKindsFallBackToInternal() {
+    assertEquals(1, TracerSpanExporterBridge.kindOf(null));
+    assertEquals(1, TracerSpanExporterBridge.kindOf("nonsense"));
+    assertEquals(3, TracerSpanExporterBridge.kindOf("CLIENT"));
+  }
+
+  @Test
   void endSpan_shouldIncludeOperationName() {
     Tracer.startSpan();
     Tracer.endSpan("HTTP GET /api/users", "OK");

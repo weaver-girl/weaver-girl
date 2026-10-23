@@ -12,11 +12,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Exports spans to an OpenTelemetry Collector via OTLP HTTP.
+ * Exports spans to an OpenTelemetry Collector via OTLP/HTTP JSON.
  *
- * <p>Sends span data as a JSON array to a configurable endpoint using {@code
- * java.net.HttpURLConnection}. Supports custom headers (e.g. for authentication), connect/read
- * timeouts, and tracks export statistics.
+ * <p>Posts a complete {@code ExportTraceServiceRequest} ({@code resourceSpans → scopeSpans →
+ * spans}), which is what a collector's {@code /v1/traces} receiver expects. Resource attributes
+ * identify the process: {@code service.name} defaults to the {@code weavergirl.service.name} system
+ * property, or {@code weaver-girl}; the builder adds {@code service.version}, the deployment
+ * environment and anything else the caller supplies. Supports custom headers (e.g. authentication),
+ * connect/read timeouts, and tracks export statistics.
  *
  * @since 1.1.0
  */
@@ -27,8 +30,11 @@ public class OtlpHttpExporter implements SpanFormatter {
   private static final int DEFAULT_CONNECT_TIMEOUT_MS = 5_000;
   private static final int DEFAULT_READ_TIMEOUT_MS = 10_000;
 
+  private static final String INSTRUMENTATION_SCOPE = "weaver-girl-agent";
+
   private final String endpoint;
   private final Map<String, String> headers;
+  private final Map<String, String> resourceAttributes;
   private final int connectTimeoutMs;
   private final int readTimeoutMs;
 
@@ -38,6 +44,9 @@ public class OtlpHttpExporter implements SpanFormatter {
   private OtlpHttpExporter(Builder builder) {
     this.endpoint = builder.endpoint;
     this.headers = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(builder.headers));
+    Map<String, String> resource = defaultResourceAttributes();
+    resource.putAll(builder.resourceAttributes);
+    this.resourceAttributes = java.util.Collections.unmodifiableMap(resource);
     this.connectTimeoutMs = builder.connectTimeoutMs;
     this.readTimeoutMs = builder.readTimeoutMs;
   }
@@ -52,15 +61,7 @@ public class OtlpHttpExporter implements SpanFormatter {
       return;
     }
 
-    // Build OTLP JSON array
-    StringBuilder json = new StringBuilder("[");
-    for (int i = 0; i < spans.size(); i++) {
-      if (i > 0) {
-        json.append(",");
-      }
-      json.append(spans.get(i).toOtlpJson());
-    }
-    json.append("]");
+    String payload = toExportRequest(spans, resourceAttributes);
 
     // Send via HTTP POST
     try {
@@ -77,7 +78,7 @@ public class OtlpHttpExporter implements SpanFormatter {
         conn.setRequestProperty(entry.getKey(), entry.getValue());
       }
 
-      byte[] body = json.toString().getBytes(StandardCharsets.UTF_8);
+      byte[] body = payload.getBytes(StandardCharsets.UTF_8);
       try (OutputStream os = conn.getOutputStream()) {
         os.write(body);
         os.flush();
@@ -96,6 +97,60 @@ public class OtlpHttpExporter implements SpanFormatter {
       failedCount.incrementAndGet();
       log.warn("[OTLP] Export error: {}", e.getMessage());
     }
+  }
+
+  /**
+   * Render an OTLP/HTTP {@code ExportTraceServiceRequest} carrying every span.
+   *
+   * <p>Package-visible so the encoding can be asserted without a server: a collector rejects the
+   * whole batch if the envelope is wrong, which used to happen when the payload was a bare JSON
+   * array of spans.
+   */
+  static String toExportRequest(List<SpanData> spans, Map<String, String> resourceAttributes) {
+    StringBuilder json = new StringBuilder();
+    json.append("{\"resourceSpans\":[{\"resource\":{\"attributes\":[");
+    boolean firstResource = true;
+    for (Map.Entry<String, String> entry : resourceAttributes.entrySet()) {
+      if (!firstResource) json.append(",");
+      json.append("{\"key\":\"")
+          .append(SpanData.escapeJson(entry.getKey()))
+          .append("\",\"value\":{\"stringValue\":\"")
+          .append(SpanData.escapeJson(entry.getValue()))
+          .append("\"}}");
+      firstResource = false;
+    }
+    json.append("]},\"scopeSpans\":[{\"scope\":{\"name\":\"")
+        .append(INSTRUMENTATION_SCOPE)
+        .append("\"},\"spans\":[");
+    for (int i = 0; i < spans.size(); i++) {
+      if (i > 0) {
+        json.append(",");
+      }
+      json.append(spans.get(i).toOtlpJson());
+    }
+    json.append("]}]}]}");
+    return json.toString();
+  }
+
+  private static Map<String, String> defaultResourceAttributes() {
+    Map<String, String> resource = new LinkedHashMap<String, String>();
+    String serviceName = System.getProperty("weavergirl.service.name");
+    resource.put(
+        "service.name",
+        serviceName != null && !serviceName.trim().isEmpty() ? serviceName.trim() : "weaver-girl");
+    resource.put("service.version", packageVersion());
+    resource.put("telemetry.sdk.name", "weaver-girl");
+    resource.put("telemetry.sdk.language", "java");
+    return resource;
+  }
+
+  private static String packageVersion() {
+    String version = OtlpHttpExporter.class.getPackage().getImplementationVersion();
+    return version != null && !version.isEmpty() ? version : "unknown";
+  }
+
+  public Map<String, String> getResourceAttributes() {
+    return resourceAttributes;
   }
 
   public long getExportedCount() {
@@ -127,6 +182,7 @@ public class OtlpHttpExporter implements SpanFormatter {
 
     private String endpoint;
     private final Map<String, String> headers = new LinkedHashMap<>();
+    private final Map<String, String> resourceAttributes = new LinkedHashMap<>();
     private int connectTimeoutMs = DEFAULT_CONNECT_TIMEOUT_MS;
     private int readTimeoutMs = DEFAULT_READ_TIMEOUT_MS;
 
@@ -150,6 +206,21 @@ public class OtlpHttpExporter implements SpanFormatter {
      */
     public Builder header(String key, String value) {
       this.headers.put(key, value);
+      return this;
+    }
+
+    /**
+     * Set an OTLP resource attribute, such as {@code service.name}, {@code service.version} or
+     * {@code deployment.environment}. Values here override the built-in defaults.
+     *
+     * @param key attribute name
+     * @param value attribute value
+     * @return this builder
+     */
+    public Builder resourceAttribute(String key, String value) {
+      if (key != null && value != null) {
+        this.resourceAttributes.put(key, value);
+      }
       return this;
     }
 

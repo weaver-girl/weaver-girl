@@ -61,13 +61,53 @@ class SpanDataTest {
     assertTrue(json.contains("\"parentSpanId\":\"p1\""));
     assertTrue(json.contains("\"startTimeUnixNano\":\"5000000\""));
     assertTrue(json.contains("\"endTimeUnixNano\":\"12000000\""));
-    assertTrue(json.contains("\"code\":\"ERROR\""));
+    assertTrue(json.contains("\"code\":\"STATUS_CODE_ERROR\""));
     // Two attributes, so the separator between them is exercised, and order is preserved.
     assertTrue(json.contains("{\"key\":\"zone\",\"value\":{\"stringValue\":\"east\"}},{\"key\":\"kind\""));
     // The second link has no attributes of its own, so its attribute block is skipped.
     assertTrue(json.contains("\"links\":["));
     assertTrue(json.contains("{\"key\":\"k\",\"value\":{\"stringValue\":\"v\"}},{\"key\":\"k2\""));
     assertTrue(json.contains("\"traceId\":\"lt\""));
+  }
+
+  /** A span name or attribute with quotes/newlines must not corrupt the JSON batch. */
+  @Test
+  void statusesUseTheOtlpEnumNames() {
+    assertEquals("STATUS_CODE_OK", SpanData.statusCode("OK"));
+    assertEquals("STATUS_CODE_ERROR", SpanData.statusCode("ERROR"));
+    assertEquals("STATUS_CODE_UNSET", SpanData.statusCode(null));
+    assertEquals("STATUS_CODE_UNSET", SpanData.statusCode("weird"));
+
+    SpanData span = SpanData.builder().traceId("t").spanId("s").operationName("op").status("OK").build();
+    assertTrue(span.toOtlpJson().contains("\"status\":{\"code\":\"STATUS_CODE_OK\"}"));
+  }
+
+  @Test
+  void stringsAreJsonEscaped() {
+    SpanData span =
+        SpanData.builder()
+            .traceId("t1")
+            .spanId("s1")
+            .operationName("say \"hi\"\nline2\\path")
+            .attribute("error.message", "expected \"a\", got\tb")
+            .build();
+
+    String json = span.toOtlpJson();
+    assertTrue(json.contains("\"name\":\"say \\\"hi\\\"\\nline2\\\\path\""), json);
+    assertTrue(json.contains("\"stringValue\":\"expected \\\"a\\\", got\\tb\""), json);
+    assertFalse(json.contains("\"name\":\"say \"hi\""));
+  }
+
+  @Test
+  void spansDefaultToInternalKindAndAllowAnOverride() {
+    SpanData internal = SpanData.builder().traceId("t1").spanId("s1").operationName("op").build();
+    assertEquals(1, internal.getKind());
+    assertTrue(internal.toOtlpJson().contains("\"kind\":1"));
+
+    SpanData server =
+        SpanData.builder().traceId("t1").spanId("s1").operationName("op").kind(2).build();
+    assertEquals(2, server.getKind());
+    assertTrue(server.toOtlpJson().contains("\"kind\":2"));
   }
 
   @Test

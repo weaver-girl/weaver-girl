@@ -10,12 +10,18 @@ import org.slf4j.LoggerFactory;
  * Assembles the span batch exporter from configuration and owns its lifecycle.
  *
  * <p>Nothing is created unless {@code otlpEndpoint} or {@code spanExport=true} is set, so the
- * default configuration costs no background thread. {@code otlpEndpoint} sends spans to a collector
- * as OTLP/HTTP JSON; {@code spanExport=true} without an endpoint logs them instead.
+ * default configuration costs no background thread. {@code otlpEndpoint} (alias: {@code
+ * otlpTracesEndpoint}) sends spans to a collector as OTLP/HTTP JSON; {@code spanExport=true}
+ * without an endpoint logs them instead.
  *
  * <p>Optional tuning keys: {@code spanExportBatchSize} (default 100), {@code spanExportIntervalMs}
  * (default 5000), {@code spanExportBufferSize} (default 10000), {@code otlpHeaders} (semicolon
  * separated {@code name=value} pairs).
+ *
+ * <p>Resource keys: {@code serviceName} (defaults to {@code weavergirl.service.name}, then {@code
+ * weaver-girl}), {@code serviceVersion} and {@code deploymentEnvironment}. They become the OTLP
+ * resource attributes {@code service.name}, {@code service.version} and {@code
+ * deployment.environment}, which is what tells two services in the same collector apart.
  */
 public final class SpanExport {
 
@@ -32,7 +38,11 @@ public final class SpanExport {
     if (config == null) {
       return false;
     }
-    String endpoint = config.get("otlpEndpoint");
+    // otlpTracesEndpoint is the explicit name; otlpEndpoint stays as the historical alias.
+    String endpoint = config.get("otlpTracesEndpoint");
+    if (endpoint == null || endpoint.trim().isEmpty()) {
+      endpoint = config.get("otlpEndpoint");
+    }
     boolean hasEndpoint = endpoint != null && !endpoint.trim().isEmpty();
     boolean logOnly = "true".equalsIgnoreCase(config.get("spanExport"));
     if (!hasEndpoint && !logOnly) {
@@ -46,6 +56,9 @@ public final class SpanExport {
               parsePositiveInt(config.get("spanExportBufferSize"), 10_000));
       if (hasEndpoint) {
         OtlpHttpExporter.Builder builder = OtlpHttpExporter.builder().endpoint(endpoint.trim());
+        addIfPresent(builder, config, "serviceName", "service.name");
+        addIfPresent(builder, config, "serviceVersion", "service.version");
+        addIfPresent(builder, config, "deploymentEnvironment", "deployment.environment");
         String headers = config.get("otlpHeaders");
         if (headers != null && !headers.trim().isEmpty()) {
           for (String pair : headers.split(";")) {
@@ -95,6 +108,14 @@ public final class SpanExport {
         log.warn("Failed to stop span exporter: {}", e.getMessage());
       }
       exporter = null;
+    }
+  }
+
+  private static void addIfPresent(
+      OtlpHttpExporter.Builder builder, Map<String, String> config, String key, String attribute) {
+    String value = config.get(key);
+    if (value != null && !value.trim().isEmpty()) {
+      builder.resourceAttribute(attribute, value.trim());
     }
   }
 

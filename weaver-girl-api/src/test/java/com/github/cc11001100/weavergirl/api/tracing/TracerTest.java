@@ -184,4 +184,164 @@ class TracerTest {
   void getBaggage_noSpan_returnsNull() {
     assertNull(Tracer.getBaggage("key"));
   }
+
+  // ===== W3C trace context =====
+
+  @Test
+  void startSpan_generatesW3cShapedIds() {
+    SpanContext span = Tracer.startSpan("GET /users");
+    assertTrue(span.getTraceId().matches("[0-9a-f]{32}"), span.getTraceId());
+    assertTrue(span.getSpanId().matches("[0-9a-f]{16}"), span.getSpanId());
+    assertEquals("GET /users", span.getOperationName());
+  }
+
+  @Test
+  void startChildSpan_getsItsOwnW3cSpanIdAndKeepsTheTraceId() {
+    SpanContext parent = Tracer.startSpan("parent");
+    SpanContext child = Tracer.startChildSpan("child");
+
+    assertEquals(parent.getTraceId(), child.getTraceId());
+    assertEquals(parent.getSpanId(), child.getParentSpanId());
+    assertTrue(child.getSpanId().matches("[0-9a-f]{16}"));
+    assertNotEquals(parent.getSpanId(), child.getSpanId());
+    assertEquals("child", child.getOperationName());
+  }
+
+  @Test
+  void inject_writesTraceparentForW3cIds() {
+    SpanContext span = Tracer.startSpan();
+    Map<String, String> headers = new HashMap<>();
+    Tracer.inject(span, headers);
+
+    assertEquals(
+        "00-" + span.getTraceId() + "-" + span.getSpanId() + "-01",
+        headers.get(Tracer.TRACEPARENT_HEADER));
+  }
+
+  @Test
+  void traceparent_roundTripPreservesIdsAndSampledFlag() {
+    SpanContext span = Tracer.startSpan();
+    Map<String, String> headers = new HashMap<>();
+    Tracer.inject(span, headers);
+
+    SpanContext extracted = Tracer.extract(headers);
+    assertNotNull(extracted);
+    assertEquals(span.getTraceId(), extracted.getTraceId());
+    assertEquals(span.getSpanId(), extracted.getSpanId());
+    assertTrue(extracted.isSampled());
+  }
+
+  @Test
+  void extract_prefersTraceparentOverLegacyHeaders() {
+    Map<String, String> headers = new HashMap<>();
+    headers.put("X-Trace-Id", "legacy-trace");
+    headers.put("X-Span-Id", "legacy-span");
+    headers.put(
+        "traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00");
+
+    SpanContext extracted = Tracer.extract(headers);
+    assertNotNull(extracted);
+    assertEquals("4bf92f3577b34da6a3ce929d0e0e4736", extracted.getTraceId());
+    assertEquals("00f067aa0ba902b7", extracted.getSpanId());
+    assertFalse(extracted.isSampled());
+  }
+
+  @Test
+  void extract_invalidTraceparentFallsBackToLegacyHeaders() {
+    Map<String, String> headers = new HashMap<>();
+    headers.put("traceparent", "00-not-hex-00");
+    headers.put("X-Trace-Id", "legacy-trace");
+    headers.put("X-Span-Id", "legacy-span");
+
+    SpanContext extracted = Tracer.extract(headers);
+    assertNotNull(extracted);
+    assertEquals("legacy-trace", extracted.getTraceId());
+  }
+
+  @Test
+  void extract_acceptsFutureTraceparentVersionWithExtraFields() {
+    Map<String, String> headers = new HashMap<>();
+    headers.put(
+        "traceparent",
+        "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-extra");
+
+    SpanContext extracted = Tracer.extract(headers);
+    assertNotNull(extracted);
+    assertEquals("4bf92f3577b34da6a3ce929d0e0e4736", extracted.getTraceId());
+  }
+
+  @Test
+  void inject_skipsTraceparentForNonW3cIdsButKeepsLegacyHeaders() {
+    SpanContext handBuilt = SpanContext.builder().traceId("trace-abc").spanId("span-def").build();
+    Map<String, String> headers = new HashMap<>();
+    Tracer.inject(handBuilt, headers);
+
+    assertFalse(headers.containsKey(Tracer.TRACEPARENT_HEADER));
+    assertEquals("trace-abc", headers.get("X-Trace-Id"));
+  }
+
+  @Test
+  void w3cBaggage_roundTrip() {
+    Tracer.startSpan();
+    Tracer.setBaggage("tenant", "acme corp, inc");
+    Map<String, String> headers = new HashMap<>();
+    Tracer.inject(Tracer.getCurrentSpan(), headers);
+
+    SpanContext extracted = Tracer.extract(headers);
+    assertNotNull(extracted);
+    assertEquals("acme corp, inc", extracted.getBaggageItem("tenant"));
+  }
+
+  // ===== Span attributes =====
+
+  @Test
+  void attributes_areCarriedIntoTheCompletedSpan() {
+    final List<SpanContext> completed = new ArrayList<>();
+    SpanCompletionListener listener = (span, durationMs) -> completed.add(span);
+    Tracer.addCompletionListener(listener);
+    try {
+      Tracer.startSpan("GET /orders");
+      Tracer.setAttribute("http.method", "GET");
+      Tracer.setAttribute("http.status_code", "200");
+      Tracer.setAttribute("http.method", "POST");
+
+      SpanContext finished = Tracer.endSpan(null, "OK");
+
+      assertNotNull(finished);
+      assertEquals("POST", finished.getAttribute("http.method"));
+      assertEquals("200", finished.getAttribute("http.status_code"));
+      assertEquals(1, completed.size());
+      assertEquals("GET /orders", completed.get(0).getOperationName());
+      assertEquals("POST", completed.get(0).getAttribute("http.method"));
+    } finally {
+      Tracer.removeCompletionListener(listener);
+    }
+  }
+
+  @Test
+  void setAttribute_nullValueRemovesIt() {
+    Tracer.startSpan();
+    Tracer.setAttribute("db.system", "postgresql");
+    assertNotNull(Tracer.getAttribute("db.system"));
+    Tracer.setAttribute("db.system", null);
+    assertNull(Tracer.getAttribute("db.system"));
+  }
+
+  @Test
+  void recordException_marksTheSpanAsError() {
+    Tracer.startSpan("charge");
+    Tracer.recordException(new IllegalStateException("gateway timeout"));
+
+    SpanContext finished = Tracer.endSpan(null, null);
+    assertNotNull(finished);
+    assertEquals("true", finished.getAttribute("error"));
+    assertEquals("java.lang.IllegalStateException", finished.getAttribute("error.type"));
+    assertEquals("gateway timeout", finished.getAttribute("error.message"));
+    assertEquals("ERROR", finished.getErrorStatus());
+  }
+
+  @Test
+  void recordException_withoutASpanIsANoOp() {
+    assertDoesNotThrow(() -> Tracer.recordException(new RuntimeException("ignored")));
+  }
 }

@@ -2,6 +2,7 @@ package com.github.cc11001100.weavergirl.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
@@ -41,6 +42,36 @@ class OtlpPluginTest {
     assertEquals(before + 1, publisher.getListenerCount());
     plugin.destroy();
     assertEquals(before, publisher.getListenerCount());
+  }
+
+  @Test
+  void logsEndpointWinsOverTheLegacyEndpoint() {
+    OtlpPlugin plugin = new OtlpPlugin();
+    Map<String, String> config = config("otlpEndpoint", "http://collector:4318/v1/traces");
+    config.put("otlpLogsEndpoint", "http://collector:4318/v1/logs");
+
+    assertTrue(plugin.isEnabled(context(config)));
+    assertEquals(
+        "http://collector:4318/v1/logs", OtlpPlugin.resolveLogsEndpoint(context(config)));
+  }
+
+  /** Spans own otlpEndpoint; posting log records to /v1/traces is rejected everywhere. */
+  @Test
+  void aTracesEndpointDoesNotTurnOnLogExport() {
+    OtlpPlugin plugin = new OtlpPlugin();
+    PluginContext ctx = context(config("otlpEndpoint", "http://collector:4318/v1/traces"));
+
+    assertFalse(plugin.isEnabled(ctx));
+    assertNull(OtlpPlugin.resolveLogsEndpoint(ctx));
+  }
+
+  @Test
+  void blankLogsEndpointFallsBackToTheLegacyOne() {
+    Map<String, String> config = config("otlpEndpoint", "http://collector:4318/v1/logs");
+    config.put("otlpLogsEndpoint", "   ");
+
+    assertEquals(
+        "http://collector:4318/v1/logs", OtlpPlugin.resolveLogsEndpoint(context(config)));
   }
 
   @Test

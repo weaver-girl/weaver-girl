@@ -20,6 +20,7 @@ public class SpanContext {
   private final long startTimeMs;
   private final String operationName;
   private final String errorStatus;
+  private final Map<String, String> attributes;
 
   private SpanContext(Builder builder) {
     this.traceId = builder.traceId;
@@ -30,6 +31,7 @@ public class SpanContext {
     this.startTimeMs = builder.startTimeMs;
     this.operationName = builder.operationName;
     this.errorStatus = builder.errorStatus;
+    this.attributes = Collections.unmodifiableMap(new LinkedHashMap<>(builder.attributes));
   }
 
   /** Trace ID (unique per trace). */
@@ -60,6 +62,22 @@ public class SpanContext {
   /** Get a specific baggage item. */
   public String getBaggageItem(String key) {
     return baggage.get(key);
+  }
+
+  /**
+   * Attributes describing the operation, exported with the span.
+   *
+   * <p>Use the OpenTelemetry semantic-convention names where one exists ({@code http.method},
+   * {@code http.status_code}, {@code db.system}, {@code rpc.method}, ...). Unlike baggage, attributes
+   * are not propagated to child spans or other processes; they describe this span only.
+   */
+  public Map<String, String> getAttributes() {
+    return attributes;
+  }
+
+  /** Get one attribute, or null when it was not set. */
+  public String getAttribute(String key) {
+    return attributes.get(key);
   }
 
   /** Whether this is a root span (no parent). */
@@ -113,6 +131,7 @@ public class SpanContext {
     private long startTimeMs = System.currentTimeMillis();
     private String operationName = "";
     private String errorStatus;
+    private final Map<String, String> attributes = new LinkedHashMap<>();
 
     public Builder traceId(String traceId) {
       this.traceId = traceId;
@@ -159,6 +178,24 @@ public class SpanContext {
       return this;
     }
 
+    /** Add one span attribute; see {@link SpanContext#getAttributes()} for naming. */
+    public Builder attribute(String key, String value) {
+      if (key != null && value != null) {
+        this.attributes.put(key, value);
+      }
+      return this;
+    }
+
+    /** Add every entry of {@code attributes}, ignoring null keys and values. */
+    public Builder attributes(Map<String, String> attributes) {
+      if (attributes != null) {
+        for (Map.Entry<String, String> entry : attributes.entrySet()) {
+          attribute(entry.getKey(), entry.getValue());
+        }
+      }
+      return this;
+    }
+
     public SpanContext build() {
       if (traceId == null || traceId.isEmpty()) {
         throw new IllegalArgumentException("traceId is required");
@@ -182,6 +219,8 @@ public class SpanContext {
         + operationName
         + ", baggage="
         + baggage.size()
+        + ", attributes="
+        + attributes.size()
         + "}";
   }
 }

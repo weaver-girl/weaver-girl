@@ -35,11 +35,17 @@ public class ConfigValidator {
     KNOWN_KEYS.put("enabledPlugins", ConfigType.STRING);
     KNOWN_KEYS.put("config", ConfigType.STRING);
     KNOWN_KEYS.put("otlpEndpoint", ConfigType.STRING);
+    KNOWN_KEYS.put("otlpTracesEndpoint", ConfigType.STRING);
+    KNOWN_KEYS.put("otlpLogsEndpoint", ConfigType.STRING);
+    KNOWN_KEYS.put("otlpTimeoutMs", ConfigType.POSITIVE_INT);
     KNOWN_KEYS.put("otlpHeaders", ConfigType.STRING);
     KNOWN_KEYS.put("spanExport", ConfigType.BOOLEAN);
     KNOWN_KEYS.put("spanExportBatchSize", ConfigType.POSITIVE_INT);
     KNOWN_KEYS.put("spanExportIntervalMs", ConfigType.POSITIVE_LONG);
     KNOWN_KEYS.put("spanExportBufferSize", ConfigType.POSITIVE_INT);
+    KNOWN_KEYS.put("serviceName", ConfigType.STRING);
+    KNOWN_KEYS.put("serviceVersion", ConfigType.STRING);
+    KNOWN_KEYS.put("deploymentEnvironment", ConfigType.STRING);
     KNOWN_KEYS.put("updateCheckEndpoint", ConfigType.STRING);
     KNOWN_KEYS.put("updateCheckIntervalMs", ConfigType.POSITIVE_LONG);
     KNOWN_KEYS.put("updateAutoStage", ConfigType.BOOLEAN);

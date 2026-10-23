@@ -18,6 +18,7 @@ public class SpanData {
   private final long durationMs;
   private final Map<String, String> attributes;
   private final String status;
+  private final int kind;
   private final List<SpanLink> links;
 
   private SpanData(Builder builder) {
@@ -29,6 +30,7 @@ public class SpanData {
     this.durationMs = builder.durationMs;
     this.attributes = Collections.unmodifiableMap(new LinkedHashMap<>(builder.attributes));
     this.status = builder.status;
+    this.kind = builder.kind;
     this.links = Collections.unmodifiableList(new ArrayList<>(builder.links));
   }
 
@@ -64,34 +66,47 @@ public class SpanData {
     return status;
   }
 
+  /** OTLP span kind: 1 internal, 2 server, 3 client, 4 producer, 5 consumer. */
+  public int getKind() {
+    return kind;
+  }
+
   public List<SpanLink> getLinks() {
     return links;
   }
 
-  /** Convert to OTLP-compatible JSON string. */
+  /**
+   * Convert to an OTLP JSON span object.
+   *
+   * <p>Only the span itself is produced; {@link OtlpHttpExporter} wraps one or more of these in the
+   * {@code resourceSpans}/{@code scopeSpans} envelope required by the OTLP/HTTP JSON receiver.
+   */
   public String toOtlpJson() {
     StringBuilder sb = new StringBuilder();
     sb.append("{");
-    sb.append("\"traceId\":\"").append(traceId).append("\"");
-    sb.append(",\"spanId\":\"").append(spanId).append("\"");
+    sb.append("\"traceId\":\"").append(escapeJson(traceId)).append("\"");
+    sb.append(",\"spanId\":\"").append(escapeJson(spanId)).append("\"");
     if (parentSpanId != null) {
-      sb.append(",\"parentSpanId\":\"").append(parentSpanId).append("\"");
+      sb.append(",\"parentSpanId\":\"").append(escapeJson(parentSpanId)).append("\"");
     }
-    sb.append(",\"name\":\"").append(operationName).append("\"");
+    sb.append(",\"name\":\"").append(escapeJson(operationName)).append("\"");
+    // OTLP span kind; 1 = SPAN_KIND_INTERNAL. Interposed method spans default to internal, while
+    // server/client plugins declare themselves through the "span.kind" span attribute.
+    sb.append(",\"kind\":").append(kind);
     sb.append(",\"startTimeUnixNano\":\"").append(startTimeMs * 1_000_000).append("\"");
     sb.append(",\"endTimeUnixNano\":\"")
         .append((startTimeMs + durationMs) * 1_000_000)
         .append("\"");
-    sb.append(",\"status\":{\"code\":\"").append(status).append("\"}");
+    sb.append(",\"status\":{\"code\":\"").append(statusCode(status)).append("\"}");
     if (!attributes.isEmpty()) {
       sb.append(",\"attributes\":[");
       boolean first = true;
       for (Map.Entry<String, String> entry : attributes.entrySet()) {
         if (!first) sb.append(",");
         sb.append("{\"key\":\"")
-            .append(entry.getKey())
+            .append(escapeJson(entry.getKey()))
             .append("\",\"value\":{\"stringValue\":\"")
-            .append(entry.getValue())
+            .append(escapeJson(entry.getValue()))
             .append("\"}}");
         first = false;
       }
@@ -102,17 +117,17 @@ public class SpanData {
       boolean firstLink = true;
       for (SpanLink link : links) {
         if (!firstLink) sb.append(",");
-        sb.append("{\"traceId\":\"").append(link.getTraceId()).append("\"");
-        sb.append(",\"spanId\":\"").append(link.getSpanId()).append("\"");
+        sb.append("{\"traceId\":\"").append(escapeJson(link.getTraceId())).append("\"");
+        sb.append(",\"spanId\":\"").append(escapeJson(link.getSpanId())).append("\"");
         if (!link.getAttributes().isEmpty()) {
           sb.append(",\"attributes\":[");
           boolean firstAttr = true;
           for (Map.Entry<String, String> attrEntry : link.getAttributes().entrySet()) {
             if (!firstAttr) sb.append(",");
             sb.append("{\"key\":\"")
-                .append(attrEntry.getKey())
+                .append(escapeJson(attrEntry.getKey()))
                 .append("\",\"value\":{\"stringValue\":\"")
-                .append(attrEntry.getValue())
+                .append(escapeJson(attrEntry.getValue()))
                 .append("\"}}");
             firstAttr = false;
           }
@@ -125,6 +140,54 @@ public class SpanData {
     }
     sb.append("}");
     return sb.toString();
+  }
+
+  /**
+   * Map the internal status word to the OTLP enum name.
+   *
+   * <p>OTLP JSON uses protobuf enum names, so {@code "OK"} would be rejected; the collector expects
+   * {@code STATUS_CODE_OK} / {@code STATUS_CODE_ERROR} / {@code STATUS_CODE_UNSET}.
+   */
+  static String statusCode(String status) {
+    if ("ERROR".equalsIgnoreCase(status)) {
+      return "STATUS_CODE_ERROR";
+    }
+    if ("OK".equalsIgnoreCase(status)) {
+      return "STATUS_CODE_OK";
+    }
+    return "STATUS_CODE_UNSET";
+  }
+
+  /** Minimal JSON string escaping for the values this class writes. */
+  static String escapeJson(String value) {
+    if (value == null) {
+      return "";
+    }
+    StringBuilder out = new StringBuilder(value.length());
+    for (int i = 0; i < value.length(); i++) {
+      char c = value.charAt(i);
+      switch (c) {
+        case '\\':
+          out.append("\\\\");
+          break;
+        case '"':
+          out.append("\\\"");
+          break;
+        case '\n':
+          out.append("\\n");
+          break;
+        case '\r':
+          out.append("\\r");
+          break;
+        case '\t':
+          out.append("\\t");
+          break;
+        default:
+          out.append(c);
+          break;
+      }
+    }
+    return out.toString();
   }
 
   @Override
@@ -147,6 +210,7 @@ public class SpanData {
     private long durationMs;
     private final Map<String, String> attributes = new LinkedHashMap<>();
     private String status = "OK";
+    private int kind = 1;
     private final List<SpanLink> links = new ArrayList<>();
 
     public Builder traceId(String v) {
@@ -181,6 +245,11 @@ public class SpanData {
 
     public Builder status(String v) {
       this.status = v;
+      return this;
+    }
+
+    public Builder kind(int v) {
+      this.kind = v;
       return this;
     }
 

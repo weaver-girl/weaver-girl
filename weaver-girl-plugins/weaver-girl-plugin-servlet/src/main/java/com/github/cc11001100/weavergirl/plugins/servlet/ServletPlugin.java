@@ -203,6 +203,76 @@ public class ServletPlugin extends AbstractPlugin {
           /** One start time per nested service/doFilter. Shared by every registration of this interceptor. */
           private final ThreadLocal<ArrayDeque<Long>> startTimes = new ThreadLocal<>();
 
+          /**
+           * One previous span per nested service/doFilter (null marks "there was none").
+           *
+           * <p>Ending an inner span must restore the outer span, otherwise the outer response
+           * carries no trace context and a filter/service pair produces two unrelated roots.
+           */
+          private final ThreadLocal<LinkedList<SpanContext>> parentSpans = new ThreadLocal<>();
+
+          private void pushParent() {
+            LinkedList<SpanContext> stack = parentSpans.get();
+            if (stack == null) {
+              stack = new LinkedList<SpanContext>();
+              parentSpans.set(stack);
+            }
+            stack.addFirst(Tracer.getCurrentSpan());
+          }
+
+          private void restoreParent() {
+            LinkedList<SpanContext> stack = parentSpans.get();
+            if (stack == null || stack.isEmpty()) {
+              Tracer.clearCurrentSpan();
+              return;
+            }
+            SpanContext parent = stack.removeFirst();
+            if (stack.isEmpty()) {
+              parentSpans.remove();
+            }
+            if (parent != null) {
+              Tracer.setCurrentSpan(parent);
+            } else {
+              Tracer.clearCurrentSpan();
+            }
+          }
+
+          /** Operation name for the span, e.g. {@code GET /orders}. */
+          private String describeRequest(Object request) {
+            if (request == null) {
+              return "servlet";
+            }
+            try {
+              Object method = request.getClass().getMethod("getMethod").invoke(request);
+              Object uri = request.getClass().getMethod("getRequestURI").invoke(request);
+              if (method != null && uri != null) {
+                return method + " " + uri;
+              }
+            } catch (Exception ignored) {
+              // Not a servlet request shape we understand.
+            }
+            return "servlet";
+          }
+
+          /** OpenTelemetry-style HTTP attributes, read by every span exporter. */
+          private void setHttpAttributes(Object request) {
+            if (request == null) {
+              return;
+            }
+            try {
+              Object method = request.getClass().getMethod("getMethod").invoke(request);
+              if (method != null) {
+                Tracer.setAttribute("http.method", method.toString());
+              }
+              Object uri = request.getClass().getMethod("getRequestURI").invoke(request);
+              if (uri != null) {
+                Tracer.setAttribute("url.path", uri.toString());
+              }
+            } catch (Exception ignored) {
+              // Attributes are best-effort.
+            }
+          }
+
           private void pushStart() {
             ArrayDeque<Long> stack = startTimes.get();
             if (stack == null) {
@@ -227,6 +297,7 @@ public class ServletPlugin extends AbstractPlugin {
           @Override
           public void before(MethodInvocation inv) {
             pushStart();
+            pushParent();
             // One scope per nested service/doFilter. Closed in after / onException.
             Taint.openScope();
             try {
@@ -238,32 +309,50 @@ public class ServletPlugin extends AbstractPlugin {
             // === Trace context propagation: incoming request ===
             // Extract trace context from HTTP request headers
             Object request = getRequestObject(inv);
+            String operationName = describeRequest(request);
+            // An outer interception (filter → servlet) owns the request's trace; headers were
+            // already consumed there and must not re-parent the inner span.
+            boolean nested = Tracer.hasCurrentSpan();
             if (request != null) {
               Map<String, String> headerMap = extractHeadersFromRequest(request);
-              SpanContext extracted = Tracer.extract(headerMap);
+              SpanContext extracted = nested ? null : Tracer.extract(headerMap);
               if (extracted != null) {
-                // Continue an existing trace from upstream service
+                // Continue the upstream trace: the server span must be a CHILD of the client span
+                // that arrived on the wire, not reuse its span ID.
                 Tracer.setCurrentSpan(extracted);
+                SpanContext newSpan = Tracer.startChildSpan(operationName);
                 if (log.isDebugEnabled()) {
                   log.debug(
-                      "[SERVLET-TRACE] Continued trace: traceId={}, spanId={}",
-                      extracted.getTraceId(),
-                      extracted.getSpanId());
+                      "[SERVLET-TRACE] Continued trace: traceId={}, parentSpanId={}, spanId={}",
+                      newSpan.getTraceId(),
+                      extracted.getSpanId(),
+                      newSpan.getSpanId());
                 }
               } else {
-                // No trace headers — start a new root span
-                SpanContext newSpan = Tracer.startSpan();
+                // No trace headers: keep the local trace when nested (filter → service),
+                // otherwise this request begins a new trace.
+                SpanContext newSpan =
+                    Tracer.hasCurrentSpan()
+                        ? Tracer.startChildSpan(operationName)
+                        : Tracer.startSpan(operationName);
                 if (log.isDebugEnabled()) {
                   log.debug(
-                      "[SERVLET-TRACE] Started new root span: traceId={}, spanId={}",
+                      "[SERVLET-TRACE] Started {} span: traceId={}, spanId={}",
+                      newSpan.isRoot() ? "root" : "child",
                       newSpan.getTraceId(),
                       newSpan.getSpanId());
                 }
               }
             } else {
-              // No request object available — start a new root span
-              Tracer.startSpan();
+              // No request object available: same rule, child of whatever is already active.
+              if (Tracer.hasCurrentSpan()) {
+                Tracer.startChildSpan(operationName);
+              } else {
+                Tracer.startSpan(operationName);
+              }
             }
+            Tracer.setAttribute(Tracer.SPAN_KIND_ATTRIBUTE, "server");
+            setHttpAttributes(request);
 
             // Store traceId in ThreadContext and request attribute for downstream use
             SpanContext currentSpan = Tracer.getCurrentSpan();
@@ -296,6 +385,7 @@ public class ServletPlugin extends AbstractPlugin {
               finishServlet(inv, elapsedMs, null);
             } finally {
               Taint.closeScope();
+              restoreParent();
             }
           }
 
@@ -306,6 +396,7 @@ public class ServletPlugin extends AbstractPlugin {
               finishServlet(inv, 0, inv.getThrowable());
             } finally {
               Taint.closeScope();
+              restoreParent();
             }
           }
 
@@ -331,9 +422,6 @@ public class ServletPlugin extends AbstractPlugin {
               }
             }
 
-            // End the span
-            Tracer.endSpan("servlet", "OK");
-
             // Extract request info via reflection (no compile dependency)
             String method = "UNKNOWN";
             String uri = "/";
@@ -346,6 +434,9 @@ public class ServletPlugin extends AbstractPlugin {
             } catch (Exception e) {
               // Fall back to defaults
             }
+
+            // End the span; it already carries the operation name and HTTP attributes.
+            Tracer.endSpan(null, "OK");
 
             if (elapsedMs >= slowThresholdMs) {
               log.warn(
@@ -383,10 +474,11 @@ public class ServletPlugin extends AbstractPlugin {
               }
             }
 
-            // End the span as errored
+            // Record the failure on the span, then end it as errored.
             String errorMsg =
                 inv.getThrowable() != null ? inv.getThrowable().getMessage() : "unknown";
-            Tracer.endSpan("servlet", "ERROR");
+            Tracer.recordException(error);
+            Tracer.endSpan(null, "ERROR");
 
             log.warn(
                 "[SERVLET-ERROR] {}.{} threw: {}",

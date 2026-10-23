@@ -160,6 +160,49 @@ class ServletPluginTest {
     }
   }
 
+  /** Nested service/doFilter calls must produce a parent/child chain, not two roots. */
+  @Test
+  void nestedInterceptionsProduceParentChildSpansAndRestoreTheOuterSpan() {
+    plugin.init(context);
+    plugin.registerInterceptors(registry);
+    Interceptor interceptor = registry.definitions.get(0).getInterceptor();
+
+    java.util.List<com.github.cc11001100.weavergirl.api.tracing.SpanContext> completed =
+        new java.util.ArrayList<>();
+    com.github.cc11001100.weavergirl.api.tracing.SpanCompletionListener listener =
+        (span, durationMs) -> completed.add(span);
+    com.github.cc11001100.weavergirl.api.tracing.Tracer.addCompletionListener(listener);
+    try {
+      com.github.cc11001100.weavergirl.api.tracing.Tracer.clearCurrentSpan();
+
+      MethodInvocation outer = new MethodInvocation(Object.class, "service", null, null);
+      MethodInvocation inner = new MethodInvocation(Object.class, "service", null, null);
+
+      interceptor.before(outer);
+      com.github.cc11001100.weavergirl.api.tracing.SpanContext outerSpan =
+          com.github.cc11001100.weavergirl.api.tracing.Tracer.getCurrentSpan();
+      interceptor.before(inner);
+      com.github.cc11001100.weavergirl.api.tracing.SpanContext innerSpan =
+          com.github.cc11001100.weavergirl.api.tracing.Tracer.getCurrentSpan();
+
+      assertNotEquals(outerSpan.getSpanId(), innerSpan.getSpanId());
+      assertEquals(outerSpan.getSpanId(), innerSpan.getParentSpanId());
+
+      interceptor.after(inner);
+      assertSame(
+          outerSpan,
+          com.github.cc11001100.weavergirl.api.tracing.Tracer.getCurrentSpan(),
+          "ending the inner span must restore the outer one");
+
+      interceptor.after(outer);
+      assertNull(com.github.cc11001100.weavergirl.api.tracing.Tracer.getCurrentSpan());
+      assertEquals(2, completed.size());
+    } finally {
+      com.github.cc11001100.weavergirl.api.tracing.Tracer.removeCompletionListener(listener);
+      com.github.cc11001100.weavergirl.api.tracing.Tracer.clearCurrentSpan();
+    }
+  }
+
   @Test
   void serviceHookTaintsParameterAndHeaderAndLeavesUnmarkedValueClean() {
     plugin.init(context);

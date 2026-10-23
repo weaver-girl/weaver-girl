@@ -69,6 +69,21 @@ class SpanExportTest {
     }
   }
 
+  /** The explicit traces key is enough on its own; otlpEndpoint remains the alias. */
+  @Test
+  void aDedicatedTracesEndpointStartsTheExporter() {
+    SpanExport export = new SpanExport();
+    Map<String, String> config = new HashMap<>();
+    config.put("otlpTracesEndpoint", "http://127.0.0.1:1");
+
+    try {
+      assertTrue(export.start(config));
+      assertEquals(1, export.exporter().getFormatterCount());
+    } finally {
+      export.stop();
+    }
+  }
+
   /** A size that is not a positive number falls back to the default. */
   @Test
   void unusableSizesFallBackToDefaults() {

@@ -186,11 +186,18 @@ curl http://localhost:9400/metrics
 
 ### Monitoring Stack
 
-- **Prometheus**: Built-in `/metrics` endpoint (slow ops, errors, duration)
+- **Traces**: W3C `traceparent`/`baggage` propagation, span attributes, hand-built child spans for
+  nested servlet/filter interceptions, and batch export as OTLP/HTTP JSON with `service.name`
+  resource attributes
+- **Prometheus**: Built-in `/metrics` endpoint — event counters (total/slow/error/duration),
+  agent self-metrics, JVM metrics and `MetricRegistry` business percentiles
+- **OTLP logs**: Interception events to a collector's `/v1/logs` with `otlpLogsEndpoint`
 - **JMX**: `com.github.cc11001100.weavergirl:type=Agent` MBean
 - **Health**: Kubernetes liveness/readiness probes via `/health` and `/ready`
-- **OTel**: Span bridge to OpenTelemetry Collector
 - **JSON Events**: Structured event output with `jsonEvents=true`
+
+Design details, metric catalog, PromQL examples and collector configuration are in the
+[Observability Guide](docs/observability.md).
 
 `metricsPort`, `jsonEvents`, `apiPort`, `annotationPackages` and config hot-reload (`watch=true`) are plugins (`weaver-girl-runtime-*`). Each ships as its own jar and only activates when its config key is set, so a distribution can leave out the capabilities it does not use. A custom plugin is added the same way: drop its jar in the `plugins/` directory next to the agent.
 

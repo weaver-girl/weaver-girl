@@ -65,8 +65,14 @@ class OtlpHttpExporterTest {
       assertTrue(
           requestLatch.await(5, TimeUnit.SECONDS), "Server should receive request within timeout");
       assertNotNull(receivedBody.get());
-      assertTrue(receivedBody.get().startsWith("["));
+      // A collector only accepts the ExportTraceServiceRequest envelope, not a bare span array.
+      assertTrue(receivedBody.get().startsWith("{\"resourceSpans\":["), receivedBody.get());
+      assertTrue(receivedBody.get().contains("\"resource\":{\"attributes\":["));
+      assertTrue(receivedBody.get().contains("\"service.name\""));
+      assertTrue(receivedBody.get().contains("\"scopeSpans\":["));
+      assertTrue(receivedBody.get().contains("\"scope\":{\"name\":\"weaver-girl-agent\"}"));
       assertTrue(receivedBody.get().contains("\"traceId\":\"trace1\""));
+      assertTrue(receivedBody.get().contains("\"spanId\":\"span2\""));
       assertEquals(2, exporter.getExportedCount());
       assertEquals(0, exporter.getFailedCount());
     } finally {
@@ -205,6 +211,69 @@ class OtlpHttpExporterTest {
     } finally {
       server.stop(0);
     }
+  }
+
+  @Test
+  void toExportRequest_wrapsEverySpanInTheResourceAndScopeEnvelope() {
+    java.util.Map<String, String> resource = new java.util.LinkedHashMap<>();
+    resource.put("service.name", "orders");
+    resource.put("service.version", "2.1.0");
+
+    String json =
+        OtlpHttpExporter.toExportRequest(
+            java.util.Arrays.asList(createSpan("t1", "s1", "op1"), createSpan("t1", "s2", "op2")),
+            resource);
+
+    assertTrue(json.startsWith("{\"resourceSpans\":[{\"resource\":{\"attributes\":["), json);
+    assertTrue(
+        json.contains("{\"key\":\"service.name\",\"value\":{\"stringValue\":\"orders\"}}"), json);
+    assertTrue(
+        json.contains("{\"key\":\"service.version\",\"value\":{\"stringValue\":\"2.1.0\"}}"), json);
+    assertTrue(json.contains("\"scopeSpans\":[{\"scope\":{\"name\":\"weaver-girl-agent\"}"));
+    assertEquals(2, countOccurrences(json, "\"traceId\":\"t1\""));
+    // Envelope closes exactly once, after both spans.
+    assertTrue(json.endsWith("]}]}]}"), json);
+  }
+
+  @Test
+  void builder_resourceAttributesOverrideTheDefaults() {
+    OtlpHttpExporter exporter =
+        OtlpHttpExporter.builder()
+            .endpoint("http://127.0.0.1:1/v1/traces")
+            .resourceAttribute("service.name", "payments")
+            .resourceAttribute("deployment.environment", "prod")
+            .build();
+
+    assertEquals("payments", exporter.getResourceAttributes().get("service.name"));
+    assertEquals("prod", exporter.getResourceAttributes().get("deployment.environment"));
+    // Defaults the caller did not touch are still present.
+    assertEquals("weaver-girl", exporter.getResourceAttributes().get("telemetry.sdk.name"));
+    assertEquals("java", exporter.getResourceAttributes().get("telemetry.sdk.language"));
+    assertThrows(
+        UnsupportedOperationException.class,
+        () -> exporter.getResourceAttributes().put("x", "y"));
+  }
+
+  @Test
+  void builder_ignoresNullResourceAttributes() {
+    OtlpHttpExporter exporter =
+        OtlpHttpExporter.builder()
+            .endpoint("http://127.0.0.1:1/v1/traces")
+            .resourceAttribute(null, "v")
+            .resourceAttribute("k", null)
+            .build();
+
+    assertFalse(exporter.getResourceAttributes().containsKey("k"));
+  }
+
+  private static int countOccurrences(String text, String needle) {
+    int count = 0;
+    int index = 0;
+    while ((index = text.indexOf(needle, index)) >= 0) {
+      count++;
+      index += needle.length();
+    }
+    return count;
   }
 
   /** The settings a caller configured are the settings the exporter reports. */

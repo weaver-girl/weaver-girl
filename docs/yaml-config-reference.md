@@ -214,12 +214,28 @@ are not, so a capability option is always a scalar.
 metricsPort: 9400
 apiPort: 9402
 watch: true                  # hot reload
-otlpEndpoint: http://collector:4318/v1/traces
+
+# Trace export (otlpEndpoint is the historical alias of otlpTracesEndpoint)
+otlpTracesEndpoint: http://collector:4318/v1/traces
+otlpEndpoint: http://collector:4318/v1/traces   # deprecated alias
+otlpHeaders: "Authorization=Bearer token;X-Tenant=acme"
+
+# OTLP resource attributes: distinguish services in one collector
+serviceName: orders-api
+serviceVersion: 2.1.0
+deploymentEnvironment: prod
+
+# Interception events as OTLP log records (separate endpoint from traces)
+otlpLogsEndpoint: http://collector:4318/v1/logs
+otlpTimeoutMs: 1000
 ```
 
 These merge into the same launch map as agent arguments, and an agent argument with the same key
 wins. A map-valued top-level key that is not `plugins:` (or another structured agent setting) is
 logged and ignored.
+
+The full signal-by-signal reference (trace propagation, Prometheus metric catalog, OTLP payloads,
+limitations) is in [observability.md](observability.md).
 
 ### Plugin directory
 
