@@ -64,6 +64,10 @@ cp target/my-plugin.jar /path/to/plugins/
 
 The agent will discover and load your plugin automatically.
 
+Before that run, [testing the plugin in-process](#testing-the-plugin-in-process) checks the
+callbacks in a plain unit test. The end-to-end run is still worth keeping: only it proves the jar
+layout and the class-loader isolation.
+
 ## Plugin Lifecycle
 
 1. **Discovery** -- Loaded via `java.util.ServiceLoader`
@@ -418,6 +422,58 @@ public void init(PluginContext context) {
     context.getLogger().info("starting");
 }
 ```
+
+### Testing the plugin in-process
+
+The agent path above is the real acceptance test, but it is slow: build, copy the jar, launch an
+application, read the log. A unit test usually wants a narrower answer — *does this callback fire,
+and what does it do to the call?* `weaver-girl-testkit` attaches the instrumentation agent to the
+test JVM, runs the plugin through the same lifecycle, and weaves only the classes the test names.
+
+```xml
+<dependency>
+    <groupId>com.github.cc11001100</groupId>
+    <artifactId>weaver-girl-testkit</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <scope>test</scope>
+</dependency>
+```
+
+```java
+@Test
+void renderMasksTheTicket() {
+    try (PluginTestHarness harness = PluginTestHarness.create()
+            .config("ticket-redaction", "logMasked", "true")
+            .install(new RedactionPlugin())) {
+
+        harness.weave(TicketStore.class);
+
+        TicketStore store = new TicketStore();
+        store.file("Ada", "card 4111 1111 1111 1111");
+        assertEquals("card 4111 ****** 1111", store.render(1));
+    }
+}
+```
+
+`create()` attaches the agent; a JVM that forbids self-attachment makes it throw
+`IllegalStateException`, which a test can turn into an assumption. Configuration is set *before*
+`install`, because `init` reads it there. `install` itself follows the agent's order: `init`,
+`isEnabled`, the `instrumentedLibraries()` check, then `registerInterceptors`; `isActive(name)`
+reports whether the plugin got that far. `weave(Class...)` retransforms the named classes and
+*fails* when none of the registered definitions matched one of them, so a matcher typo surfaces as a
+test failure instead of a green test that asserted nothing. Use `retransform` when a class is
+deliberately expected not to match.
+
+The harness exposes `registry()` for definitions registered directly and `context(name)` for the
+context the plugin was initialized with. One harness owns the JVM's interceptor registry while it is
+open, so do not open two at once. `close()` destroys the plugins newest first, withdraws the services
+they published, restores every woven class, and puts the global switch, sampling rate and registry
+back, so the next test starts clean.
+
+This does not replace the plugins-directory run: the harness loads the plugin on the test's class
+path, so it cannot prove that a plugin only touches classes it is allowed to see, nor that the jar
+carries the SPI and capabilities files. Keep one end-to-end run per release for those, and use the
+harness for the callbacks.
 
 ### Shipping the jar
 

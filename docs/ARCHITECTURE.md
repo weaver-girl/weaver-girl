@@ -33,6 +33,7 @@ weaver-girl/                              (parent POM, packaging=pom)
 │   ├── weaver-girl-runtime-annotation-scan/
 │   └── weaver-girl-runtime-management-api/
 ├── weaver-girl-agent/                    Agent entry point — premain/agentmain, shades the engine
+├── weaver-girl-testkit/                  In-process plugin test harness (test scope, never shipped)
 └── weaver-girl-sample/                   Sample application — embedded Jetty + H2 demo
 ```
 
@@ -74,6 +75,7 @@ Key dependency rules:
 | `weaver-girl-bridge-micrometer` | Publishes agent counters to a Micrometer `MeterRegistry` | `MicrometerBridge` |
 | `weaver-girl-bridge-aopalliance` | Adapts an AOP Alliance `MethodInterceptor` | `AopAllianceAdapter` |
 | `weaver-girl-agent` | Java Agent entry point | `WeaverGirlAgent` |
+| `weaver-girl-testkit` | Attaches the agent to a test JVM, runs the plugin lifecycle and weaves only the classes a test names | `PluginTestHarness` |
 | `weaver-girl-sample` | Demonstration application | `SampleApplication`, `TargetService`, sample plugins and interceptors |
 
 ---

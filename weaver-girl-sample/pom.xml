@@ -131,6 +131,12 @@
             <artifactId>weaver-girl-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- In-process harness: attach the agent, install a plugin, weave one class. -->
+        <dependency>
+            <groupId>com.github.cc11001100</groupId>
+            <artifactId>weaver-girl-testkit</artifactId>
+            <scope>test</scope>
+        </dependency>
 
         <!-- Embedded Jetty for demonstrating Servlet plugin -->
         <dependency>

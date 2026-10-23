@@ -17,6 +17,7 @@
         <module>weaver-girl-annotation-runtime</module>
         <module>weaver-girl-api</module>
         <module>weaver-girl-core</module>
+        <module>weaver-girl-testkit</module>
         <module>weaver-girl-bridge-micrometer</module>
         <module>weaver-girl-bridge-aopalliance</module>
         <module>weaver-girl-plugins</module>
@@ -150,6 +151,13 @@
             <dependency>
                 <groupId>com.github.cc11001100</groupId>
                 <artifactId>weaver-girl-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- Test-time harness for product plugins: attaches Byte Buddy's agent, installs a
+                 plugin and weaves the classes a test names, without launching the real agent. -->
+            <dependency>
+                <groupId>com.github.cc11001100</groupId>
+                <artifactId>weaver-girl-testkit</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

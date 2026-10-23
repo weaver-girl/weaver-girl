@@ -520,6 +520,19 @@ public class WeaverTransformer {
   }
 
   /**
+   * The classes this transformer has woven since it was installed.
+   *
+   * <p>Scoped to this transformer: a second transformer's classes are not reported here. A test can
+   * use it to tell "the class was visited but no interceptor matched it" apart from "it was woven",
+   * which a call to {@code retransformClasses} does not report by itself.
+   *
+   * @return an immutable snapshot of the woven class names, never null
+   */
+  public java.util.Set<String> getWovenClasses() {
+    return java.util.Collections.unmodifiableSet(new java.util.HashSet<>(wovenClasses));
+  }
+
+  /**
    * Retransform already-loaded classes that match any registered interceptor. This is needed when
    * the agent is attached dynamically via agentmain, because classes loaded before the agent
    * started would not be transformed.

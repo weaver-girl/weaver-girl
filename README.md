@@ -248,6 +248,7 @@ docker-compose up
 | `weaver-girl-bridge-micrometer` | Optional Micrometer metrics bridge |
 | `weaver-girl-bridge-aopalliance` | Optional AOP Alliance interceptor adapter |
 | `weaver-girl-agent` | Agent entry point (premain/agentmain) |
+| `weaver-girl-testkit` | In-process test harness for product plugins (test scope only) |
 | `weaver-girl-sample` | Sample application demonstrating all modes |
 
 ## Requirements
