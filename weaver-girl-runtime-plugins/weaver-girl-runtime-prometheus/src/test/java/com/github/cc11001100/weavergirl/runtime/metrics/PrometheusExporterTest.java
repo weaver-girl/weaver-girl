@@ -28,6 +28,7 @@ class PrometheusExporterTest {
     com.github.cc11001100.weavergirl.api.plugin.PluginHealthRegistry.clear();
     com.github.cc11001100.weavergirl.api.observability.SpanSinks.clear();
     com.github.cc11001100.weavergirl.api.tracing.Tracer.setCurrentSpan(null);
+    com.github.cc11001100.weavergirl.api.plugin.PluginManagerHolder.setInstance(null);
   }
 
   @Test
@@ -276,6 +277,86 @@ class PrometheusExporterTest {
     assertTrue(
         metrics.contains("weavergirl_span_sink_deliveries_total{sink=\"my-apm\"} 1"), metrics);
     assertTrue(metrics.contains("weavergirl_span_sink_errors_total{sink=\"my-apm\"} 1"), metrics);
+  }
+
+  @Test
+  void renderMetrics_rendersPluginLifecycleState() {
+    java.util.List<com.github.cc11001100.weavergirl.api.plugin.PluginInfo> info =
+        new java.util.ArrayList<>();
+    info.add(
+        new com.github.cc11001100.weavergirl.api.plugin.PluginInfo(
+            "servlet",
+            com.github.cc11001100.weavergirl.api.plugin.PluginState.ACTIVE,
+            "1.0",
+            3,
+            0L,
+            0L));
+    info.add(
+        new com.github.cc11001100.weavergirl.api.plugin.PluginInfo(
+            "jdbc",
+            com.github.cc11001100.weavergirl.api.plugin.PluginState.DISABLED,
+            null,
+            0,
+            0L,
+            0L));
+    final java.util.List<com.github.cc11001100.weavergirl.api.plugin.PluginInfo> all = info;
+    com.github.cc11001100.weavergirl.api.plugin.PluginManagerHolder.setInstance(
+        new com.github.cc11001100.weavergirl.api.plugin.PluginManager() {
+          @Override
+          public boolean disablePlugin(String pluginName) {
+            return false;
+          }
+
+          @Override
+          public boolean enablePlugin(String pluginName) {
+            return false;
+          }
+
+          @Override
+          public boolean unloadPlugin(String pluginName) {
+            return false;
+          }
+
+          @Override
+          public java.util.Optional<com.github.cc11001100.weavergirl.api.plugin.PluginInfo>
+              getPluginInfo(String pluginName) {
+            return java.util.Optional.empty();
+          }
+
+          @Override
+          public java.util.List<com.github.cc11001100.weavergirl.api.plugin.PluginInfo>
+              getAllPluginInfo() {
+            return all;
+          }
+
+          @Override
+          public boolean isPluginActive(String pluginName) {
+            return false;
+          }
+
+          @Override
+          public int getActivePluginCount() {
+            return 1;
+          }
+        });
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(
+        metrics.contains("weavergirl_plugin_state{plugin=\"servlet\",state=\"active\"} 1"),
+        metrics);
+    assertTrue(
+        metrics.contains("weavergirl_plugin_state{plugin=\"jdbc\",state=\"disabled\"} 1"),
+        metrics);
+    assertTrue(metrics.contains("weavergirl_plugin_interceptors{plugin=\"servlet\"} 3"), metrics);
+    assertTrue(metrics.contains("weavergirl_plugin_interceptors{plugin=\"jdbc\"} 0"), metrics);
+  }
+
+  @Test
+  void renderMetrics_omitsPluginStateWhenNoManagerIsInstalled() {
+    com.github.cc11001100.weavergirl.api.plugin.PluginManagerHolder.setInstance(null);
+    String metrics = exporter.renderMetrics();
+    assertFalse(metrics.contains("weavergirl_plugin_state"), metrics);
   }
 
   @Test

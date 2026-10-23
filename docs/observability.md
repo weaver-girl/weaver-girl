@@ -226,6 +226,22 @@ weavergirl_plugin_health_timestamp_seconds{plugin="jdbc"} 1730000000.123
 没有注册任何 sink 时不输出。`errors_total` 增长说明用户后端在丢数据，而业务无损——
 这正是需要用指标而不是日志发现的问题。
 
+### 4.2.4 插件生命周期状态
+
+从 `PluginManager` 读取每个受管插件的状态和它注册的拦截器数：
+
+```text
+# TYPE weavergirl_plugin_state gauge
+weavergirl_plugin_state{plugin="servlet",state="active"} 1
+weavergirl_plugin_state{plugin="jdbc",state="disabled"} 1
+weavergirl_plugin_interceptors{plugin="servlet"} 3
+```
+
+`state` 取值 `loaded` / `active` / `disabled` / `unloaded`。告警：
+`weavergirl_plugin_state{state!="active"} == 1` 可以发现被误禁用或卡在初始化中的插件；
+`weavergirl_plugin_interceptors` 掉到 0 通常意味着插件注册失败。未安装 `PluginManager`
+（单独运行插件测试）时不输出。
+
 ### 4.3 JVM 指标
 
 基于 `java.lang.management`，每次抓取读取一次：

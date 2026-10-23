@@ -11,6 +11,8 @@ import com.github.cc11001100.weavergirl.api.observability.SpanSinkStats;
 import com.github.cc11001100.weavergirl.api.observability.SpanSinks;
 import com.github.cc11001100.weavergirl.api.plugin.PluginHealth;
 import com.github.cc11001100.weavergirl.api.plugin.PluginHealthRegistry;
+import com.github.cc11001100.weavergirl.api.plugin.PluginInfo;
+import com.github.cc11001100.weavergirl.api.plugin.PluginManager;
 import com.github.cc11001100.weavergirl.api.status.AgentStatusHolder;
 import com.github.cc11001100.weavergirl.api.status.AgentStatusView;
 import com.github.cc11001100.weavergirl.api.status.InterceptorMetricsView;
@@ -334,6 +336,7 @@ public class PrometheusExporter implements InterceptorEventListener {
     appendInterceptorMetrics(sb);
     appendAgentMetrics(sb);
     appendPluginHealthMetrics(sb);
+    appendPluginStateMetrics(sb);
     appendSpanSinkMetrics(sb);
     appendJvmMetrics(sb);
     appendRegistryMetrics(sb);
@@ -822,6 +825,77 @@ public class PrometheusExporter implements InterceptorEventListener {
           .append(escape(name))
           .append("\"} ")
           .append(formatNumber(plugin.getCheckTimestamp() / 1000.0))
+          .append("\n");
+    }
+    sb.append("\n");
+  }
+
+  /**
+   * Lifecycle state and interceptor count of every managed plugin, from {@link PluginManager}.
+   *
+   * <p>State is a label and the sample is always 1, so a disabled or half-initialized plugin is
+   * {@code weavergirl_plugin_state{state!="active"} == 1}. Absent when no manager is installed
+   * (standalone plugin tests).
+   */
+  private void appendPluginStateMetrics(StringBuilder sb) {
+    PluginManager manager;
+    try {
+      manager = PluginManager.getInstance();
+    } catch (RuntimeException e) {
+      return;
+    }
+    if (manager == null) {
+      return;
+    }
+    List<PluginInfo> plugins;
+    try {
+      plugins = manager.getAllPluginInfo();
+    } catch (RuntimeException e) {
+      return;
+    }
+    if (plugins == null || plugins.isEmpty()) {
+      return;
+    }
+
+    List<PluginInfo> ordered = new ArrayList<PluginInfo>(plugins);
+    Collections.sort(
+        ordered,
+        new Comparator<PluginInfo>() {
+          @Override
+          public int compare(PluginInfo a, PluginInfo b) {
+            String left = a == null ? "" : a.getName();
+            String right = b == null ? "" : b.getName();
+            return left.compareTo(right);
+          }
+        });
+
+    sb.append("# HELP weavergirl_plugin_state Lifecycle state of a managed plugin, 1 per state\n");
+    sb.append("# TYPE weavergirl_plugin_state gauge\n");
+    for (PluginInfo plugin : ordered) {
+      if (plugin == null || plugin.getName() == null) {
+        continue;
+      }
+      String state =
+          plugin.getState() == null
+              ? "unknown"
+              : plugin.getState().name().toLowerCase(java.util.Locale.ROOT);
+      sb.append("weavergirl_plugin_state{plugin=\"")
+          .append(escape(plugin.getName()))
+          .append("\",state=\"")
+          .append(state)
+          .append("\"} 1\n");
+    }
+
+    sb.append("# HELP weavergirl_plugin_interceptors Interceptor definitions registered per plugin\n");
+    sb.append("# TYPE weavergirl_plugin_interceptors gauge\n");
+    for (PluginInfo plugin : ordered) {
+      if (plugin == null || plugin.getName() == null) {
+        continue;
+      }
+      sb.append("weavergirl_plugin_interceptors{plugin=\"")
+          .append(escape(plugin.getName()))
+          .append("\"} ")
+          .append(plugin.getInterceptorCount())
           .append("\n");
     }
     sb.append("\n");
