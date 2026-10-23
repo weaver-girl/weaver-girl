@@ -27,6 +27,7 @@ class PrometheusExporterTest {
     com.github.cc11001100.weavergirl.api.status.AgentStatusHolder.set(null);
     com.github.cc11001100.weavergirl.api.plugin.PluginHealthRegistry.clear();
     com.github.cc11001100.weavergirl.api.observability.SpanSinks.clear();
+    com.github.cc11001100.weavergirl.api.tracing.SpanProcessors.clear();
     com.github.cc11001100.weavergirl.api.tracing.Tracer.setCurrentSpan(null);
     com.github.cc11001100.weavergirl.api.plugin.PluginManagerHolder.setInstance(null);
   }
@@ -280,6 +281,40 @@ class PrometheusExporterTest {
   }
 
   @Test
+  void renderMetrics_rendersSpanProcessorStats() {
+    com.github.cc11001100.weavergirl.api.tracing.SpanProcessors.register(
+        new com.github.cc11001100.weavergirl.api.tracing.SpanProcessor() {
+          @Override
+          public String name() {
+            return "drop-health";
+          }
+
+          @Override
+          public com.github.cc11001100.weavergirl.api.tracing.SpanContext process(
+              com.github.cc11001100.weavergirl.api.tracing.SpanContext span) {
+            return null;
+          }
+        });
+
+    com.github.cc11001100.weavergirl.api.tracing.Tracer.startSpan("GET /health");
+    com.github.cc11001100.weavergirl.api.tracing.Tracer.endSpan(null, null);
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(
+        metrics.contains("weavergirl_span_processor_dropped_total{processor=\"drop-health\"} 1"),
+        metrics);
+    assertTrue(
+        metrics.contains("weavergirl_span_processor_processed_total{processor=\"drop-health\"} 0"),
+        metrics);
+    assertTrue(
+        metrics.contains("weavergirl_span_processor_errors_total{processor=\"drop-health\"} 0"),
+        metrics);
+    assertTrue(
+        metrics.contains("# TYPE weavergirl_span_processor_dropped_total counter"), metrics);
+  }
+
+  @Test
   void renderMetrics_rendersPluginLifecycleState() {
     java.util.List<com.github.cc11001100.weavergirl.api.plugin.PluginInfo> info =
         new java.util.ArrayList<>();
@@ -482,6 +517,79 @@ class PrometheusExporterTest {
     assertTrue(metrics.contains("# TYPE jobs_pending gauge"), metrics);
     assertTrue(metrics.contains("# HELP jobs_pending Jobs waiting"), metrics);
     assertTrue(metrics.contains("jobs_pending 3"), metrics);
+  }
+
+  @Test
+  void renderMetrics_rendersPluginHistograms() {
+    register(
+        "latency",
+        collector -> {
+          java.util.Map<String, String> labels = new java.util.LinkedHashMap<>();
+          labels.put("route", "/orders");
+          collector.histogram(
+              "request_duration_seconds",
+              "Request latency",
+              labels,
+              new double[] {0.01, 0.1},
+              new long[] {2, 5},
+              0.42);
+        });
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(metrics.contains("# TYPE request_duration_seconds histogram"), metrics);
+    assertTrue(
+        metrics.contains(
+            "request_duration_seconds_bucket{route=\"/orders\",le=\"0.01\"} 2"),
+        metrics);
+    assertTrue(
+        metrics.contains(
+            "request_duration_seconds_bucket{route=\"/orders\",le=\"0.1\"} 5"),
+        metrics);
+    assertTrue(
+        metrics.contains(
+            "request_duration_seconds_bucket{route=\"/orders\",le=\"+Inf\"} 5"),
+        metrics);
+    assertTrue(metrics.contains("request_duration_seconds_sum{route=\"/orders\"} 0.42"), metrics);
+    assertTrue(metrics.contains("request_duration_seconds_count{route=\"/orders\"} 5"), metrics);
+  }
+
+  @Test
+  void renderMetrics_ignoresMalformedHistograms() {
+    register(
+        "bad",
+        collector -> {
+          // Length mismatch.
+          collector.histogram("bad_hist_a", "bad", new double[] {1, 2}, new long[] {1}, 3);
+          // Bounds not ascending.
+          collector.histogram("bad_hist_b", "bad", new double[] {2, 1}, new long[] {1, 2}, 3);
+          // Counts decreasing.
+          collector.histogram("bad_hist_c", "bad", new double[] {1, 2}, new long[] {5, 2}, 3);
+        });
+
+    String metrics = exporter.renderMetrics();
+
+    assertFalse(metrics.contains("bad_hist_a"), metrics);
+    assertFalse(metrics.contains("bad_hist_b"), metrics);
+    assertFalse(metrics.contains("bad_hist_c"), metrics);
+  }
+
+  @Test
+  void renderMetrics_histogramOwnsTheLeLabel() {
+    register(
+        "le-clash",
+        collector -> {
+          java.util.Map<String, String> labels = new java.util.LinkedHashMap<>();
+          labels.put("le", "user-supplied");
+          collector.histogram(
+              "hist_le", "clash", labels, new double[] {1}, new long[] {1}, 1);
+        });
+
+    String metrics = exporter.renderMetrics();
+
+    assertFalse(metrics.contains("user-supplied"), metrics);
+    assertTrue(metrics.contains("hist_le_bucket{le=\"1\"} 1"), metrics);
+    assertTrue(metrics.contains("hist_le_bucket{le=\"+Inf\"} 1"), metrics);
   }
 
   @Test

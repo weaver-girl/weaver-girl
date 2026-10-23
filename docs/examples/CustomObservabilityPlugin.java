@@ -6,6 +6,8 @@ import com.github.cc11001100.weavergirl.api.observability.SpanRecord;
 import com.github.cc11001100.weavergirl.api.observability.SpanSink;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin;
+import com.github.cc11001100.weavergirl.api.tracing.SpanContext;
+import com.github.cc11001100.weavergirl.api.tracing.SpanProcessor;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,9 +20,12 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Example: a plugin that plugs into all three observability extension points.
+ * Example: a plugin that plugs into all four observability extension points.
  *
  * <ul>
+ *   <li>{@link SpanProcessor} governs spans before anyone sees them: it drops health checks and
+ *       removes credentials, so the redaction applies to the built-in exporter as well as to the
+ *       sink below.
  *   <li>{@link SpanSink} receives every completed span. The sink only enqueues; a daemon thread
  *       ships batches to the backend so business threads are never blocked.
  *   <li>{@link MetricSource} is pulled at every Prometheus scrape, so it needs no thread of its own.
@@ -28,7 +33,7 @@ import java.util.logging.Logger;
  *       contributes runtime metadata to every OTLP export.
  * </ul>
  *
- * <p>All three are registered through {@link PluginContext}, which means the engine withdraws them
+ * <p>All four are registered through {@link PluginContext}, which means the engine withdraws them
  * automatically when the plugin is unloaded or hot-replaced. Registering through the static
  * helpers works too, but then {@link #destroy()} has to unregister them by hand.
  *
@@ -76,6 +81,26 @@ public class CustomObservabilityPlugin implements WeaverPlugin {
     flusher = new Thread(this::flushLoop, "custom-observability-flush");
     flusher.setDaemon(true);
     flusher.start();
+
+    context.registerSpanProcessor(
+        new SpanProcessor() {
+          @Override
+          public String name() {
+            return "custom-observability-governance";
+          }
+
+          @Override
+          public SpanContext process(SpanContext span) {
+            // Runs on the application thread before every consumer: cheap attribute work only.
+            String path = span.getAttribute("url.path");
+            if ("/health".equals(path) || "/ready".equals(path)) {
+              return null; // drop: neither the exporter nor the sink below will see it
+            }
+            SpanContext.Builder builder = span.toBuilder();
+            builder.removeAttribute("http.header.authorization");
+            return builder.build();
+          }
+        });
 
     context.registerSpanSink(
         new SpanSink() {

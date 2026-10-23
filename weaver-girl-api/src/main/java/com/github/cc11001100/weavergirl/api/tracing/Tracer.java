@@ -159,11 +159,15 @@ public final class Tracer {
   }
 
   /**
-   * End the current span, notify listener, and clear it.
+   * End the current span, run the {@link SpanProcessor} chain, notify listeners, and clear it.
+   *
+   * <p>Processors run before any listener, so a dropped span reaches neither the built-in exporter
+   * nor plugin-registered {@code SpanSink}s.
    *
    * @param operationName the operation name for this span
    * @param status the span status (e.g., "OK", "ERROR")
-   * @return the completed span context, or null if no span was active
+   * @return the completed span as published (after processors), or null if no span was active or a
+   *     processor dropped it
    */
   public static SpanContext endSpan(String operationName, String status) {
     SpanContext span = CURRENT_SPAN.get();
@@ -199,11 +203,17 @@ public final class Tracer {
     SpanContext finalSpan = builder.build();
     CURRENT_SPAN.remove();
 
-    if (completionListeners.size() > 0) {
-      completionListeners.onSpanComplete(finalSpan, durationMs);
+    // Governance runs first: one processor governs exporters, sinks and every other listener.
+    SpanContext published = SpanProcessors.apply(finalSpan);
+    if (published == null) {
+      return null;
     }
 
-    return finalSpan;
+    if (completionListeners.size() > 0) {
+      completionListeners.onSpanComplete(published, durationMs);
+    }
+
+    return published;
   }
 
   // ===== Cross-thread propagation =====
@@ -378,16 +388,8 @@ public final class Tracer {
   public static void setBaggage(String key, String value) {
     SpanContext current = CURRENT_SPAN.get();
     if (current == null) return;
-    SpanContext updated =
-        SpanContext.builder()
-            .traceId(current.getTraceId())
-            .spanId(current.getSpanId())
-            .parentSpanId(current.getParentSpanId())
-            .sampled(current.isSampled())
-            .baggage(current.getBaggage())
-            .baggage(key, value)
-            .build();
-    CURRENT_SPAN.set(updated);
+    // Copy first: rebuilding the span by hand is how attributes were silently dropped here before.
+    CURRENT_SPAN.set(copy(current).baggage(key, value).build());
   }
 
   /** Get a baggage item from the current span. */
@@ -411,13 +413,13 @@ public final class Tracer {
   public static void setAttribute(String key, String value) {
     SpanContext current = CURRENT_SPAN.get();
     if (current == null || key == null) return;
-    Map<String, String> attributes = new LinkedHashMap<>(current.getAttributes());
+    SpanContext.Builder builder = copy(current);
     if (value == null) {
-      attributes.remove(key);
+      builder.removeAttribute(key);
     } else {
-      attributes.put(key, value);
+      builder.attribute(key, value);
     }
-    CURRENT_SPAN.set(copy(current).attributes(attributes).build());
+    CURRENT_SPAN.set(builder.build());
   }
 
   /** Get an attribute of the current span, or null. */
@@ -457,7 +459,8 @@ public final class Tracer {
         .baggage(span.getBaggage())
         .startTimeMs(span.getStartTimeMs())
         .operationName(span.getOperationName())
-        .errorStatus(span.getErrorStatus());
+        .errorStatus(span.getErrorStatus())
+        .attributes(span.getAttributes());
   }
 
   // ===== ID generation =====

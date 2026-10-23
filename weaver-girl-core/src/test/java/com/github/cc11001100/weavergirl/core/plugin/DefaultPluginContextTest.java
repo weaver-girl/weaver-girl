@@ -194,15 +194,32 @@ class DefaultPluginContextTest {
         };
     com.github.cc11001100.weavergirl.api.observability.ResourceAttributeProvider provider =
         () -> java.util.Collections.singletonMap("plugin", "test-plugin");
+    com.github.cc11001100.weavergirl.api.tracing.SpanProcessor processor =
+        new com.github.cc11001100.weavergirl.api.tracing.SpanProcessor() {
+          @Override
+          public String name() {
+            return "test-processor";
+          }
+
+          @Override
+          public com.github.cc11001100.weavergirl.api.tracing.SpanContext process(
+              com.github.cc11001100.weavergirl.api.tracing.SpanContext span) {
+            return span;
+          }
+        };
 
     DefaultPluginContext context =
         new DefaultPluginContext(mockRegistry, null, "test-plugin");
     context.registerSpanSink(sink);
+    context.registerSpanProcessor(processor);
     context.registerMetricSource(source);
     context.registerResourceAttributes(provider);
 
     assertTrue(
         com.github.cc11001100.weavergirl.api.observability.SpanSinks.getSinks().contains(sink));
+    assertTrue(
+        com.github.cc11001100.weavergirl.api.tracing.SpanProcessors.getProcessors()
+            .contains(processor));
     assertTrue(
         com.github.cc11001100.weavergirl.api.observability.MetricSources.getSources()
             .contains(source));
@@ -216,6 +233,10 @@ class DefaultPluginContextTest {
     assertFalse(
         com.github.cc11001100.weavergirl.api.observability.SpanSinks.getSinks().contains(sink),
         "an unloaded plugin must not keep receiving spans");
+    assertFalse(
+        com.github.cc11001100.weavergirl.api.tracing.SpanProcessors.getProcessors()
+            .contains(processor),
+        "an unloaded plugin must not keep rewriting spans");
     assertFalse(
         com.github.cc11001100.weavergirl.api.observability.MetricSources.getSources()
             .contains(source),

@@ -328,6 +328,19 @@ class TracerTest {
   }
 
   @Test
+  void setBaggage_keepsAttributesSetEarlier() {
+    Tracer.startSpan("GET /orders");
+    Tracer.setAttribute("http.method", "GET");
+    Tracer.setBaggage("tenant", "acme");
+
+    SpanContext finished = Tracer.endSpan(null, "OK");
+
+    assertNotNull(finished);
+    assertEquals("acme", finished.getBaggageItem("tenant"));
+    assertEquals("GET", finished.getAttribute("http.method"), "baggage must not drop attributes");
+  }
+
+  @Test
   void recordException_marksTheSpanAsError() {
     Tracer.startSpan("charge");
     Tracer.recordException(new IllegalStateException("gateway timeout"));

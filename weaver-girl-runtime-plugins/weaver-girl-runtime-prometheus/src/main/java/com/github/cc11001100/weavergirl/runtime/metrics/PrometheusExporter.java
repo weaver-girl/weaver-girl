@@ -16,6 +16,8 @@ import com.github.cc11001100.weavergirl.api.plugin.PluginManager;
 import com.github.cc11001100.weavergirl.api.status.AgentStatusHolder;
 import com.github.cc11001100.weavergirl.api.status.AgentStatusView;
 import com.github.cc11001100.weavergirl.api.status.InterceptorMetricsView;
+import com.github.cc11001100.weavergirl.api.tracing.SpanProcessorStats;
+import com.github.cc11001100.weavergirl.api.tracing.SpanProcessors;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -337,6 +339,7 @@ public class PrometheusExporter implements InterceptorEventListener {
     appendAgentMetrics(sb);
     appendPluginHealthMetrics(sb);
     appendPluginStateMetrics(sb);
+    appendSpanProcessorMetrics(sb);
     appendSpanSinkMetrics(sb);
     appendJvmMetrics(sb);
     appendRegistryMetrics(sb);
@@ -547,11 +550,15 @@ public class PrometheusExporter implements InterceptorEventListener {
     for (MetricFamily family : families.values()) {
       sb.append("# HELP ").append(family.name).append(" ").append(escapeHelp(family.help)).append("\n");
       sb.append("# TYPE ").append(family.name).append(" ").append(family.type).append("\n");
-      List<String> labelBlocks = new ArrayList<String>(family.series.keySet());
-      Collections.sort(labelBlocks);
-      for (String labelBlock : labelBlocks) {
-        sb.append(family.name).append(labelBlock).append(" ")
-            .append(formatNumber(family.series.get(labelBlock))).append("\n");
+      if (family.isHistogram()) {
+        appendHistogramFamily(sb, family);
+      } else {
+        List<String> labelBlocks = new ArrayList<String>(family.series.keySet());
+        Collections.sort(labelBlocks);
+        for (String labelBlock : labelBlocks) {
+          sb.append(family.name).append(labelBlock).append(" ")
+              .append(formatNumber(family.series.get(labelBlock))).append("\n");
+        }
       }
       sb.append("\n");
     }
@@ -578,11 +585,55 @@ public class PrometheusExporter implements InterceptorEventListener {
     return name == null || name.trim().isEmpty() ? "unknown" : name.trim();
   }
 
+  /** Render one histogram family: every `_bucket` (with the implicit +Inf), `_sum`, `_count`. */
+  private static void appendHistogramFamily(StringBuilder sb, MetricFamily family) {
+    List<String> labelBlocks = new ArrayList<String>(family.histograms.keySet());
+    Collections.sort(labelBlocks);
+    for (String labelBlock : labelBlocks) {
+      HistogramSample sample = family.histograms.get(labelBlock);
+      for (int i = 0; i < sample.upperBounds.length; i++) {
+        sb.append(family.name).append("_bucket")
+            .append(withLabel(labelBlock, "le", formatNumber(sample.upperBounds[i])))
+            .append(" ").append(sample.cumulativeCounts[i]).append("\n");
+      }
+      long total =
+          sample.cumulativeCounts.length == 0
+              ? 0
+              : sample.cumulativeCounts[sample.cumulativeCounts.length - 1];
+      sb.append(family.name).append("_bucket")
+          .append(withLabel(labelBlock, "le", "+Inf"))
+          .append(" ").append(total).append("\n");
+      sb.append(family.name).append("_sum").append(labelBlock).append(" ")
+          .append(formatNumber(sample.sum)).append("\n");
+      sb.append(family.name).append("_count").append(labelBlock).append(" ")
+          .append(total).append("\n");
+    }
+  }
+
+  /**
+   * Add one label to an already-rendered label block, producing {@code {a="b",le="0.01"}} or
+   * {@code {le="+Inf"}}.
+   */
+  private static String withLabel(String labelBlock, String name, String value) {
+    StringBuilder block = new StringBuilder();
+    if (labelBlock == null || labelBlock.isEmpty()) {
+      block.append("{");
+    } else {
+      block.append(labelBlock, 0, labelBlock.length() - 1).append(",");
+    }
+    return block.append(name)
+        .append("=\"")
+        .append(escapeLabelValue(value))
+        .append("\"}")
+        .toString();
+  }
+
   /** One metric family collected from plugin sources during this scrape. */
   private static final class MetricFamily {
     final String name;
     final String type;
     final Map<String, Double> series = new LinkedHashMap<String, Double>();
+    final Map<String, HistogramSample> histograms = new LinkedHashMap<String, HistogramSample>();
     String help = "";
 
     MetricFamily(String name, String help, String type) {
@@ -591,6 +642,23 @@ public class PrometheusExporter implements InterceptorEventListener {
       if (help != null) {
         this.help = help;
       }
+    }
+
+    boolean isHistogram() {
+      return "histogram".equals(type);
+    }
+  }
+
+  /** One label set's histogram snapshot, copied so a source cannot mutate it after reporting. */
+  private static final class HistogramSample {
+    final double[] upperBounds;
+    final long[] cumulativeCounts;
+    final double sum;
+
+    HistogramSample(double[] upperBounds, long[] cumulativeCounts, double sum) {
+      this.upperBounds = upperBounds.clone();
+      this.cumulativeCounts = cumulativeCounts.clone();
+      this.sum = sum;
     }
   }
 
@@ -622,6 +690,99 @@ public class PrometheusExporter implements InterceptorEventListener {
     public void counter(
         String name, String help, Map<String, String> labels, double value) {
       record(name, help, "counter", labels, value);
+    }
+
+    @Override
+    public void histogram(
+        String name, String help, double[] upperBounds, long[] cumulativeCounts, double sum) {
+      histogram(
+          name,
+          help,
+          Collections.<String, String>emptyMap(),
+          upperBounds,
+          cumulativeCounts,
+          sum);
+    }
+
+    @Override
+    public void histogram(
+        String name,
+        String help,
+        Map<String, String> labels,
+        double[] upperBounds,
+        long[] cumulativeCounts,
+        double sum) {
+      String metricName = sanitizeMetricName(name);
+      if (metricName == null || metricName.startsWith("weavergirl_")) {
+        return;
+      }
+      if (!isRenderableHistogram(upperBounds, cumulativeCounts)) {
+        return;
+      }
+      MetricFamily family = families.get(metricName);
+      if (family == null) {
+        family = new MetricFamily(metricName, help, "histogram");
+        families.put(metricName, family);
+      } else if (!family.isHistogram()) {
+        // Same name, different type: keep the first and drop the conflict.
+        return;
+      } else if (family.help.isEmpty() && help != null && !help.isEmpty()) {
+        family.help = help;
+      }
+      String labelBlock = renderLabelBlock(withoutLe(labels));
+      if (!family.histograms.containsKey(labelBlock)) {
+        family.histograms.put(labelBlock, new HistogramSample(upperBounds, cumulativeCounts, sum));
+      }
+    }
+
+    /**
+     * A histogram is only rendered when its arrays describe a valid cumulative distribution; a
+     * malformed one would make Prometheus reject the whole scrape.
+     */
+    private static boolean isRenderableHistogram(double[] upperBounds, long[] cumulativeCounts) {
+      if (upperBounds == null || cumulativeCounts == null) {
+        return false;
+      }
+      if (upperBounds.length != cumulativeCounts.length) {
+        return false;
+      }
+      for (int i = 0; i < upperBounds.length; i++) {
+        double bound = upperBounds[i];
+        if (Double.isNaN(bound) || Double.isInfinite(bound)) {
+          return false;
+        }
+        if (i > 0 && bound <= upperBounds[i - 1]) {
+          return false;
+        }
+        if (cumulativeCounts[i] < 0) {
+          return false;
+        }
+        if (i > 0 && cumulativeCounts[i] < cumulativeCounts[i - 1]) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    /** Drop any user-supplied {@code le} label; the bucket bound owns that name. */
+    private static Map<String, String> withoutLe(Map<String, String> labels) {
+      if (labels == null || labels.isEmpty()) {
+        return labels;
+      }
+      List<String> offending = new ArrayList<String>();
+      for (String key : labels.keySet()) {
+        if (key != null && "le".equals(sanitizeLabelName(key))) {
+          offending.add(key);
+        }
+      }
+      if (offending.isEmpty()) {
+        return labels;
+      }
+      Map<String, String> copy = new LinkedHashMap<String, String>(labels);
+      for (String key : offending) {
+        copy.remove(key);
+      }
+      return copy;
     }
 
     private void record(
@@ -896,6 +1057,56 @@ public class PrometheusExporter implements InterceptorEventListener {
           .append(escape(plugin.getName()))
           .append("\"} ")
           .append(plugin.getInterceptorCount())
+          .append("\n");
+    }
+    sb.append("\n");
+  }
+
+  /**
+   * How much each plugin-contributed {@link
+   * com.github.cc11001100.weavergirl.api.tracing.SpanProcessor} saw, kept and dropped.
+   *
+   * <p>An aggressive filter silently removes data; these counters make the difference between "the
+   * application is quiet" and "a processor is eating every span" visible.
+   */
+  private void appendSpanProcessorMetrics(StringBuilder sb) {
+    Map<String, SpanProcessorStats> stats;
+    try {
+      stats = SpanProcessors.getStats();
+    } catch (RuntimeException e) {
+      return;
+    }
+    if (stats == null || stats.isEmpty()) {
+      return;
+    }
+
+    sb.append("# HELP weavergirl_span_processor_processed_total Spans a processor kept\n");
+    sb.append("# TYPE weavergirl_span_processor_processed_total counter\n");
+    for (Map.Entry<String, SpanProcessorStats> entry : stats.entrySet()) {
+      sb.append("weavergirl_span_processor_processed_total{processor=\"")
+          .append(escape(entry.getKey()))
+          .append("\"} ")
+          .append(entry.getValue().getProcessed())
+          .append("\n");
+    }
+
+    sb.append("# HELP weavergirl_span_processor_dropped_total Spans a processor dropped\n");
+    sb.append("# TYPE weavergirl_span_processor_dropped_total counter\n");
+    for (Map.Entry<String, SpanProcessorStats> entry : stats.entrySet()) {
+      sb.append("weavergirl_span_processor_dropped_total{processor=\"")
+          .append(escape(entry.getKey()))
+          .append("\"} ")
+          .append(entry.getValue().getDropped())
+          .append("\n");
+    }
+
+    sb.append("# HELP weavergirl_span_processor_errors_total Span processor invocations that threw\n");
+    sb.append("# TYPE weavergirl_span_processor_errors_total counter\n");
+    for (Map.Entry<String, SpanProcessorStats> entry : stats.entrySet()) {
+      sb.append("weavergirl_span_processor_errors_total{processor=\"")
+          .append(escape(entry.getKey()))
+          .append("\"} ")
+          .append(entry.getValue().getFailures())
           .append("\n");
     }
     sb.append("\n");

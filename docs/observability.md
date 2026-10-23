@@ -242,6 +242,20 @@ weavergirl_plugin_interceptors{plugin="servlet"} 3
 `weavergirl_plugin_interceptors` 掉到 0 通常意味着插件注册失败。未安装 `PluginManager`
 （单独运行插件测试）时不输出。
 
+### 4.2.5 Span 处理器指标（SpanProcessor）
+
+插件通过 `SpanProcessor` 做过滤/脱敏/补属性时，最危险的情况是“过滤条件写错，把所有 span 都
+吃掉”。计数在这里暴露（见 9.5）：
+
+| 指标 | 类型 | 标签 | 含义 |
+| --- | --- | --- | --- |
+| `weavergirl_span_processor_processed_total` | counter | `processor` | 该处理器放行并返回的 span 数 |
+| `weavergirl_span_processor_dropped_total` | counter | `processor` | 该处理器返回 `null` 丢弃的 span 数 |
+| `weavergirl_span_processor_errors_total` | counter | `processor` | 处理器抛异常、span 原样放行的次数 |
+
+没有注册任何处理器时不输出。告警建议：`dropped_total` 突然跳到接近该服务的总 span 量，
+或 `errors_total > 0` 持续增长（后者说明规则本身有 bug）。
+
 ### 4.3 JVM 指标
 
 基于 `java.lang.management`，每次抓取读取一次：
@@ -301,9 +315,20 @@ context.registerMetricSource(new MetricSource() {
     collector.counter(
         "jobs_processed_total", "Jobs finished, by queue",
         Collections.singletonMap("queue", "mail"), processed.get());
+    // 已经在自己库里维护的分布，直接上报快照（累计口径）
+    collector.histogram(
+        "job_wait_seconds", "Job wait time",
+        new double[] {0.01, 0.1, 1.0},
+        new long[] {12, 40, 55},
+        8.7);
   }
 });
 ```
+
+`histogram` 的两个数组是平行且**累计**的：`upperBounds[i]` 是桶上界，`cumulativeCounts[i]` 是
+小于等于该上界的观测数，最后一个元素就是总数；`+Inf` 桶、`_sum`、`_count` 由渲染器补齐。数组
+长度不一致、上界不递增或计数递减的输入会被静默忽略（否则整次抓取会被 Prometheus 拒绝），
+用户自带的 `le` 标签会被桶上界覆盖。如果你的采集库保存的是非累计的每桶计数，请先自行累加。
 
 渲染规则：
 
@@ -417,11 +442,14 @@ curl -s http://localhost:9400/metrics | grep -E 'weavergirl_(agent|jvm|events)'
 - Span 导出是“尽力而为”：缓冲满即丢弃；生产环境请同时监控 `SpanExporter` 的 dropped/failed 日志。
 - `sampled` 只在上下文里传播，本地拦截器仍会执行；如需真正降低采集量，请在 collector 使用
   `probabilistic_sampler` / `tail_sampling`。
-- Prometheus 输出不含 exemplar（text 0.0.4 限制）；业务指标（`MetricRegistry`）没有原生
-  histogram，分布看 p50/p90/p95/p99 窗口值。切面回调延迟有固定桶的 histogram（4.2.1）。
+- Prometheus 输出不含 exemplar（text 0.0.4 限制）。业务指标（`MetricRegistry`）没有原生
+  histogram，分布看 p50/p90/p95/p99 窗口值；需要真正的分布桶请用 `MetricSource` 的
+  `collector.histogram(...)`（4.5）。切面回调延迟有固定桶的 histogram（4.2.1）。
 - `MetricRegistry` 指标是滑动窗口值而非进程生命周期累计值；窗口内无样本时序列会消失。
-- `SpanSink` / `MetricSource` 都在调用方线程上同步执行：慢 sink 会拖慢业务线程，慢 `collect`
-  会拖慢抓取。需要 IO 请在自己的实现里缓冲或异步化。
+- `SpanSink` / `SpanProcessor` / `MetricSource` 都在调用方线程上同步执行：慢 sink 或慢处理器
+  会拖慢业务线程，慢 `collect` 会拖慢抓取。需要 IO 请在自己的实现里缓冲或异步化。
+- `SpanProcessor` 只能看到已结束的 span。要真正少产生 span（例如按 trace 采样），仍需在
+  collector 侧做；处理器负责的是“产生后、导出前”的治理。
 - JVM 指标反映的是**被织入进程**，一个 JVM 一个 scrape target。
 - 跨进程传播目前落在 Servlet 边界；HTTP client、消息队列等协议需要对应插件调用
   `Tracer.inject` / `Tracer.extract`（后续插件可直接复用这套 API）。
@@ -432,19 +460,25 @@ curl -s http://localhost:9400/metrics | grep -E 'weavergirl_(agent|jvm|events)'
 `diagnostics` 都是 `weaver-girl-runtime-*` 插件，agent 入口没有硬编码任何后端。上层产品用同一套
 机制接入自己的采集端即可，不需要修改底座。
 
-### 9.1 三组扩展点
+### 9.1 四组扩展点
 
 | 扩展点 | 注册方法 | 调用时机 | 典型用途 |
 | --- | --- | --- | --- |
-| `SpanSink` | `context.registerSpanSink(sink)` | 每个 span 结束（`Tracer.endSpan`）时同步回调 | 自有 APM/日志后端、span 采样与脱敏后再转发 |
+| `SpanProcessor` | `context.registerSpanProcessor(processor)` | 每个 span 结束（`Tracer.endSpan`）时、送达任何消费者之前 | 丢弃噪声 span、脱敏敏感属性、补充应用元数据 |
+| `SpanSink` | `context.registerSpanSink(sink)` | 处理器链之后，同步回调 | 自有 APM/日志后端 |
 | `MetricSource` | `context.registerMetricSource(source)` | Prometheus 每次抓取时 | 队列深度、缓存命中率、连接池状态 |
 | `ResourceAttributeProvider` | `context.registerResourceAttributes(provider)` | OTLP 每次导出时 | 集群/区域/租户等运行时元数据 |
 
 ```text
-Tracer.endSpan ──► SpanSinks ──► 你的 SpanSink（同步）
+Tracer.endSpan ──► SpanProcessors ──► SpanSinks ──► 你的 SpanSink（同步）
+                │            └────► 其它 SpanCompletionListener（内置 OTLP 导出器）
+                └─ 返回 null 时整条链路都不再看到这个 span
 GET /metrics   ──► MetricSources ──► 你的 MetricSource.collect(...)
 OTLP 导出批次  ──► ResourceAttributes ──► 你的 provider（覆盖默认值，可被显式配置覆盖）
 ```
+
+`SpanProcessor` 是**唯一的统一治理点**：它位于所有消费者之前，所以一次过滤同时作用于内置
+OTLP 导出、所有 `SpanSink` 和其它监听器，不会出现“导出器看到的和 sink 看到的不是同一份数据”。
 
 **注册必须走 `PluginContext`。** `DefaultPluginContext` 会记录插件注册了什么，并在插件卸载/热
 替换时调用 `withdrawServices()` 自动摘除。直接调用静态的 `SpanSinks.register` 也能生效，但
@@ -521,7 +555,47 @@ context.registerResourceAttributes(() -> {
 返回 `null` 的键值对会被忽略；单个 provider 抛异常只影响它自己。由于在导出线程读取，provider
 可以查询原本只在运行时才确定的信息（发布的版本号、灰度分组等）。
 
-### 9.5 完整示例
+### 9.5 SpanProcessor
 
-一个同时注册三种扩展点的插件见
+在 span 交给任何消费者之前做一次治理。返回值就是后续所有消费者看到的 span：
+
+- 返回**修改后的 span**：用 `span.toBuilder()` 复制一份，加属性或删属性；
+- 返回**原 span**：不改变；
+- 返回 **`null`**：丢弃该 span，链路到此结束，导出器和 sink 都不会收到它；
+- **抛异常**：该处理器被跳过，span 原样继续传给下一个处理器，失败计入
+  `weavergirl_span_processor_errors_total`（不会打断业务线程）。
+
+```java
+context.registerSpanProcessor(new SpanProcessor() {
+  @Override public String name() { return "governance"; }
+
+  @Override public SpanContext process(SpanContext span) {
+    // 1. 丢弃健康检查等噪声
+    String path = span.getAttribute("url.path");
+    if ("/health".equals(path) || "/ready".equals(path)) {
+      return null;
+    }
+    // 2. 脱敏：SpanContext 不可变，改属性必须 toBuilder()
+    SpanContext.Builder b = span.toBuilder();
+    if (span.getAttribute("http.header.authorization") != null) {
+      b.removeAttribute("http.header.authorization");
+    }
+    // 3. 补充应用维度
+    return b.attribute("app.tenant", TenantContext.current()).build();
+  }
+});
+```
+
+约定：
+
+- 按**注册顺序**依次执行，后一个处理器看到前一个的输出，因此“先补属性再按属性过滤”是可行
+  的组合方式。插件热卸载时 `DefaultPluginContext` 会自动注销它注册的处理器。
+- 在业务线程上同步执行，保持轻量：不要做网络 IO，不要锁。
+- 不要修改 `traceId` / `spanId`：消费端靠它们做关联。`toBuilder()` 保留了全部字段，只改你需要
+  改的。
+- 处理器不可用时 span 仍然正常发布（异常被隔离），可以通过 4.2.5 的计数确认它是否在工作。
+
+### 9.6 完整示例
+
+一个同时注册多种扩展点的插件见
 [docs/examples/CustomObservabilityPlugin.java](examples/CustomObservabilityPlugin.java)。

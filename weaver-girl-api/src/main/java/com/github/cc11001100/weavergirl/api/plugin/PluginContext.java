@@ -7,6 +7,8 @@ import com.github.cc11001100.weavergirl.api.observability.ResourceAttributes;
 import com.github.cc11001100.weavergirl.api.observability.SpanSink;
 import com.github.cc11001100.weavergirl.api.observability.SpanSinks;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.api.tracing.SpanProcessor;
+import com.github.cc11001100.weavergirl.api.tracing.SpanProcessors;
 import java.util.Map;
 
 /**
@@ -166,6 +168,24 @@ public interface PluginContext {
    */
   default void registerSpanSink(SpanSink sink) {
     SpanSinks.register(sink);
+  }
+
+  /**
+   * Register a processor that can modify or drop finished spans before any consumer sees them.
+   *
+   * <p>Processors run inside {@code Tracer.endSpan}, before completion listeners, so this is the
+   * hook for governance that must apply everywhere: dropping noisy operations, redacting sensitive
+   * attributes, or attaching application metadata. The agent's implementation withdraws the
+   * processor when the plugin is unloaded or destroyed.
+   *
+   * <p>A processor runs on the application's thread; keep it fast and non-blocking.
+   *
+   * @param processor the processor to append to the chain
+   * @see SpanProcessor
+   * @since 1.0.0
+   */
+  default void registerSpanProcessor(SpanProcessor processor) {
+    SpanProcessors.register(processor);
   }
 
   /**

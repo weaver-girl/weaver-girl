@@ -121,6 +121,28 @@ public class SpanContext {
     return new Builder();
   }
 
+  /**
+   * A builder pre-filled with this span's values, for producing a modified copy.
+   *
+   * <p>Used by {@link SpanProcessor}s to redact or add attributes without rebuilding the span by
+   * hand. Changing {@code traceId} or {@code spanId} is allowed but generally wrong: consumers
+   * correlate spans by them.
+   *
+   * @return a builder seeded with every field of this span
+   */
+  public Builder toBuilder() {
+    return new Builder()
+        .traceId(traceId)
+        .spanId(spanId)
+        .parentSpanId(parentSpanId)
+        .sampled(sampled)
+        .baggage(baggage)
+        .startTimeMs(startTimeMs)
+        .operationName(operationName)
+        .errorStatus(errorStatus)
+        .attributes(attributes);
+  }
+
   /** Builder for SpanContext. */
   public static class Builder {
     private String traceId;
@@ -182,6 +204,19 @@ public class SpanContext {
     public Builder attribute(String key, String value) {
       if (key != null && value != null) {
         this.attributes.put(key, value);
+      }
+      return this;
+    }
+
+    /**
+     * Remove one attribute, for redacting data that must not reach an exporter.
+     *
+     * @param key the attribute name
+     * @return this builder
+     */
+    public Builder removeAttribute(String key) {
+      if (key != null) {
+        this.attributes.remove(key);
       }
       return this;
     }

@@ -265,15 +265,20 @@ These services are static and live in `weaver-girl-api`, so a plugin can use the
 | Fire when a metric crosses a line | `AlertEngine.addRule`, `AlertEngine.addChannel` |
 | Tell every other plugin that something happened | `InterceptorEventPublisher.getInstance().publish(...)` |
 | Track untrusted input to a dangerous call | `Taint`, `TaintPropagation`, `TaintFindings` |
+| Filter, redact or enrich spans before anything consumes them | `PluginContext.registerSpanProcessor(SpanProcessor)` |
 | Receive every completed span (own APM backend) | `PluginContext.registerSpanSink(SpanSink)` |
 | Produce Prometheus metrics at scrape time | `PluginContext.registerMetricSource(MetricSource)` |
+| Expose a latency distribution as a Prometheus histogram | `MetricCollector.histogram(name, help, bounds, cumulativeCounts, sum)` inside your source |
 | Add runtime metadata to OTLP resource attributes | `PluginContext.registerResourceAttributes(provider)` |
 
-The last three are the observability extension points. Register them through the `PluginContext`
+The last four are the observability extension points. Register them through the `PluginContext`
 you were given, not through the static helpers, so the engine withdraws them when your plugin is
-unloaded or hot-replaced. `SpanSink.onSpanEnd` runs synchronously on the application thread — queue
-the record and ship it from your own thread rather than doing IO inline. Metrics sources are pulled
-on every scrape and need no thread. Full rules, precedence, and a complete example plugin are in
+unloaded or hot-replaced. A `SpanProcessor` runs inside `Tracer.endSpan` before any consumer, so
+returning `null` drops the span for the built-in exporter and every sink at once; it also runs
+synchronously on the application thread, so keep it to attribute work only.
+`SpanSink.onSpanEnd` runs on that same thread after the processor chain — queue the record and ship
+it from your own thread rather than doing IO inline. Metrics sources are pulled on every scrape and
+need no thread. Full rules, precedence, and a complete example plugin are in
 [observability.md §9](observability.md#9-扩展点插件自定义可观测) and
 [examples/CustomObservabilityPlugin.java](examples/CustomObservabilityPlugin.java).
 

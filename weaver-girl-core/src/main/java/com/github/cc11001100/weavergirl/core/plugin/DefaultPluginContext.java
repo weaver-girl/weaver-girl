@@ -11,6 +11,8 @@ import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.plugin.PluginLogger;
 import com.github.cc11001100.weavergirl.api.plugin.PluginServices;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.api.tracing.SpanProcessor;
+import com.github.cc11001100.weavergirl.api.tracing.SpanProcessors;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +32,8 @@ public class DefaultPluginContext implements PluginContext {
 
   /** Observability extensions this plugin registered; withdrawn with the plugin. */
   private final List<SpanSink> spanSinks = new CopyOnWriteArrayList<>();
+
+  private final List<SpanProcessor> spanProcessors = new CopyOnWriteArrayList<>();
 
   private final List<MetricSource> metricSources = new CopyOnWriteArrayList<>();
   private final List<ResourceAttributeProvider> resourceAttributeProviders =
@@ -52,6 +56,12 @@ public class DefaultPluginContext implements PluginContext {
   public void registerSpanSink(SpanSink sink) {
     SpanSinks.register(sink);
     spanSinks.add(sink);
+  }
+
+  @Override
+  public void registerSpanProcessor(SpanProcessor processor) {
+    SpanProcessors.register(processor);
+    spanProcessors.add(processor);
   }
 
   @Override
@@ -79,6 +89,10 @@ public class DefaultPluginContext implements PluginContext {
       SpanSinks.unregister(sink);
     }
     spanSinks.clear();
+    for (SpanProcessor processor : spanProcessors) {
+      SpanProcessors.unregister(processor);
+    }
+    spanProcessors.clear();
     for (MetricSource source : metricSources) {
       MetricSources.unregister(source);
     }
