@@ -149,6 +149,28 @@ public class Pointcut {
   }
 
   /**
+   * Class-aware static matching: tests the given <em>loaded class</em> and method name.
+   *
+   * <p>Unlike {@link #matches(String, String)}, the class criteria go through {@link
+   * ClassMatcher#matches(Class)}, which can decide the {@code ANNOTATION}/{@code SUPER_CLASS}/{@code
+   * INTERFACE} match types reflectively. Dispatch-time code that has the real woven {@code Class} in
+   * hand should call this overload: collapsing back to a bare name silently rejects every non-name
+   * class matcher (the class gets woven, but the {@code @OnCatch}/{@code @OnFieldGet}/{@code
+   * @OnFieldSet}/{@code @OnConstructor}/{@code @OnStaticInit} hook never fires).
+   *
+   * <p>Composed pointcuts built via {@link #and(Pointcut)}, {@link #or(Pointcut)} and {@link
+   * #negate()} override this method to evaluate each operand with the same reflective class match,
+   * keeping {@code (c1 && m1) || (c2 && m2)} decomposition exact.
+   *
+   * @param targetClass the loaded target class to test
+   * @param methodName the method name to test
+   * @return true if both the class and method matchers match
+   */
+  public boolean matches(Class<?> targetClass, String methodName) {
+    return classMatcher.matches(targetClass) && methodMatcher.matches(methodName);
+  }
+
+  /**
    * Full join-point matching: static method matcher AND any runtime condition (e.g. {@code
    * cflow()}/{@code if()}) evaluated together.
    *
@@ -231,6 +253,12 @@ public class Pointcut {
       }
 
       @Override
+      public boolean matches(Class<?> targetClass, String methodName) {
+        return Pointcut.this.matches(targetClass, methodName)
+            && other.matches(targetClass, methodName);
+      }
+
+      @Override
       public boolean matchRuntime(
           String className,
           String methodName,
@@ -275,6 +303,12 @@ public class Pointcut {
       }
 
       @Override
+      public boolean matches(Class<?> targetClass, String methodName) {
+        return Pointcut.this.matches(targetClass, methodName)
+            || other.matches(targetClass, methodName);
+      }
+
+      @Override
       public boolean matchRuntime(
           String className,
           String methodName,
@@ -316,6 +350,11 @@ public class Pointcut {
       @Override
       public boolean matches(String className, String methodName) {
         return !Pointcut.this.matches(className, methodName);
+      }
+
+      @Override
+      public boolean matches(Class<?> targetClass, String methodName) {
+        return !Pointcut.this.matches(targetClass, methodName);
       }
 
       @Override

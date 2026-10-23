@@ -212,6 +212,89 @@ public class ClassMatcher {
     }
   }
 
+  /**
+   * Tests whether the given <em>loaded class</em> matches this matcher.
+   *
+   * <p>Unlike {@link #matches(String)}, this overload can evaluate the {@code ANNOTATION}, {@code
+   * SUPER_CLASS}, and {@code INTERFACE} match types: the candidate is a real {@link Class}, so its
+   * annotations, superclasses, and interfaces can be inspected reflectively. The {@code
+   * EXACT_NAME}/{@code NAME_PATTERN} types match against the candidate's fully-qualified name.
+   *
+   * <p>Used at dispatch time, where the holographic target class is already loaded — the exact
+   * situation that {@link #matches(String)} cannot decide (it only ever sees a bare name).
+   *
+   * @param candidate the loaded class to test
+   * @return true if the class matches
+   */
+  public boolean matches(Class<?> candidate) {
+    switch (matchType) {
+      case EXACT_NAME:
+        return pattern.equals(candidate.getName());
+      case NAME_PATTERN:
+        return compiledRegex != null && compiledRegex.matcher(candidate.getName()).matches();
+      case ANY:
+        return true;
+      case ANNOTATION:
+        {
+          Class<? extends java.lang.annotation.Annotation> annoType = resolveAnnotation(pattern, candidate);
+          return annoType != null && candidate.isAnnotationPresent(annoType);
+        }
+      case SUPER_CLASS:
+        {
+          Class<?> sup = resolveType(pattern, candidate);
+          return sup != null && sup.isAssignableFrom(candidate) && !sup.equals(candidate);
+        }
+      case INTERFACE:
+        {
+          Class<?> iface = resolveType(pattern, candidate);
+          return iface != null && iface.isInterface() && iface.isAssignableFrom(candidate);
+        }
+      default:
+        return false;
+    }
+  }
+
+  /** Resolves the pattern-type (annotation/superclass/interface) name to a {@code Class}. */
+  private static Class<?> resolveType(String typeName, Class<?> candidate) {
+    try {
+      ClassLoader loader = (candidate != null) ? candidate.getClassLoader() : null;
+      if (loader == null) {
+        loader = Thread.currentThread().getContextClassLoader();
+      }
+      if (loader == null) {
+        loader = ClassLoader.getSystemClassLoader();
+      }
+      return Class.forName(typeName, false, loader);
+    } catch (Throwable useCandidateLoaderFailed) {
+      // The candidate's loader may not see the pattern type (e.g. a shared superclass on the
+      // context loader). Fall back to the context and system loaders before giving up.
+      try {
+        ClassLoader context = Thread.currentThread().getContextClassLoader();
+        if (context != null) {
+          return Class.forName(typeName, false, context);
+        }
+      } catch (Throwable contextFailed) {
+        // fall through to the default loader
+      }
+      try {
+        return Class.forName(typeName);
+      } catch (Throwable defaultFailed) {
+        return null;
+      }
+    }
+  }
+
+  /** Resolves the pattern type as an annotation class, or {@code null} if it is not/undecidable. */
+  @SuppressWarnings("unchecked")
+  private static Class<? extends java.lang.annotation.Annotation> resolveAnnotation(
+      String typeName, Class<?> candidate) {
+    Class<?> resolved = resolveType(typeName, candidate);
+    if (resolved == null || !resolved.isAnnotation()) {
+      return null;
+    }
+    return (Class<? extends java.lang.annotation.Annotation>) resolved;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;

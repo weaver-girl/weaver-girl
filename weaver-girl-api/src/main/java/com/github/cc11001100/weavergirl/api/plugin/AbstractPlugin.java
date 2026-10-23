@@ -31,9 +31,17 @@ import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
  *   <li>{@link #interceptAnnotated(String)} &mdash; match class by annotation
  *   <li>{@link #interceptSubclassOf(String)} &mdash; match class by superclass
  *   <li>{@link #interceptImplementing(String)} &mdash; match class by interface
+ *   <li>{@link #intercept(ClassMatcher)} &mdash; match class by any matcher you build yourself
  *   <li>{@link #interceptField(String, String)} &mdash; intercept reads and writes of one field
- *   <li>{@link #interceptCatch(String, String)} &mdash; intercept catch blocks for one exception type
+ *   <li>{@link #interceptField(ClassMatcher, String)} &mdash; the same, for a class matcher
+ *   <li>{@link #interceptCatch(String, String)} &mdash; intercept failed exits for one exception type
+ *   <li>{@link #interceptCatch(ClassMatcher, String)} &mdash; the same, for a class matcher
  * </ul>
+ *
+ * <p>All entry points and the builders they return are public, and so are the callback interfaces.
+ * A product can therefore keep its interceptor definitions in a class of its own, and pass reusable
+ * callbacks between plugins, instead of putting everything in one {@code registerInterceptors}
+ * method.
  *
  * <p>Field and catch interception are separate chains from method interception. A method definition is
  * woven with the standard advice; a field definition is woven with field advice and dispatched to
@@ -116,8 +124,23 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @param className the fully-qualified class name (e.g., {@code "com.example.Service"})
    * @return a new builder with the class matcher set to exact name matching
    */
-  protected InterceptorDefinitionBuilder intercept(String className) {
+  public InterceptorDefinitionBuilder intercept(String className) {
     return new InterceptorDefinitionBuilder(this, ClassMatcher.byName(className));
+  }
+
+  /**
+   * Start a fluent interceptor definition for classes selected by {@code classMatcher}.
+   *
+   * <p>The named convenience methods cover the common cases. Use this overload when the matcher is
+   * assembled at runtime, for example from configuration, or when a product shares one matcher
+   * between several definitions.
+   *
+   * @param classMatcher selects the target classes
+   * @return a new builder with the given class matcher
+   * @since 2.2.0
+   */
+  public InterceptorDefinitionBuilder intercept(ClassMatcher classMatcher) {
+    return new InterceptorDefinitionBuilder(this, classMatcher);
   }
 
   /**
@@ -126,7 +149,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @param classPattern a Java regex pattern (e.g., {@code "com\\.example\\..*Service"})
    * @return a new builder with the class matcher set to name pattern matching
    */
-  protected InterceptorDefinitionBuilder interceptClassPattern(String classPattern) {
+  public InterceptorDefinitionBuilder interceptClassPattern(String classPattern) {
     return new InterceptorDefinitionBuilder(this, ClassMatcher.byNamePattern(classPattern));
   }
 
@@ -137,7 +160,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    *     "com.example.Traced"})
    * @return a new builder with the class matcher set to annotation matching
    */
-  protected InterceptorDefinitionBuilder interceptAnnotated(String annotationClassName) {
+  public InterceptorDefinitionBuilder interceptAnnotated(String annotationClassName) {
     return new InterceptorDefinitionBuilder(this, ClassMatcher.byAnnotation(annotationClassName));
   }
 
@@ -148,7 +171,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    *     "com.example.BaseService"})
    * @return a new builder with the class matcher set to superclass matching
    */
-  protected InterceptorDefinitionBuilder interceptSubclassOf(String superClassName) {
+  public InterceptorDefinitionBuilder interceptSubclassOf(String superClassName) {
     return new InterceptorDefinitionBuilder(this, ClassMatcher.bySuperClass(superClassName));
   }
 
@@ -158,7 +181,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @param interfaceName the fully-qualified interface name (e.g., {@code "java.io.Serializable"})
    * @return a new builder with the class matcher set to interface matching
    */
-  protected InterceptorDefinitionBuilder interceptImplementing(String interfaceName) {
+  public InterceptorDefinitionBuilder interceptImplementing(String interfaceName) {
     return new InterceptorDefinitionBuilder(this, ClassMatcher.byInterface(interfaceName));
   }
 
@@ -177,9 +200,41 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @return a new field builder
    * @since 2.1.0
    */
-  protected FieldInterceptorDefinitionBuilder interceptField(String className, String fieldName) {
+  public FieldInterceptorDefinitionBuilder interceptField(String className, String fieldName) {
     return new FieldInterceptorDefinitionBuilder(
         this, ClassMatcher.byName(className), FieldMatcher.byName(fieldName));
+  }
+
+  /**
+   * Start a field-interception definition for one field of classes selected by {@code classMatcher}.
+   *
+   * <p>Use this when the target class is identified by something other than its exact name, for
+   * example {@link ClassMatcher#byInterface(String)} or a runtime-built matcher. The field is
+   * selected inside the advice, as with the string overload.
+   *
+   * @param classMatcher selects the classes declaring the field
+   * @param fieldName the exact field name
+   * @return a new field builder
+   * @since 2.2.0
+   */
+  public FieldInterceptorDefinitionBuilder interceptField(
+      ClassMatcher classMatcher, String fieldName) {
+    return new FieldInterceptorDefinitionBuilder(
+        this, classMatcher, FieldMatcher.byName(fieldName));
+  }
+
+  /**
+   * Start a field-interception definition for every field matching a matcher, on classes selected
+   * by {@code classMatcher}.
+   *
+   * @param classMatcher selects the classes declaring the fields
+   * @param fieldMatcher selects the fields
+   * @return a new field builder
+   * @since 2.2.0
+   */
+  public FieldInterceptorDefinitionBuilder interceptField(
+      ClassMatcher classMatcher, FieldMatcher fieldMatcher) {
+    return new FieldInterceptorDefinitionBuilder(this, classMatcher, fieldMatcher);
   }
 
   /**
@@ -192,7 +247,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @return a new field builder
    * @since 2.1.0
    */
-  protected FieldInterceptorDefinitionBuilder interceptField(
+  public FieldInterceptorDefinitionBuilder interceptField(
       String className, FieldMatcher fieldMatcher) {
     return new FieldInterceptorDefinitionBuilder(this, ClassMatcher.byName(className), fieldMatcher);
   }
@@ -211,10 +266,29 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @return a new catch builder
    * @since 2.1.0
    */
-  protected CatchInterceptorDefinitionBuilder interceptCatch(
+  public CatchInterceptorDefinitionBuilder interceptCatch(
       String className, String exceptionTypeName) {
     return new CatchInterceptorDefinitionBuilder(
         this, ClassMatcher.byName(className), exceptionTypeName);
+  }
+
+  /**
+   * Start a catch-block interception definition for one exception type inside classes selected by
+   * {@code classMatcher}.
+   *
+   * <p>The catch advice fires when a matched method exits by throwing an exception of {@code
+   * exceptionTypeName} or a subclass of it. A class matcher that selects by annotation, interface
+   * or superclass is evaluated reflectively, so it is safe to use here.
+   *
+   * @param classMatcher selects the classes whose methods are woven
+   * @param exceptionTypeName the fully-qualified exception type name, for example {@code
+   *     "java.io.IOException"}
+   * @return a new catch builder
+   * @since 2.2.0
+   */
+  public CatchInterceptorDefinitionBuilder interceptCatch(
+      ClassMatcher classMatcher, String exceptionTypeName) {
+    return new CatchInterceptorDefinitionBuilder(this, classMatcher, exceptionTypeName);
   }
 
   /**
@@ -229,11 +303,14 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    *
    * @since 1.0.0
    */
-  protected static class InterceptorDefinitionBuilder {
+  public static class InterceptorDefinitionBuilder {
     private final AbstractPlugin plugin;
     private final ClassMatcher classMatcher;
     private MethodMatcher methodMatcher;
-    private Interceptor interceptor;
+    private BeforeCallback beforeCallback;
+    private AfterCallback afterCallback;
+    private ExceptionCallback exceptionCallback;
+    private AroundCallback aroundCallback;
     private int priority = 0;
     private String name;
 
@@ -319,51 +396,44 @@ public abstract class AbstractPlugin implements WeaverPlugin {
     /**
      * Register a callback to be invoked before the target method executes.
      *
+     * <p>Callbacks accumulate: {@code before(...).after(...).onException(...)} is one definition
+     * with all three, not three definitions or the last callback alone. Combining {@code before}
+     * with {@link #around(AroundCallback)} runs the before callback at entry, immediately before the
+     * around callback, so a decision made in {@code before} is visible to it.
+     *
      * @param callback the before callback
      * @return this builder for chaining
      */
     public InterceptorDefinitionBuilder before(final BeforeCallback callback) {
-      this.interceptor =
-          new Interceptor() {
-            @Override
-            public void before(MethodInvocation invocation) {
-              callback.before(invocation);
-            }
-          };
+      this.beforeCallback = callback;
       return this;
     }
 
     /**
-     * Register a callback to be invoked after the target method executes successfully.
+     * Register a callback to be invoked after the target method exits without throwing.
+     *
+     * <p>Callbacks accumulate and compose with {@link #around(AroundCallback)}; the callback runs on
+     * the advice's exit path.
      *
      * @param callback the after callback
      * @return this builder for chaining
      */
     public InterceptorDefinitionBuilder after(final AfterCallback callback) {
-      this.interceptor =
-          new Interceptor() {
-            @Override
-            public void after(MethodInvocation invocation) {
-              callback.after(invocation);
-            }
-          };
+      this.afterCallback = callback;
       return this;
     }
 
     /**
-     * Register a callback to be invoked when the target method throws an exception.
+     * Register a callback to be invoked when the target method exits by throwing.
+     *
+     * <p>Callbacks accumulate and compose with {@link #around(AroundCallback)}; the callback runs on
+     * the advice's exit path.
      *
      * @param callback the exception callback
      * @return this builder for chaining
      */
     public InterceptorDefinitionBuilder onException(final ExceptionCallback callback) {
-      this.interceptor =
-          new Interceptor() {
-            @Override
-            public void onException(MethodInvocation invocation) {
-              callback.onException(invocation);
-            }
-          };
+      this.exceptionCallback = callback;
       return this;
     }
 
@@ -371,7 +441,8 @@ public abstract class AbstractPlugin implements WeaverPlugin {
      * Register both a before and after callback, creating an around-advice interceptor.
      *
      * <p>The after callback is also invoked on exception, allowing cleanup logic to run regardless
-     * of whether the method succeeded or threw.
+     * of whether the method succeeded or threw. Either callback can be combined with a later
+     * {@link #onException(ExceptionCallback)}, which replaces only the exceptional path.
      *
      * @param beforeCallback the before callback
      * @param afterCallback the after callback (also called on exception)
@@ -379,44 +450,19 @@ public abstract class AbstractPlugin implements WeaverPlugin {
      */
     public InterceptorDefinitionBuilder around(
         final BeforeCallback beforeCallback, final AfterCallback afterCallback) {
-      this.interceptor =
-          new Interceptor() {
-            @Override
-            public void before(MethodInvocation invocation) {
-              beforeCallback.before(invocation);
-            }
-
-            @Override
-            public void after(MethodInvocation invocation) {
-              afterCallback.after(invocation);
-            }
-
-            @Override
-            public void onException(MethodInvocation invocation) {
-              afterCallback.after(invocation);
-            }
-          };
+      this.aroundCallback = beforeCallback::before;
+      this.afterCallback = afterCallback;
+      this.exceptionCallback = afterCallback::after;
       return this;
     }
 
     /**
-     * Register an around-advice callback that wraps the target method execution. The interceptor
-     * must call {@link MethodInvocation#proceed()} to continue the chain; otherwise the method is
-     * skipped.
-     *
-     * @param callback the around callback
-     * @return this builder for chaining
-     * @since 1.6.0
-     */
-    /**
      * Register an around callback together with the callbacks that see how the call ended.
      *
-     * <p>Each of {@link #around(AroundCallback)}, {@link #onException(ExceptionCallback)} and {@link
-     * #after(AfterCallback)} replaces the interceptor set so far, so chaining them keeps only the
-     * last one. A circuit breaker needs all three at once: the around callback decides whether the
-     * call proceeds, and only the exit callbacks can see whether it failed. Registering them as
-     * three definitions is not the same thing either — every definition weaves the advice into the
-     * method again, so the method would run once per definition.
+     * <p>A circuit breaker needs all three at once: the around callback decides whether the call
+     * proceeds, and only the exit callbacks can see whether it failed. Registering them as three
+     * definitions is not the same thing — every definition weaves the advice into the method again,
+     * so the method would run once per definition.
      *
      * <p>The exit callbacks are invoked by the advice on the way out, not by this around callback.
      * {@code onFailure} runs when the call threw, {@code onSuccess} otherwise, including when the
@@ -431,44 +477,26 @@ public abstract class AbstractPlugin implements WeaverPlugin {
         final AroundCallback aroundCallback,
         final AfterCallback onSuccess,
         final ExceptionCallback onFailure) {
-      this.interceptor =
-          new Interceptor() {
-            @Override
-            public void around(MethodInvocation invocation) {
-              aroundCallback.around(invocation);
-            }
-
-            @Override
-            public boolean hasAround() {
-              return true;
-            }
-
-            @Override
-            public void after(MethodInvocation invocation) {
-              onSuccess.after(invocation);
-            }
-
-            @Override
-            public void onException(MethodInvocation invocation) {
-              onFailure.onException(invocation);
-            }
-          };
+      this.aroundCallback = aroundCallback;
+      this.afterCallback = onSuccess;
+      this.exceptionCallback = onFailure;
       return this;
     }
 
+    /**
+     * Register an around callback that wraps the target method execution. The callback must call
+     * {@link MethodInvocation#proceed()} to continue the chain; otherwise the method is skipped.
+     *
+     * <p>This sets only the around callback. A {@link #before(BeforeCallback)} set on the same
+     * builder still runs, at entry; {@link #after(AfterCallback)} and {@link
+     * #onException(ExceptionCallback)} run on the exit path.
+     *
+     * @param callback the around callback
+     * @return this builder for chaining
+     * @since 1.6.0
+     */
     public InterceptorDefinitionBuilder around(final AroundCallback callback) {
-      this.interceptor =
-          new Interceptor() {
-            @Override
-            public void around(MethodInvocation invocation) {
-              callback.around(invocation);
-            }
-
-            @Override
-            public boolean hasAround() {
-              return true;
-            }
-          };
+      this.aroundCallback = callback;
       return this;
     }
 
@@ -482,14 +510,73 @@ public abstract class AbstractPlugin implements WeaverPlugin {
      */
     public InterceptorDefinition build() {
       Pointcut pointcut = new Pointcut(classMatcher, methodMatcher);
-      if (interceptor == null) {
-        interceptor = new Interceptor() {};
-      }
+      Interceptor interceptor =
+          new CallbackInterceptor(
+              beforeCallback, afterCallback, exceptionCallback, aroundCallback);
       String definitionName =
           name != null
               ? name
               : plugin.name() + "-" + classMatcher.getPattern() + "-" + methodMatcher.getPattern();
       return new InterceptorDefinition(definitionName, pointcut, interceptor, priority);
+    }
+  }
+
+  /**
+   * Dispatches to whichever callbacks the builder was given. Turning {@code hasAround()} on when an
+   * around callback is present matters: the advice calls {@code around()} only for interceptors
+   * that report it, and calls {@code before()} for the rest. With an around callback, the before
+   * callback is invoked at the top of {@code around()} instead, so both run and the careful ordering
+   * is preserved.
+   */
+  private static final class CallbackInterceptor implements Interceptor {
+    private final BeforeCallback beforeCallback;
+    private final AfterCallback afterCallback;
+    private final ExceptionCallback exceptionCallback;
+    private final AroundCallback aroundCallback;
+
+    CallbackInterceptor(
+        BeforeCallback beforeCallback,
+        AfterCallback afterCallback,
+        ExceptionCallback exceptionCallback,
+        AroundCallback aroundCallback) {
+      this.beforeCallback = beforeCallback;
+      this.afterCallback = afterCallback;
+      this.exceptionCallback = exceptionCallback;
+      this.aroundCallback = aroundCallback;
+    }
+
+    @Override
+    public void before(MethodInvocation invocation) {
+      if (beforeCallback != null) {
+        beforeCallback.before(invocation);
+      }
+    }
+
+    @Override
+    public boolean hasAround() {
+      return aroundCallback != null;
+    }
+
+    @Override
+    public void around(MethodInvocation invocation) {
+      if (beforeCallback != null) {
+        beforeCallback.before(invocation);
+      }
+      aroundCallback.around(invocation);
+    }
+
+    @Override
+    public void after(MethodInvocation invocation) {
+      if (afterCallback != null) {
+        afterCallback.after(invocation);
+      }
+    }
+
+    @Override
+    public void onException(MethodInvocation invocation) {
+      if (exceptionCallback != null) {
+        exceptionCallback.onException(invocation);
+      }
     }
   }
 
@@ -503,13 +590,14 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    *
    * @since 2.1.0
    */
-  protected static class FieldInterceptorDefinitionBuilder {
+  public static class FieldInterceptorDefinitionBuilder {
     private final AbstractPlugin plugin;
     private final ClassMatcher classMatcher;
     private final FieldMatcher fieldMatcher;
     private FieldGetCallback onGet;
     private FieldSetCallback onSet;
     private int priority = 0;
+    private String name;
 
     FieldInterceptorDefinitionBuilder(
         AbstractPlugin plugin, ClassMatcher classMatcher, FieldMatcher fieldMatcher) {
@@ -559,6 +647,19 @@ public abstract class AbstractPlugin implements WeaverPlugin {
     }
 
     /**
+     * Name this definition explicitly. The registry keeps one definition per name, so give each
+     * definition its own name when more than one targets the same class and field.
+     *
+     * @param name the definition name, unique within the registry
+     * @return this builder for chaining
+     * @since 2.2.0
+     */
+    public FieldInterceptorDefinitionBuilder name(String name) {
+      this.name = name;
+      return this;
+    }
+
+    /**
      * Builds the field-interception definition.
      *
      * <p>The definition name is derived from the plugin name, the class matcher and the field matcher,
@@ -574,8 +675,16 @@ public abstract class AbstractPlugin implements WeaverPlugin {
       final int fieldPriority = priority;
       Interceptor interceptor =
           new FieldInterceptorAdapter(pointcuts, fieldPriority, getCallback, setCallback);
+      String definitionName =
+          name != null
+              ? name
+              : plugin.name()
+                  + "-field-"
+                  + classMatcher.getPattern()
+                  + "-"
+                  + fieldMatcher.getPattern();
       return new InterceptorDefinition(
-          plugin.name() + "-field-" + classMatcher.getPattern() + "-" + fieldMatcher.getPattern(),
+          definitionName,
           new Pointcut(classMatcher, MethodMatcher.any()),
           interceptor,
           priority,
@@ -639,12 +748,13 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    *
    * @since 2.1.0
    */
-  protected static class CatchInterceptorDefinitionBuilder {
+  public static class CatchInterceptorDefinitionBuilder {
     private final AbstractPlugin plugin;
     private final ClassMatcher classMatcher;
     private final String exceptionTypeName;
     private CatchCallback onCatch;
     private int priority = 0;
+    private String name;
 
     CatchInterceptorDefinitionBuilder(
         AbstractPlugin plugin, ClassMatcher classMatcher, String exceptionTypeName) {
@@ -679,6 +789,19 @@ public abstract class AbstractPlugin implements WeaverPlugin {
     }
 
     /**
+     * Name this definition explicitly. The registry keeps one definition per name, so give each
+     * definition its own name when more than one targets the same class and exception type.
+     *
+     * @param name the definition name, unique within the registry
+     * @return this builder for chaining
+     * @since 2.2.0
+     */
+    public CatchInterceptorDefinitionBuilder name(String name) {
+      this.name = name;
+      return this;
+    }
+
+    /**
      * Builds the catch-block interception definition.
      *
      * @return a definition woven with catch advice
@@ -689,8 +812,16 @@ public abstract class AbstractPlugin implements WeaverPlugin {
       final CatchCallback callback = onCatch;
       final int catchPriority = priority;
       Interceptor interceptor = new CatchInterceptorAdapter(pointcuts, catchPriority, callback);
+      String definitionName =
+          name != null
+              ? name
+              : plugin.name()
+                  + "-catch-"
+                  + classMatcher.getPattern()
+                  + "-"
+                  + exceptionTypeName;
       return new InterceptorDefinition(
-          plugin.name() + "-catch-" + classMatcher.getPattern() + "-" + exceptionTypeName,
+          definitionName,
           anyMethod,
           interceptor,
           priority,
@@ -741,7 +872,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @since 1.6.0
    */
   @FunctionalInterface
-  protected interface AroundCallback {
+  public interface AroundCallback {
     /**
      * Around advice: called before the target method executes. Implementations must call {@link
      * MethodInvocation#proceed()} to continue the interception chain, or omit it to short-circuit
@@ -758,7 +889,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @since 1.0.0
    */
   @FunctionalInterface
-  protected interface BeforeCallback {
+  public interface BeforeCallback {
     /**
      * Called before the target method executes.
      *
@@ -773,7 +904,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @since 1.0.0
    */
   @FunctionalInterface
-  protected interface AfterCallback {
+  public interface AfterCallback {
     /**
      * Called after the target method executes.
      *
@@ -788,7 +919,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @since 1.0.0
    */
   @FunctionalInterface
-  protected interface ExceptionCallback {
+  public interface ExceptionCallback {
     /**
      * Called when the target method throws an exception.
      *
@@ -804,7 +935,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @since 2.1.0
    */
   @FunctionalInterface
-  protected interface FieldGetCallback {
+  public interface FieldGetCallback {
     /**
      * Called when the matched field is read.
      *
@@ -822,7 +953,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @since 2.1.0
    */
   @FunctionalInterface
-  protected interface FieldSetCallback {
+  public interface FieldSetCallback {
     /**
      * Called when the matched field is written.
      *
@@ -840,7 +971,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @since 2.1.0
    */
   @FunctionalInterface
-  protected interface CatchCallback {
+  public interface CatchCallback {
     /**
      * Called when a matching catch block is entered.
      *

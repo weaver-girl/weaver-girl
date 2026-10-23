@@ -17,6 +17,19 @@ import net.bytebuddy.asm.Advice;
  * matches registered field pointcuts, acquires a pooled {@link FieldInvocation}, and invokes the
  * matching field interceptors.
  *
+ * <h3>Weave-time field binding</h3>
+ *
+ * <p>ByteBuddy's {@code @Advice.Origin} does not support {@link Field} origin types (only {@code
+ * Class}, {@code Method}, {@code Executable}, {@code MethodHandle}, {@code MethodType}, {@code
+ * MethodHandles.Lookup} and {@link String}), so the woven advice cannot bind "the currently accessed
+ * field" directly at a method join point. Instead it binds the enclosing method name via {@code
+ * @Advice.Origin("#m")} and derives the field from the accessor-name convention ({@code getX},
+ * {@code isX}, {@code setX}, {@code access$X}): the derived field name is resolved reflectively on
+ * the instrumented class (walking the superclass chain), then tagged onto the acquired {@link
+ * FieldInvocation} attachment so the exit advice reuses the exact same {@code Field}. Non-accessor
+ * methods (no resolvable field) are left untouched — the enter advice returns {@code null} and the
+ * exit advice becomes a no-op.
+ *
  * <h3>Read interception</h3>
  *
  * <p>The {@code @Advice.Return(readOnly = false)} binding allows field-intercepting plugins to
@@ -39,12 +52,128 @@ import net.bytebuddy.asm.Advice;
  */
 public class FieldAdvice {
 
+  /** Invocation attachment carrying the resolved {@link Field} from enter advice to exit advice. */
+  private static final String FIELD_ORIGIN_ATTACHMENT = "__field_origin__";
+
   @Advice.OnMethodEnter
-  public static FieldInvocation onFieldEnter(
+  public static FieldInvocation onWovenEnter(
       @Advice.Origin Class<?> targetClass,
-      @Advice.Origin Field field,
+      @Advice.Origin("#m") String methodName,
       @Advice.This(optional = true) Object target,
-      @Advice.Argument(value = 0, readOnly = false, optional = true) Object writeValue) {
+      @Advice.Argument(
+              value = 0,
+              readOnly = false,
+              optional = true,
+              typing = net.bytebuddy.implementation.bytecode.assign.Assigner.Typing.DYNAMIC)
+          Object writeValue) {
+    try {
+      if (!InterceptorHolder.isInterceptionEnabled()) {
+        return null;
+      }
+      Field field = resolveFieldForAccessor(targetClass, methodName);
+      if (field == null) {
+        // Not an accessor of a woven field; nothing to intercept at this join point.
+        return null;
+      }
+      Object originalWriteValue = writeValue;
+      FieldInvocation invocation = dispatchEnter(targetClass, field, target, writeValue);
+      if (invocation != null) {
+        invocation.setAttachment(FIELD_ORIGIN_ATTACHMENT, field);
+        // dispatchEnter mutates a copy of the argument, so apply what the interceptor decided to the
+        // bound @Advice.Argument(0, readOnly = false) variable here: only a reassignment performed in
+        // this advice method body is written back into the woven call.
+        if (originalWriteValue != null) {
+          if (invocation.isWriteSkipped()) {
+            writeValue = originalWriteValue;
+          } else if (invocation.isWriteOverridden()) {
+            writeValue = invocation.getWriteValue();
+          }
+        }
+      }
+      return invocation;
+    } catch (Throwable e) {
+      return null;
+    }
+  }
+
+  /**
+   * Derives the field accessed by a getter/setter-style method and resolves it reflectively.
+   *
+   * <p>Strips the {@code get}/{@code is}/{@code set}/{@code access$} prefix, decapitalises the
+   * remainder, and walks the class hierarchy looking for that field (falling back to the undecap'd
+   * suffix, e.g. for acronym-ish names like {@code getURL}). Returns {@code null} when the method is
+   * not a resolvable accessor.
+   *
+   * <p>Public: invoked from the inlined {@code onWovenEnter} advice inside the woven target class,
+   * which lives in the application's package — a package-private method would fail with {@code
+   * IllegalAccessError} across the package boundary and be silently swallowed by the advice's
+   * catch-all (the woven field hook "just never fires").
+   */
+  public static Field resolveFieldForAccessor(Class<?> targetClass, String methodName) {
+    if (methodName == null || methodName.isEmpty()) {
+      return null;
+    }
+    String suffix = null;
+    if (methodName.startsWith("access$") && methodName.length() > "access$".length()) {
+      suffix = methodName.substring("access$".length());
+    } else if (methodName.startsWith("get") && methodName.length() > 3) {
+      suffix = methodName.substring(3);
+    } else if (methodName.startsWith("is") && methodName.length() > 2) {
+      suffix = methodName.substring(2);
+    } else if (methodName.startsWith("set") && methodName.length() > 3) {
+      suffix = methodName.substring(3);
+    }
+    if (suffix == null || suffix.isEmpty()) {
+      return null;
+    }
+    String decap = decapitalize(suffix);
+    String[] candidates = decap.equals(suffix) ? new String[] {decap} : new String[] {decap, suffix};
+    Class<?> current = targetClass;
+    while (current != null) {
+      for (String candidate : candidates) {
+        try {
+          return current.getDeclaredField(candidate);
+        } catch (NoSuchFieldException ignored) {
+          // keep searching
+        }
+      }
+      current = current.getSuperclass();
+    }
+    return null;
+  }
+
+  private static String decapitalize(String s) {
+    char[] chars = s.toCharArray();
+    chars[0] = Character.toLowerCase(chars[0]);
+    return new String(chars);
+  }
+
+  /**
+   * Direct-call entry point used by unit tests: dispatch field access with an explicit {@link
+   * Field}, bypassing ByteBuddy weaving. {@code writeValue == null} denotes a getfield access,
+   * non-null a putfield access.
+   *
+   * @param targetClass the class declaring the field
+   * @param field the accessed field
+   * @param target the owning instance, or null for static fields
+   * @param writeValue the value being written (null for reads)
+   * @return the acquired invocation, or null when interception/sampling is off
+   */
+  public static FieldInvocation onFieldEnter(
+      Class<?> targetClass, Field field, Object target, Object writeValue) {
+    return dispatchEnter(targetClass, field, target, writeValue);
+  }
+
+  /**
+   * Shared enter-phase dispatch: guards, sampling, field-pointcut matching, interceptor
+   * invocation, and write skipping. Returns the acquired {@link FieldInvocation} (or {@code null}
+   * when interception is off / not sampled).
+   *
+   * <p>Public and {@code static}: the woven advice ({@code onWovenEnter}) lives in the target
+   * application's package — see {@link #resolveFieldForAccessor} for the visibility rationale.
+   */
+  public static FieldInvocation dispatchEnter(
+      Class<?> targetClass, Field field, Object target, Object writeValue) {
     try {
       if (!InterceptorHolder.isInterceptionEnabled()) {
         return null;
@@ -64,7 +193,6 @@ public class FieldAdvice {
       FieldInvocation invocation =
           FieldInvocationPool.acquire(targetClass, fieldName, fieldTypeName, target);
 
-      String className = targetClass.getName();
       for (com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition def :
           registry.getAllDefinitions()) {
         if (!(def.getInterceptor() instanceof FieldInterceptor)) {
@@ -73,7 +201,13 @@ public class FieldAdvice {
         FieldInterceptor fieldInterceptor = (FieldInterceptor) def.getInterceptor();
         for (com.github.cc11001100.weavergirl.api.pointcut.FieldPointcut fp :
             fieldInterceptor.fieldPointcuts()) {
-          if (fp.matches(className, null, fieldName, fieldTypeName)) {
+          // Pass the real Class, not just its name: matches(Class, ...) can evaluate
+          // byInterface/bySuperClass/byAnnotation reflectively, while matches(String, ...)
+          // rejects all three (returns false for INTERFACE/SUPER_CLASS, name-equality for
+          // ANNOTATION). A target woven via a non-name class matcher would otherwise be
+          // "woven but never dispatched". methodName is intentionally null, as the original
+          // string-based call also passed null (field advice does not bind the enclosing method).
+          if (fp.matches(targetClass, null, fieldName, fieldTypeName)) {
             if (!InterceptorHolder.shouldInvoke(def.getName())) {
               continue;
             }
@@ -117,14 +251,62 @@ public class FieldAdvice {
     }
   }
 
-  @Advice.OnMethodExit(onThrowable = Throwable.class)
-  public static void onFieldExit(
+  @Advice.OnMethodExit(onThrowable = Throwable.class, backupArguments = false)
+  public static void onWovenExit(
       @Advice.Enter FieldInvocation invocation,
-      @Advice.Origin Class<?> targetClass,
-      @Advice.Origin Field field,
-      @Advice.This(optional = true) Object target,
-      @Advice.Return(readOnly = false, typing = net.bytebuddy.implementation.bytecode.assign.Assigner.Typing.DYNAMIC) Object returnValue,
-      @Advice.Thrown(readOnly = false, typing = net.bytebuddy.implementation.bytecode.assign.Assigner.Typing.DYNAMIC) Throwable throwable) {
+      @Advice.Return(
+              readOnly = false,
+              typing = net.bytebuddy.implementation.bytecode.assign.Assigner.Typing.DYNAMIC)
+          Object returnValue,
+      @Advice.Thrown(
+              readOnly = false,
+              typing = net.bytebuddy.implementation.bytecode.assign.Assigner.Typing.DYNAMIC)
+          Throwable throwable) {
+    Field field =
+        invocation != null ? invocation.getAttachment(FIELD_ORIGIN_ATTACHMENT, Field.class) : null;
+    // Read overrides have to be assigned here, in the advice method body, to reach the bound
+    // @Advice.Return(readOnly = false) variable; dispatchExit only sees a copy of it.
+    if (invocation != null && throwable == null && invocation.isReturnOverridden()) {
+      returnValue = invocation.getReturnValue();
+    }
+    dispatchExit(invocation, null, field, returnValue, throwable);
+  }
+
+  /**
+   * Direct-call exit entry point used by unit tests: release the invocation and publish the field
+   * return snapshot with an explicit {@link Field}.
+   *
+   * @param invocation the invocation produced by enter (may be null)
+   * @param targetClass the class declaring the field (unused; kept for API stability)
+   * @param field the accessed field
+   * @param target the owning instance (unused; kept for API stability)
+   * @param returnValue the method's return value
+   * @param throwable the thrown throwable, if any
+   */
+  public static void onFieldExit(
+      FieldInvocation invocation,
+      Class<?> targetClass,
+      Field field,
+      Object target,
+      Object returnValue,
+      Throwable throwable) {
+    dispatchExit(invocation, targetClass, field, returnValue, throwable);
+  }
+
+  /**
+   * Shared exit-phase dispatch: release the pooled invocation, apply any return override, and
+   * version the field return value for downstream consumers. Mirrors {@code dispatchEnter} by being
+   * defensive over every step so the field access path never breaks due to bookkeeping.
+   *
+   * <p>Public and {@code static}: the woven advice ({@code onWovenExit}) lives in the target
+   * application's package — see {@link #resolveFieldForAccessor} for the visibility rationale.
+   */
+  public static void dispatchExit(
+      FieldInvocation invocation,
+      Class<?> targetClass,
+      Field field,
+      Object returnValue,
+      Throwable throwable) {
     try {
       if (!InterceptorHolder.isInterceptionEnabled()) {
         if (invocation != null) {
@@ -157,8 +339,8 @@ public class FieldAdvice {
       }
 
       // Version the field return value for downstream consumers (tracing, caching).
-      if (throwable == null) {
-        String fieldKey = targetClass.getName() + "." + field.getName();
+      if (throwable == null && field != null) {
+        String fieldKey = invocation.getTargetClass().getName() + "." + field.getName();
         try {
           long version =
               com.github.cc11001100.weavergirl.api.interceptor.ReturnVersion.next(fieldKey);

@@ -205,4 +205,118 @@ class AbstractPluginFieldCatchBuilderTest {
     assertFalse(def.getInterceptor() instanceof FieldInterceptor);
     assertFalse(def.getInterceptor() instanceof CatchInterceptor);
   }
+
+  @Test
+  void callbacks_accumulateIntoOneInterceptor() {
+    java.util.List<String> calls = new java.util.ArrayList<String>();
+    InterceptorDefinition def =
+        plugin
+            .intercept("com.example.Target")
+            .method("work")
+            .before(inv -> calls.add("before"))
+            .after(inv -> calls.add("after"))
+            .onException(inv -> calls.add("onException"))
+            .build();
+
+    com.github.cc11001100.weavergirl.api.interceptor.Interceptor interceptor =
+        def.getInterceptor();
+    com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation invocation =
+        new com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation(
+            AbstractPluginFieldCatchBuilderTest.class, "work", null, null);
+
+    interceptor.before(invocation);
+    interceptor.after(invocation);
+    interceptor.onException(invocation);
+
+    assertEquals(java.util.Arrays.asList("before", "after", "onException"), calls);
+  }
+
+  @Test
+  void aroundCallback_composesWithBeforeAndExitCallbacks() {
+    java.util.List<String> calls = new java.util.ArrayList<String>();
+    InterceptorDefinition def =
+        plugin
+            .intercept("com.example.Target")
+            .method("work")
+            .before(inv -> calls.add("before"))
+            .around(inv -> calls.add("around"))
+            .after(inv -> calls.add("after"))
+            .onException(inv -> calls.add("onException"))
+            .build();
+
+    com.github.cc11001100.weavergirl.api.interceptor.Interceptor interceptor =
+        def.getInterceptor();
+    assertTrue(interceptor.hasAround());
+
+    com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation invocation =
+        new com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation(
+            AbstractPluginFieldCatchBuilderTest.class, "work", null, null);
+    interceptor.around(invocation);
+    interceptor.after(invocation);
+    interceptor.onException(invocation);
+
+    assertEquals(java.util.Arrays.asList("before", "around", "after", "onException"), calls);
+  }
+
+  @Test
+  void twoCallbackAround_keepsAfterOnTheExceptionalPath() {
+    java.util.List<String> calls = new java.util.ArrayList<String>();
+    InterceptorDefinition def =
+        plugin
+            .intercept("com.example.Target")
+            .method("work")
+            .around(inv -> calls.add("around"), inv -> calls.add("after"))
+            .build();
+
+    com.github.cc11001100.weavergirl.api.interceptor.Interceptor interceptor =
+        def.getInterceptor();
+    assertTrue(interceptor.hasAround());
+
+    com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation invocation =
+        new com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation(
+            AbstractPluginFieldCatchBuilderTest.class, "work", null, null);
+    interceptor.around(invocation);
+    interceptor.onException(invocation);
+
+    assertEquals(java.util.Arrays.asList("around", "after"), calls);
+  }
+
+  @Test
+  void classMatcherOverloads_buildTheSameDefinitionShape() {
+    ClassMatcher matcher = ClassMatcher.byInterface("java.io.Serializable");
+
+    InterceptorDefinition methodDef = plugin.intercept(matcher).method("work").build();
+    assertEquals(ClassMatcher.MatchType.INTERFACE, methodDef.getPointcut().getClassMatcher().getMatchType());
+
+    InterceptorDefinition fieldDef =
+        plugin.interceptField(matcher, FieldMatcher.byName("secret")).build();
+    assertEquals(InterceptorDefinition.AdviceMode.FIELD, fieldDef.getAdviceMode());
+    assertEquals(ClassMatcher.MatchType.INTERFACE, fieldDef.getPointcut().getClassMatcher().getMatchType());
+
+    InterceptorDefinition catchDef =
+        plugin.interceptCatch(matcher, IOException.class.getName()).build();
+    assertEquals(InterceptorDefinition.AdviceMode.CATCH, catchDef.getAdviceMode());
+    assertTrue(
+        ((CatchInterceptor) catchDef.getInterceptor())
+            .catchPointcuts()[0]
+            .matches(java.util.ArrayList.class, "work", IOException.class));
+  }
+
+  @Test
+  void fieldAndCatchBuilders_acceptAnExplicitName() {
+    assertEquals(
+        "field-def",
+        plugin
+            .interceptField("com.example.Target", "secret")
+            .name("field-def")
+            .build()
+            .getName());
+    assertEquals(
+        "catch-def",
+        plugin
+            .interceptCatch("com.example.Target", IOException.class.getName())
+            .name("catch-def")
+            .build()
+            .getName());
+  }
 }

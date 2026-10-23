@@ -142,7 +142,6 @@ public class CatchAdvice {
         return null;
       }
 
-      String className = targetClass.getName();
       String methodName = method.getName();
       CatchInvocation invocation =
           CatchInvocationPool.acquire(targetClass, methodName, caughtException);
@@ -154,7 +153,12 @@ public class CatchAdvice {
         }
         CatchInterceptor catchInterceptor = (CatchInterceptor) def.getInterceptor();
         for (CatchPointcut cp : catchInterceptor.catchPointcuts()) {
-          if (cp.matches(className, methodName, invocation.getCaughtException().getClass())) {
+          // Pass the real Class, not just its name: matches(Class, ...) can evaluate
+          // byInterface/bySuperClass/byAnnotation reflectively, while matches(String, ...)
+          // rejects all three (returns false for INTERFACE/SUPER_CLASS, name-equality for
+          // ANNOTATION). A target woven via a non-name class matcher would otherwise be
+          // "woven but never dispatched".
+          if (cp.matches(targetClass, methodName, invocation.getCaughtException().getClass())) {
             if (!InterceptorHolder.shouldInvoke(def.getName())) {
               continue;
             }

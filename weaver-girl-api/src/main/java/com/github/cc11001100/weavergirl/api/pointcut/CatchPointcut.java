@@ -1,6 +1,5 @@
 package com.github.cc11001100.weavergirl.api.pointcut;
 
-import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 import java.util.Objects;
 
@@ -104,6 +103,33 @@ public class CatchPointcut {
     if (!methodPointcut.matches(className, methodName)) {
       return false;
     }
+    return matchesExceptionType(caughtExceptionType);
+  }
+
+  /**
+   * Tests whether the given <em>loaded target class</em>, method, and caught exception match this
+   * pointcut.
+   *
+   * <p>Unlike the {@code String} overload, the class criteria go through {@link
+   * com.github.cc11001100.weavergirl.api.matcher.ClassMatcher#matches(Class)}, which can decide the
+   * {@code ANNOTATION}/{@code SUPER_CLASS}/{@code INTERFACE} match types reflectively. Catch
+   * dispatch has the real woven {@code Class} at hand, so it must not collapse it back to a bare
+   * name — doing so silently rejects every non-name class matcher (the class gets woven, but the
+   * {@code @OnCatch} hook never fires).
+   *
+   * @param targetClass the loaded target class to test
+   * @param methodName the method name to test
+   * @param caughtExceptionType the class of the caught exception, or null if unknown
+   * @return true if all criteria match
+   */
+  public boolean matches(Class<?> targetClass, String methodName, Class<?> caughtExceptionType) {
+    if (!methodPointcut.matches(targetClass, methodName)) {
+      return false;
+    }
+    return matchesExceptionType(caughtExceptionType);
+  }
+
+  private boolean matchesExceptionType(Class<?> caughtExceptionType) {
     if (exceptionTypeName == null) {
       return true;
     }

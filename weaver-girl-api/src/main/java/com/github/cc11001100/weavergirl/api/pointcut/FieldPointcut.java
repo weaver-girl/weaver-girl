@@ -109,6 +109,28 @@ public class FieldPointcut {
         && fieldMatcher.matches(fieldName, fieldTypeName);
   }
 
+  /**
+   * Tests whether the given <em>loaded target class</em>, method, and field match this pointcut.
+   *
+   * <p>Unlike the {@code String} overload, the class criteria go through {@link
+   * com.github.cc11001100.weavergirl.api.matcher.ClassMatcher#matches(Class)}, which can decide the
+   * {@code ANNOTATION}/{@code SUPER_CLASS}/{@code INTERFACE} match types reflectively. Field dispatch
+   * has the real woven {@code Class} at hand, so it must not collapse it back to a bare name — doing
+   * so silently rejects every non-name class matcher (the field access gets woven, but the
+   * {@code @OnFieldGet}/{@code @OnFieldSet} hook never fires).
+   *
+   * @param targetClass the loaded target class to test
+   * @param methodName the method name to test
+   * @param fieldName the field name to test
+   * @param fieldTypeName the field type name, or null if unknown
+   * @return true if all criteria match
+   */
+  public boolean matches(
+      Class<?> targetClass, String methodName, String fieldName, String fieldTypeName) {
+    return methodPointcut.matches(targetClass, methodName)
+        && fieldMatcher.matches(fieldName, fieldTypeName);
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
