@@ -1,5 +1,6 @@
 package com.github.cc11001100.weavergirl.core.exporter;
 
+import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
 import com.github.cc11001100.weavergirl.core.graceful.GracefulDegradationManager;
 import java.util.*;
 import java.util.concurrent.*;
@@ -52,6 +53,7 @@ public class SpanExporter {
   private final AtomicLong droppedCount;
   private final AtomicLong failedExportCount;
   private final AtomicLong exportBatchCount;
+  private final AtomicLong reportedDropped;
 
   private ScheduledFuture<?> scheduledTask;
 
@@ -78,6 +80,7 @@ public class SpanExporter {
     this.droppedCount = new AtomicLong();
     this.failedExportCount = new AtomicLong();
     this.exportBatchCount = new AtomicLong();
+    this.reportedDropped = new AtomicLong();
   }
 
   // --- Span submission ---
@@ -92,6 +95,8 @@ public class SpanExporter {
     if (added) {
       pendingCount.incrementAndGet();
     } else {
+      // Counted here, reported off the hot path in doExport(): submit() runs on application
+      // threads and must stay lock-free when the exporter is already saturated.
       droppedCount.incrementAndGet();
       log.debug("[SpanExporter] Buffer full, dropping span: {}", span.getTraceId());
     }
@@ -178,6 +183,7 @@ public class SpanExporter {
         formatter.export(Collections.unmodifiableList(batch));
       } catch (Exception e) {
         failedExportCount.incrementAndGet();
+        MetricRegistry.record("weavergirl.span.export.failed", 1);
         log.warn(
             "[SpanExporter] Formatter {} failed: {}",
             formatter.getClass().getSimpleName(),
@@ -187,7 +193,18 @@ public class SpanExporter {
     }
 
     exportedCount.addAndGet(count);
+    MetricRegistry.record("weavergirl.span.export.spans", count);
     pendingCount.addAndGet(-count);
+    reportDroppedSinceLastBatch();
+  }
+
+  /** Publish drops accumulated since the previous batch; runs on the exporter thread. */
+  private void reportDroppedSinceLastBatch() {
+    long dropped = droppedCount.get();
+    long reported = reportedDropped.get();
+    if (dropped > reported && reportedDropped.compareAndSet(reported, dropped)) {
+      MetricRegistry.record("weavergirl.span.export.dropped", dropped - reported);
+    }
   }
 
   // --- Accessors ---

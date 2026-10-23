@@ -98,6 +98,39 @@ class SpanExporterTest {
     assertEquals(1, smallExporter.getDroppedCount());
   }
 
+  /** Export-pipeline health is visible to the Prometheus plugin through MetricRegistry. */
+  @Test
+  void exportPipelineHealthIsRecordedInMetricRegistry() {
+    com.github.cc11001100.weavergirl.api.metrics.MetricRegistry.remove(
+        "weavergirl.span.export.spans");
+    com.github.cc11001100.weavergirl.api.metrics.MetricRegistry.remove(
+        "weavergirl.span.export.dropped");
+    try {
+      SpanExporter smallExporter = new SpanExporter(10, 60000, 1);
+      smallExporter.addFormatter(inMemory);
+
+      assertTrue(smallExporter.submit(createSpan("t1", "s1", "op1", 10)));
+      assertFalse(smallExporter.submit(createSpan("t1", "s2", "op2", 10)));
+      smallExporter.flush();
+
+      assertEquals(
+          1,
+          com.github.cc11001100.weavergirl.api.metrics.MetricRegistry.snapshot(
+                  "weavergirl.span.export.dropped")
+              .getCount());
+      assertEquals(
+          1,
+          com.github.cc11001100.weavergirl.api.metrics.MetricRegistry.snapshot(
+                  "weavergirl.span.export.spans")
+              .getCount());
+    } finally {
+      com.github.cc11001100.weavergirl.api.metrics.MetricRegistry.remove(
+          "weavergirl.span.export.spans");
+      com.github.cc11001100.weavergirl.api.metrics.MetricRegistry.remove(
+          "weavergirl.span.export.dropped");
+    }
+  }
+
   @Test
   void statistics_shouldTrackExportMetrics() {
     exporter.submit(createSpan("t1", "s1", "op1", 10));

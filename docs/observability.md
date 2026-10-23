@@ -210,6 +210,17 @@ weavergirl_metric_count{metric="request.duration_ms",route="/users"} 128
 可用后缀：`count`、`sum`、`avg`、`min`、`max`、`p50`、`p90`、`p95`、`p99`。标签名会按
 `[a-zA-Z_][a-zA-Z0-9_]*` 清洗，标签值按 Prometheus 规则转义。
 
+导出管线自身也会写入注册表，用于监控“监控管道”：
+
+| 指标名 | 含义 |
+| --- | --- |
+| `weavergirl.span.export.spans` | 每批成功交给 formatter 的 span 数 |
+| `weavergirl.span.export.dropped` | 缓冲满被丢弃的 span 数 |
+| `weavergirl.span.export.failed` | formatter 导出失败次数 |
+
+例如 `weavergirl_metric_count{metric="weavergirl.span.export.dropped"}` 持续增长，表示 collector
+太慢或 `spanExportBufferSize` 太小。
+
 ### 4.5 常用 PromQL
 
 ```promql
