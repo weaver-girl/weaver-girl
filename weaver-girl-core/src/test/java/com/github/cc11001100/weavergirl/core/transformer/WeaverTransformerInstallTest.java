@@ -122,6 +122,8 @@ class WeaverTransformerInstallTest {
   @Test
   void retransformWithoutAnInstallationDoesNothing() {
     WeaverTransformer transformer = new WeaverTransformer(new DefaultInterceptorRegistry());
+    // The cap can be set on its own, without a config object carrying it.
+    transformer.setMaxTransformations(4);
     assertTrue(transformer.retransformLoadedClasses() == 0);
   }
 
