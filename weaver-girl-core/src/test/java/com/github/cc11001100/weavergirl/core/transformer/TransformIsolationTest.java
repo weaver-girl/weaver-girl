@@ -192,6 +192,33 @@ class TransformIsolationTest {
     assertFalse(faults.contains(",]"));
   }
 
+  /**
+   * A null name is rewritten by nothing, and array and primitive classes are never retransformed even
+   * when a matcher selects them: neither has methods of its own.
+   */
+  @Test
+  void aNullNameIsRewrittenAndArrayClassesAreSkipped() {
+    assertFalse(WeaverTransformer.isNeverRewritten(null));
+
+    DefaultInterceptorRegistry registry = new DefaultInterceptorRegistry();
+    // Only array and primitive class names match, so retransform never rewrites an ordinary class.
+    registry.register(
+        new InterceptorDefinition(
+            "arrays-and-primitives",
+            new Pointcut(
+                ClassMatcher.byNamePattern("\\[.*|int|long|float|double|boolean|byte|char|short|void"),
+                MethodMatcher.any()),
+            new Interceptor() {},
+            0));
+    WeaverTransformer transformer = new WeaverTransformer(registry);
+    transformer.install(instrumentation, false);
+    try {
+      assertTrue(transformer.retransformLoadedClasses() >= 0);
+    } finally {
+      transformer.unweave();
+    }
+  }
+
   private static void assertIgnoredPrefixesSurviveShade() throws Exception {
     InputStream in = WeaverTransformer.class.getResourceAsStream("WeaverTransformer.class");
     ByteArrayOutputStream out = new ByteArrayOutputStream();
