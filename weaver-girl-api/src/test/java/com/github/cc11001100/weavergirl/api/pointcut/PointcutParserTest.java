@@ -63,6 +63,12 @@ class PointcutParserTest {
     assertThrows(IllegalArgumentException.class, () -> parser.parse("execution(bad)"));
     assertThrows(IllegalArgumentException.class, () -> parser.parse("execution(* Service.run)"));
     assertThrows(IllegalArgumentException.class, () -> parser.parse("unknown(A)"));
+    assertThrows(IllegalArgumentException.class, () -> parser.parse("execution(Service.run())"));
+    assertThrows(IllegalArgumentException.class, () -> parser.parse("execution(* run())"));
+    assertThrows(IllegalArgumentException.class, () -> parser.parse("@args(com.example.NotNull)"));
+    assertThrows(IllegalArgumentException.class, () -> parser.parse("@args(com.example.NotNull,)"));
+    assertThrows(IllegalArgumentException.class, () -> parser.parse("@args(com.example.NotNull, x)"));
+    assertThrows(IllegalArgumentException.class, () -> parser.parse("(execution(* a.B.m())"));
   }
 
   @Test

@@ -178,6 +178,43 @@ class PointcutExpressionTest {
     assertFalse(and.toPointcutWithClassScope(scope).matches("pkg.Other", "x"));
     assertTrue(or.toPointcutWithClassScope(scope).matches("pkg.A", "m"));
     assertFalse(not.toPointcutWithClassScope(scope).matches("pkg.A", "m"));
+
+    assertEquals(
+        ClassMatcher.MatchType.ANNOTATION,
+        PointcutExpression.atWithin("com.example.Traced")
+            .toPointcutWithClassScope(scope)
+            .getClassMatcher()
+            .getMatchType());
+    assertEquals(
+        ClassMatcher.MatchType.NAME_PATTERN,
+        PointcutExpression.within("com.example..")
+            .toPointcutWithClassScope(scope)
+            .getClassMatcher()
+            .getMatchType());
+    assertEquals(
+        ClassMatcher.MatchType.SUPER_CLASS,
+        PointcutExpression.subclassOf("com.example.Base")
+            .toPointcutWithClassScope(scope)
+            .getClassMatcher()
+            .getMatchType());
+    assertEquals(
+        ClassMatcher.MatchType.INTERFACE,
+        PointcutExpression.implementing("com.example.Api")
+            .toPointcutWithClassScope(scope)
+            .getClassMatcher()
+            .getMatchType());
+    assertEquals(
+        MethodMatcher.MatchType.ARGS,
+        PointcutExpression.atArgs("com.example.NotNull", 0)
+            .toPointcutWithClassScope(scope)
+            .getMethodMatcher()
+            .getMatchType());
+    assertEquals(
+        ClassMatcher.MatchType.ANNOTATION,
+        PointcutExpression.atTarget("com.example.Service")
+            .toPointcutWithClassScope(scope)
+            .getClassMatcher()
+            .getMatchType());
   }
 
   @Test

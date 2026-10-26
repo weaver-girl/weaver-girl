@@ -19,6 +19,23 @@ class PointcutTest {
   }
 
   @Test
+  void instanceBindingKeepsTheMatchersAndMarksTheCopy() {
+    Pointcut pointcut =
+        new Pointcut(
+            ClassMatcher.byName("com.example.Service"),
+            MethodMatcher.byName("process"),
+            PointcutExpression.execution("*", "com.example.Service", "process", ".."));
+
+    assertNull(new Pointcut(ClassMatcher.any(), MethodMatcher.any()).getExpression());
+    assertFalse(pointcut.isInstanceBound());
+    assertSame(pointcut.getExpression(), pointcut.pertarget().getExpression());
+    assertTrue(pointcut.pertarget().isInstanceBound());
+    assertTrue(pointcut.perthis().isInstanceBound());
+    assertTrue(pointcut.pertarget().matches("com.example.Service", "process"));
+    assertFalse(pointcut.perthis().matches("com.example.Service", "other"));
+  }
+
+  @Test
   void interceptorDefinition_holdsAllFields() {
     Pointcut pointcut = new Pointcut(ClassMatcher.byName("svc"), MethodMatcher.any());
     Interceptor interceptor = new Interceptor() {};
