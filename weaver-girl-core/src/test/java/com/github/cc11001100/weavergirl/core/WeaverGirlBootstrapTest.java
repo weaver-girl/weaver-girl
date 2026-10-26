@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin;
 import com.github.cc11001100.weavergirl.core.config.WeaverConfig;
 import java.io.File;
 import java.lang.instrument.Instrumentation;
@@ -166,6 +167,39 @@ class WeaverGirlBootstrapTest {
 
     String name = agent.introduce("com\\.example\\..*", Runnable.class, delegate);
     assertTrue(name.contains("Runnable"));
+  }
+
+  /**
+   * A plugin whose {@code destroy()} throws must not abort the shutdown. The manager is initialized so
+   * the loop that destroys each loaded plugin actually runs.
+   */
+  @Test
+  void shutdownSurvivesAPluginThatFailsToDestroy() throws Exception {
+    WeaverGirl agent = WeaverGirl.create();
+    agent.initPluginManager();
+
+    java.lang.reflect.Field loader = WeaverGirl.class.getDeclaredField("pluginLoader");
+    loader.setAccessible(true);
+    Object pluginLoader = loader.get(agent);
+    java.lang.reflect.Field loaded =
+        pluginLoader.getClass().getDeclaredField("loadedPlugins");
+    loaded.setAccessible(true);
+    @SuppressWarnings("unchecked")
+    java.util.List<WeaverPlugin> plugins = (java.util.List<WeaverPlugin>) loaded.get(pluginLoader);
+    plugins.add(
+        new WeaverPlugin() {
+          @Override
+          public String name() {
+            return "fragile";
+          }
+
+          @Override
+          public void destroy() {
+            throw new IllegalStateException("destroy failed");
+          }
+        });
+
+    assertDoesNotThrow(agent::shutdown);
   }
 
   @Test
