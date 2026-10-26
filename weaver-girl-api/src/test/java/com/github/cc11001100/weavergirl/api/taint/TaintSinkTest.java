@@ -1,6 +1,7 @@
 package com.github.cc11001100.weavergirl.api.taint;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
@@ -9,6 +10,7 @@ import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.exporter.DataExporter;
 import com.github.cc11001100.weavergirl.api.exporter.ExporterRegistry;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -144,5 +146,92 @@ class TaintSinkTest {
       ExporterRegistry.deactivate(exporter.name());
       ExporterRegistry.unregister(exporter.name());
     }
+  }
+
+  @Test
+  void commandObservationWalksArraysListsAndIgnoresTheRest() {
+    final List<InterceptorEvent> findings = new ArrayList<InterceptorEvent>();
+    InterceptorEventListener listener =
+        new InterceptorEventListener() {
+          @Override
+          public void onEvent(InterceptorEvent event) {
+            if (TaintFindings.EVENT_TYPE.equals(event.getType())) {
+              findings.add(event);
+            }
+          }
+        };
+    InterceptorEventPublisher.getInstance().addListener(listener);
+    try {
+      String tainted = new String("rm-rf");
+      Taint.tag(tainted, "http.parameter:cmd");
+
+      TaintPropagation.observeCommandList(null);
+      TaintPropagation.observeCommandValue(Integer.valueOf(1));
+      TaintPropagation.observeCommandValue(new String[] {tainted, "echo"});
+      TaintPropagation.observeCommandList(Arrays.asList(tainted, Integer.valueOf(2)));
+
+      assertEquals(2, findings.size());
+    } finally {
+      InterceptorEventPublisher.getInstance().removeListener(listener);
+    }
+  }
+
+  @Test
+  void observersAreNotifiedPerSliceAndAThrowingOneDoesNotStopTheNext() {
+    TaintBridge.SinkObserver broken =
+        new TaintBridge.SinkObserver() {
+          @Override
+          public void onFinding(
+              String sourceLabel, String sinkKind, String argument, int start, int end) {
+            throw new IllegalStateException("subscriber failed");
+          }
+        };
+    final List<String> seen = new ArrayList<String>();
+    TaintBridge.SinkObserver recording =
+        new TaintBridge.SinkObserver() {
+          @Override
+          public void onFinding(
+              String sourceLabel, String sinkKind, String argument, int start, int end) {
+            seen.add(sourceLabel + ":" + sinkKind);
+          }
+        };
+    TaintBridge.addObserver(null);
+    TaintBridge.addObserver(broken);
+    TaintBridge.addObserver(recording);
+    try {
+      String tainted = new String("rm-rf");
+      Taint.tag(tainted, "http.parameter:cmd");
+      Taint.tag(tainted, "http.parameter:cmd");
+
+      TaintPropagation.observeCommand(tainted);
+      TaintPropagation.observeSql(null);
+      TaintPropagation.observeSql("select 1");
+
+      assertEquals(1, seen.size());
+      assertEquals("http.parameter:cmd:command-execution", seen.get(0));
+    } finally {
+      TaintBridge.removeObserver(broken);
+      TaintBridge.removeObserver(recording);
+    }
+  }
+
+  @Test
+  void reentrancyGuardRejectsNestedEntryAndExecFramesNest() {
+    assertTrue(TaintBridge.tryEnter());
+    assertFalse(TaintBridge.tryEnter(), "a nested entry must be refused");
+    TaintBridge.leave();
+    assertTrue(TaintBridge.tryEnter(), "leaving releases the guard");
+    TaintBridge.leave();
+
+    assertTrue(TaintBridge.beginExecObservation());
+    assertFalse(TaintBridge.beginExecObservation(), "a nested exec stays inside the outer frame");
+    TaintBridge.endExecObservation();
+    assertFalse(TaintBridge.tryEnter(), "the outer frame still holds the guard");
+    TaintBridge.endExecObservation();
+    assertTrue(TaintBridge.tryEnter(), "ending the owning frame releases the guard");
+    TaintBridge.leave();
+
+    TaintBridge.endExecObservation();
+    TaintBridge.leave();
   }
 }

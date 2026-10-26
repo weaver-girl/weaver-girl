@@ -3,6 +3,7 @@ package com.github.cc11001100.weavergirl.api.taint;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -46,6 +47,11 @@ class TaintPropagationTest {
     assertTrue(ranges.get(1).getEnd() < combined.length(), "clean suffix stays clean");
     assertFalse(Taint.isTainted(prefix));
     assertFalse(Taint.isTainted(suffix));
+
+    // Null and empty inputs are dropped rather than recorded.
+    assertDoesNotThrow(() -> TaintPropagation.propagateConcat(null, left));
+    assertDoesNotThrow(() -> TaintPropagation.propagateConcat(combined, (CharSequence[]) null));
+    assertDoesNotThrow(() -> TaintPropagation.propagateConcat("x", (CharSequence) null));
     System.out.println(
         "IAST propagate concat source="
             + ranges.get(0).getSource()
