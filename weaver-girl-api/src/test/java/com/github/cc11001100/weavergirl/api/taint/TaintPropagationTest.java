@@ -52,6 +52,11 @@ class TaintPropagationTest {
     assertDoesNotThrow(() -> TaintPropagation.propagateConcat(null, left));
     assertDoesNotThrow(() -> TaintPropagation.propagateConcat(combined, (CharSequence[]) null));
     assertDoesNotThrow(() -> TaintPropagation.propagateConcat("x", (CharSequence) null));
+    assertDoesNotThrow(() -> TaintPropagation.propagateSubstring(null, left, 0, 1));
+    assertDoesNotThrow(() -> TaintPropagation.propagateSubstring("x", null, 0));
+    assertDoesNotThrow(() -> TaintPropagation.propagateAppend(null, left, 0));
+    assertDoesNotThrow(() -> TaintPropagation.propagateAppendSlice(new StringBuilder(), left, 2, 1, 0));
+    assertDoesNotThrow(() -> TaintPropagation.propagateToString(null, left));
     System.out.println(
         "IAST propagate concat source="
             + ranges.get(0).getSource()
@@ -107,6 +112,10 @@ class TaintPropagationTest {
     assertEquals(prefix.length(), ranges.get(0).getStart());
     assertEquals(prefix.length() + dirty.length(), ranges.get(0).getEnd());
     assertTrue(ranges.get(0).getEnd() < result.length());
+
+    StringBuilder sliced = new StringBuilder();
+    TaintPropagation.propagateAppendSlice(sliced, dirty, 0, dirty.length(), 0);
+    assertEquals("builder-origin", Taint.ranges(sliced).get(0).getSource());
     System.out.println("IAST propagate stringbuilder source=" + ranges.get(0).getSource());
   }
 }

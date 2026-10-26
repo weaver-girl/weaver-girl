@@ -169,8 +169,10 @@ class TaintSinkTest {
       TaintPropagation.observeCommandValue(Integer.valueOf(1));
       TaintPropagation.observeCommandValue(new String[] {tainted, "echo"});
       TaintPropagation.observeCommandList(Arrays.asList(tainted, Integer.valueOf(2)));
+      TaintPropagation.observeCommandValue(
+          Collections.singletonList(Collections.singletonList(tainted)));
 
-      assertEquals(2, findings.size());
+      assertEquals(3, findings.size());
     } finally {
       InterceptorEventPublisher.getInstance().removeListener(listener);
     }
@@ -232,6 +234,51 @@ class TaintSinkTest {
     TaintBridge.leave();
 
     TaintBridge.endExecObservation();
+    TaintBridge.leave();
+  }
+
+  @Test
+  void sourcesStayUniqueAndZeroLengthOrNullTagsAreNotEmitted() {
+    String value = new String("payload");
+    Taint.tag(value, "http.parameter:a");
+    Taint.tag(value, "http.parameter:a");
+    Taint.tag(value, "http.parameter:b");
+    Taint.tag(null, "ignored");
+    Taint.tag(value, null);
+
+    assertEquals(
+        Arrays.asList("http.parameter:a", "http.parameter:b"), Taint.sources(value));
+    assertFalse(Taint.hasSource(value, null));
+    assertFalse(Taint.hasSource(value, "missing"));
+    assertTrue(Taint.sources(new String("clean")).isEmpty());
+
+    final List<String> seen = new ArrayList<String>();
+    TaintBridge.SinkObserver observer =
+        new TaintBridge.SinkObserver() {
+          @Override
+          public void onFinding(
+              String sourceLabel, String sinkKind, String argument, int start, int end) {
+            seen.add(sourceLabel);
+          }
+        };
+    TaintBridge.addObserver(observer);
+    try {
+      String empty = new String("");
+      Taint.tag(empty, "http.parameter:empty");
+      TaintPropagation.observeCommand(empty);
+      TaintPropagation.observeCommand(null);
+      assertTrue(seen.isEmpty());
+    } finally {
+      TaintBridge.removeObserver(observer);
+    }
+  }
+
+  @Test
+  void closingWithoutAScopeAndLeavingWithoutAnEntryAreNoOps() {
+    Taint.closeScope();
+    TaintBridge.leave();
+    TaintBridge.endExecObservation();
+    assertTrue(TaintBridge.tryEnter());
     TaintBridge.leave();
   }
 }
