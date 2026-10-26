@@ -3,6 +3,7 @@ package com.github.cc11001100.weavergirl.api.context;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.github.cc11001100.weavergirl.api.tenant.TenantContext;
@@ -175,6 +176,101 @@ class ContextCompletableFutureTest {
     } finally {
       delegate.shutdownNow();
     }
+  }
+
+  @Test
+  void synchronousStagesRunTheWrappedCallbackWithTheCapturedContext() throws Exception {
+    ThreadContext.put("traceId", "cf-sync");
+    CompletableFuture<String> source = CompletableFuture.completedFuture("value");
+
+    assertEquals(
+        "cf-sync:value",
+        ContextCompletableFuture.thenApply(source, value -> ThreadContext.<String>get("traceId") + ":" + value)
+            .get(5, TimeUnit.SECONDS));
+
+    ConcurrentLinkedQueue<String> accepted = new ConcurrentLinkedQueue<String>();
+    ContextCompletableFuture.thenAccept(
+            source, value -> accepted.add(ThreadContext.<String>get("traceId") + ":" + value))
+        .get(5, TimeUnit.SECONDS);
+    assertEquals("cf-sync:value", accepted.poll());
+
+    ConcurrentLinkedQueue<String> ran = new ConcurrentLinkedQueue<String>();
+    ContextCompletableFuture.thenRun(source, () -> ran.add(ThreadContext.get("traceId")))
+        .get(5, TimeUnit.SECONDS);
+    assertEquals("cf-sync", ran.poll());
+
+    assertEquals(
+        "cf-sync",
+        ContextCompletableFuture.thenCompose(
+                source, value -> CompletableFuture.completedFuture(ThreadContext.<String>get("traceId")))
+            .get(5, TimeUnit.SECONDS));
+  }
+
+  @Test
+  void remainingAsyncStagesPropagateAndNullArgumentsAreRejected() throws Exception {
+    ThreadContext.put("traceId", "cf-rest");
+    ExecutorService delegate = Executors.newSingleThreadExecutor();
+    try {
+      CompletableFuture<String> source =
+          ContextCompletableFuture.supplyAsync(() -> ThreadContext.<String>get("traceId"), delegate);
+
+      ConcurrentLinkedQueue<String> accepted = new ConcurrentLinkedQueue<String>();
+      ContextCompletableFuture.thenAcceptAsync(source, value -> accepted.add(value), delegate)
+          .get(5, TimeUnit.SECONDS);
+      assertEquals("cf-rest", accepted.poll());
+
+      String recovered =
+          ContextCompletableFuture.exceptionallyAsync(
+                  ContextCompletableFuture.<String>supplyAsync(
+                      () -> {
+                        throw new IllegalStateException("boom");
+                      },
+                      delegate),
+                  ex -> ThreadContext.<String>get("traceId"),
+                  null)
+              .get(5, TimeUnit.SECONDS);
+      assertEquals("cf-rest", recovered);
+
+      String handled =
+          ContextCompletableFuture.handleAsync(
+                  CompletableFuture.<String>completedFuture(null),
+                  (value, ex) -> ThreadContext.<String>get("traceId"),
+                  null)
+              .get(5, TimeUnit.SECONDS);
+      assertEquals("cf-rest", handled);
+
+      AtomicReference<String> completed = new AtomicReference<String>();
+      ContextCompletableFuture.whenCompleteAsync(
+              CompletableFuture.completedFuture("done"),
+              (value, ex) -> completed.set(ThreadContext.get("traceId")),
+              null)
+          .get(5, TimeUnit.SECONDS);
+      assertEquals("cf-rest", completed.get());
+    } finally {
+      delegate.shutdownNow();
+    }
+
+    CompletableFuture<String> present = CompletableFuture.completedFuture("x");
+    assertThrows(NullPointerException.class, () -> ContextCompletableFuture.thenApply(null, value -> value));
+    assertThrows(NullPointerException.class, () -> ContextCompletableFuture.thenApply(present, null));
+    assertThrows(
+        NullPointerException.class, () -> ContextCompletableFuture.thenApplyAsync(null, value -> value, null));
+    assertThrows(NullPointerException.class, () -> ContextCompletableFuture.thenAccept(present, null));
+    assertThrows(NullPointerException.class, () -> ContextCompletableFuture.thenAcceptAsync(null, value -> {}, null));
+    assertThrows(NullPointerException.class, () -> ContextCompletableFuture.thenRun(present, null));
+    assertThrows(NullPointerException.class, () -> ContextCompletableFuture.thenRunAsync(null, () -> {}, null));
+    assertThrows(NullPointerException.class, () -> ContextCompletableFuture.thenCompose(present, null));
+    assertThrows(
+        NullPointerException.class,
+        () -> ContextCompletableFuture.thenComposeAsync(null, value -> present, null));
+    assertThrows(
+        NullPointerException.class, () -> ContextCompletableFuture.exceptionallyAsync(present, null, null));
+    assertThrows(
+        NullPointerException.class, () -> ContextCompletableFuture.handleAsync(present, null, null));
+    assertThrows(
+        NullPointerException.class, () -> ContextCompletableFuture.whenCompleteAsync(present, null, null));
+    assertThrows(NullPointerException.class, () -> ContextCompletableFuture.supplyAsync(null));
+    assertThrows(NullPointerException.class, () -> ContextCompletableFuture.runAsync(null, null));
   }
 
   @Test

@@ -2,6 +2,9 @@ package com.github.cc11001100.weavergirl.api.matcher;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.io.Serializable;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import org.junit.jupiter.api.Test;
 
 class ClassMatcherTest {
@@ -65,4 +68,40 @@ class ClassMatcherTest {
     assertTrue(m.toString().contains("NAME_PATTERN"));
     assertTrue(m.toString().contains("com\\.example\\..*"));
   }
+
+  @Test
+  void loadedClassMatchCoversNamePatternAnnotationSuperTypeAndInterface() {
+    assertTrue(ClassMatcher.byName(String.class.getName()).matches(String.class));
+    assertFalse(ClassMatcher.byName(String.class.getName()).matches(Integer.class));
+    assertTrue(ClassMatcher.byNamePattern("java\\.lang\\.S.*").matches(String.class));
+    assertFalse(ClassMatcher.byNamePattern("java\\.lang\\.I.*").matches(String.class));
+    assertTrue(ClassMatcher.any().matches(String.class));
+
+    assertTrue(ClassMatcher.byAnnotation(Marked.class.getName()).matches(MarkedType.class));
+    assertFalse(ClassMatcher.byAnnotation(Marked.class.getName()).matches(String.class));
+    assertFalse(ClassMatcher.byAnnotation("no.such.Annotation").matches(MarkedType.class));
+    assertFalse(ClassMatcher.byAnnotation(String.class.getName()).matches(String.class));
+
+    assertTrue(ClassMatcher.bySuperClass(Number.class.getName()).matches(Integer.class));
+    assertFalse(ClassMatcher.bySuperClass(Integer.class.getName()).matches(Integer.class));
+    assertFalse(ClassMatcher.bySuperClass("no.such.Type").matches(Integer.class));
+
+    assertTrue(ClassMatcher.byInterface(Serializable.class.getName()).matches(String.class));
+    assertFalse(ClassMatcher.byInterface(String.class.getName()).matches(String.class));
+  }
+
+  @Test
+  void equalityRejectsADifferentTypeAndTheSameInstanceMatchesItself() {
+    ClassMatcher matcher = ClassMatcher.byName("com.example.Service");
+
+    assertEquals(matcher, matcher);
+    assertNotEquals(matcher, "com.example.Service");
+    assertNotEquals(ClassMatcher.byName("com.example.Service"), ClassMatcher.any());
+  }
+
+  @Retention(RetentionPolicy.RUNTIME)
+  @interface Marked {}
+
+  @Marked
+  static final class MarkedType {}
 }

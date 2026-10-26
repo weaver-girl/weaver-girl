@@ -357,4 +357,78 @@ class TracerTest {
   void recordException_withoutASpanIsANoOp() {
     assertDoesNotThrow(() -> Tracer.recordException(new RuntimeException("ignored")));
   }
+
+  @Test
+  void setCompletionListenerReplacesEarlierListenersAndIgnoresNull() {
+    final List<String> seen = new ArrayList<String>();
+    SpanCompletionListener first =
+        new SpanCompletionListener() {
+          @Override
+          public void onSpanComplete(SpanContext span, long durationMs) {
+            seen.add("first");
+          }
+        };
+    SpanCompletionListener second =
+        new SpanCompletionListener() {
+          @Override
+          public void onSpanComplete(SpanContext span, long durationMs) {
+            seen.add("second");
+          }
+        };
+    try {
+      Tracer.addCompletionListener(first);
+      Tracer.setCompletionListener(second);
+      Tracer.startSpan("named");
+      Tracer.endSpan("", "");
+      assertEquals(Collections.singletonList("second"), seen);
+
+      seen.clear();
+      Tracer.setCompletionListener(null);
+      Tracer.startSpan("named");
+      assertEquals("named", Tracer.endSpan(null, null).getOperationName());
+      assertTrue(seen.isEmpty());
+    } finally {
+      Tracer.setCompletionListener(null);
+    }
+  }
+
+  @Test
+  void anUnnamedChildFallsBackToARootAndHeaderLookupIsCaseInsensitive() {
+    SpanContext child = Tracer.startChildSpan("orphan");
+    assertNull(child.getParentSpanId());
+
+    Tracer.startSpan("checkout");
+    Tracer.setBaggage("user", "a b");
+    SpanContext span = Tracer.getCurrentSpan();
+    Map<String, String> headers = new HashMap<String, String>();
+    Tracer.inject(span, headers);
+
+    Map<String, String> mixed = new HashMap<String, String>();
+    mixed.put("TraceParent", headers.get(Tracer.TRACEPARENT_HEADER));
+    mixed.put("Baggage", headers.get(Tracer.BAGGAGE_HEADER));
+    SpanContext extracted = Tracer.extract(mixed);
+
+    assertNotNull(extracted);
+    assertEquals(span.getTraceId(), extracted.getTraceId());
+    assertEquals("a b", extracted.getBaggageItem("user"));
+    assertTrue(span.toString().contains(span.getTraceId()));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> SpanContext.builder().traceId(span.getTraceId()).spanId("").build());
+  }
+
+  @Test
+  void aBrokenBaggageMemberIsSkippedInsteadOfFailingExtraction() {
+    Map<String, String> headers = new HashMap<String, String>();
+    headers.put(
+        Tracer.TRACEPARENT_HEADER, "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
+    headers.put(Tracer.BAGGAGE_HEADER, "bad,%zz=kept,good=value");
+
+    SpanContext extracted = Tracer.extract(headers);
+
+    assertNotNull(extracted);
+    assertEquals("value", extracted.getBaggageItem("good"));
+    assertEquals("kept", extracted.getBaggageItem("%zz"));
+    assertNull(extracted.getBaggageItem("bad"));
+  }
 }

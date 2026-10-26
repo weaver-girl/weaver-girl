@@ -2,6 +2,8 @@ package com.github.cc11001100.weavergirl.api.observability;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.github.cc11001100.weavergirl.api.tracing.SpanContext;
+import com.github.cc11001100.weavergirl.api.tracing.Tracer;
 import java.util.Collections;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -73,5 +75,48 @@ class SpanRecordTest {
     assertEquals("acme", record.getBaggage().get("tenant"));
     assertThrows(
         UnsupportedOperationException.class, () -> record.getAttributes().put("x", "y"));
+  }
+
+  @Test
+  void conversionLiftsKindNormalizesNamesAndKeepsTheRest() {
+    SpanContext span =
+        SpanContext.builder()
+            .traceId("trace")
+            .spanId("span")
+            .parentSpanId("parent")
+            .attribute(Tracer.SPAN_KIND_ATTRIBUTE, " SERVER ")
+            .attribute("http.method", "GET")
+            .baggage("tenant", "acme")
+            .errorStatus("ERROR")
+            .build();
+
+    SpanRecord record = SpanRecord.from(span, -3);
+
+    assertEquals("trace", record.getTraceId());
+    assertEquals("span", record.getSpanId());
+    assertEquals("parent", record.getParentSpanId());
+    assertEquals("server", record.getKind());
+    assertEquals("unknown", record.getOperationName());
+    assertEquals("ERROR", record.getStatus());
+    assertEquals(0, record.getDurationMs());
+    assertEquals("GET", record.getAttribute("http.method"));
+    assertNull(record.getAttribute(Tracer.SPAN_KIND_ATTRIBUTE));
+    assertEquals("acme", record.getBaggage().get("tenant"));
+    assertTrue(record.toString().contains("trace=trace"));
+
+    SpanContext named =
+        SpanContext.builder().traceId("trace").spanId("span").operationName("GET /orders").build();
+    assertEquals("GET /orders", SpanRecord.from(named, 5).getOperationName());
+  }
+
+  @Test
+  void anEmptyKindAndOperationNameFallBackToTheDefaults() {
+    SpanRecord record =
+        SpanRecord.builder().traceId("t").spanId("s").kind("").operationName("").build();
+
+    assertEquals(SpanRecord.KIND_INTERNAL, record.getKind());
+    assertEquals("unknown", record.getOperationName());
+    assertNull(record.getStatus());
+    assertFalse(record.isError());
   }
 }

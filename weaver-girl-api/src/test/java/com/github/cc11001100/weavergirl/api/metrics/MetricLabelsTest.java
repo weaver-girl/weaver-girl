@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.github.cc11001100.weavergirl.api.metrics.MetricLabels;
 import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
 import com.github.cc11001100.weavergirl.api.metrics.MetricSnapshot;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
@@ -86,6 +87,57 @@ class MetricLabelsTest {
     MetricSnapshot snap = MetricRegistry.snapshot("http_requests", labels);
     assertNotNull(snap);
     assertEquals(labels, snap.getLabels());
+  }
+
+  @Test
+  void snapshotAllReattachesLabelsAndSkipsAMalformedKey() {
+    Map<String, String> labels = MetricLabels.of("region", "cn", "zone", "a").build();
+    MetricRegistry.record("requests", labels, 4.0);
+    MetricRegistry.getOrCreate("requests{broken}");
+    MetricRegistry.getOrCreate("requests{}");
+    MetricRegistry.getOrCreate("requests{=missing}");
+
+    Map<String, MetricSnapshot> snapshots = MetricRegistry.snapshotAll();
+
+    assertEquals(labels, snapshots.get("requests{region=cn,zone=a}").getLabels());
+    assertTrue(snapshots.get("requests{broken}").getLabels().isEmpty());
+    assertTrue(snapshots.get("requests{}").getLabels().isEmpty());
+    assertTrue(snapshots.get("requests{=missing}").getLabels().isEmpty());
+  }
+
+  @Test
+  void labeledLookupFallsBackToTheBareNameAndReportsAMissingMetric() {
+    MetricRegistry.record("plain", Collections.<String, String>emptyMap(), 1.0);
+    assertNull(MetricRegistry.snapshot("missing", MetricLabels.of("k", "v").build()));
+    assertEquals(1, MetricRegistry.snapshot("plain", null).getCount());
+    assertEquals(1, MetricRegistry.snapshot("plain", Collections.<String, String>emptyMap()).getCount());
+    assertTrue(MetricRegistry.getMetricsByName("plain").contains("plain"));
+  }
+
+  @Test
+  void aConflictingWindowIsIgnoredAndTheExistingAggregatorIsReused() {
+    MetricRegistry.getOrCreate("latency", MetricRegistry.WINDOW_1MIN);
+
+    TimeWindowAggregator reused =
+        MetricRegistry.getOrCreateStrict("latency", MetricRegistry.WINDOW_5MIN);
+
+    assertEquals(MetricRegistry.WINDOW_1MIN, reused.getWindowMs());
+    assertSame(reused, MetricRegistry.getOrCreateStrict("latency", MetricRegistry.WINDOW_1MIN));
+  }
+
+  @Test
+  void registryReportsNamesSizeAndRemoval() {
+    MetricRegistry.record("one", 1.0);
+    MetricRegistry.record("two", 2.0);
+
+    assertEquals(2, MetricRegistry.size());
+    assertTrue(MetricRegistry.getMetricNames().contains("one"));
+    assertNull(MetricRegistry.snapshot("absent"));
+
+    MetricRegistry.remove("one");
+
+    assertEquals(1, MetricRegistry.size());
+    assertFalse(MetricRegistry.getMetricNames().contains("one"));
   }
 
   @Test
