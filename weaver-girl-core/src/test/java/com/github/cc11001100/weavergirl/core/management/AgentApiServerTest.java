@@ -114,6 +114,36 @@ class AgentApiServerTest {
   }
 
   @Test
+  void tracesEndpoint_rendersTheCurrentSpanAndThreadContext() {
+    assertEquals(port, server.getPort());
+
+    com.github.cc11001100.weavergirl.api.tracing.SpanContext span =
+        com.github.cc11001100.weavergirl.api.tracing.SpanContext.builder()
+            .traceId("trace\"with\\quote")
+            .spanId("span-1")
+            .parentSpanId("parent-1")
+            .operationName("GET /items")
+            .errorStatus("ERROR")
+            .baggage("user", "ada")
+            .build();
+    java.util.Map<String, Object> context = new java.util.LinkedHashMap<>();
+    context.put("requestId", "r-1");
+    context.put("missing", null);
+    com.github.cc11001100.weavergirl.api.context.ContextSnapshot snapshot =
+        com.github.cc11001100.weavergirl.api.context.ContextSnapshot.fromThreadContext(context);
+
+    String json = AgentApiServer.tracesJson(span, snapshot);
+
+    assertTrue(json.contains("\"parentSpanId\":\"parent-1\""));
+    assertTrue(json.contains("\"errorStatus\":\"ERROR\""));
+    assertTrue(json.contains("\"baggageCount\":1"));
+    assertTrue(json.contains("\"traceId\":\"trace\\\"with\\\\quote\""));
+    assertTrue(json.contains("\"requestId\":\"r-1\""));
+    assertTrue(json.contains("\"missing\":\"null\""));
+    assertTrue(json.contains("\"hasSpan\":true"));
+  }
+
+  @Test
   void tracesEndpoint_returnsJson() throws Exception {
     String response = get("/traces");
     assertTrue(response.contains("\"span\"") || response.contains("\"hasSpan\""));

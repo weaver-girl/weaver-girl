@@ -9,6 +9,7 @@ import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
 import com.github.cc11001100.weavergirl.api.plugin.PluginManager;
 import com.github.cc11001100.weavergirl.api.security.SecurityAuditLog;
 import com.github.cc11001100.weavergirl.api.security.SecurityPolicy;
+import com.github.cc11001100.weavergirl.api.tracing.SpanContext;
 import com.github.cc11001100.weavergirl.api.tracing.Tracer;
 import com.github.cc11001100.weavergirl.core.alert.DefaultAlertEngine;
 import com.github.cc11001100.weavergirl.core.status.AgentStatus;
@@ -272,9 +273,15 @@ public class AgentApiServer {
   }
 
   private void handleTraces(HttpExchange exchange) throws IOException {
-    com.github.cc11001100.weavergirl.api.tracing.SpanContext span =
-        com.github.cc11001100.weavergirl.api.tracing.Tracer.getCurrentSpan();
-    ContextSnapshot snapshot = ContextSnapshot.capture();
+    sendJson(exchange, tracesJson(Tracer.getCurrentSpan(), ContextSnapshot.capture()));
+  }
+
+  /**
+   * The {@code /traces} body. Package-visible so a test can build it for a span and a snapshot it
+   * supplies: the handler reads both off the request thread, and the server answers on its own
+   * thread, whose thread-locals a caller cannot set.
+   */
+  static String tracesJson(SpanContext span, ContextSnapshot snapshot) {
     StringBuilder json = new StringBuilder();
     json.append("{");
     if (span != null) {
@@ -308,7 +315,7 @@ public class AgentApiServer {
     json.append("\"hasSpan\":").append(span != null).append(",");
     json.append("\"snapshotEmpty\":").append(snapshot.isEmpty());
     json.append("}");
-    sendJson(exchange, json.toString());
+    return json.toString();
   }
 
   private void handleContextPropagators(HttpExchange exchange) throws IOException {
@@ -456,7 +463,7 @@ public class AgentApiServer {
     }
   }
 
-  private String esc(String s) {
+  private static String esc(String s) {
     if (s == null) return "";
     return s.replace("\\", "\\\\").replace("\"", "\\\"");
   }
