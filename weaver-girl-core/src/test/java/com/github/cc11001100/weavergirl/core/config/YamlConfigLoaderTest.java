@@ -321,6 +321,41 @@ class YamlConfigLoaderTest {
     }
   }
 
+  /**
+   * A nested value that is not a scalar is not a plugin option, and a null key has nothing to name, so
+   * both are skipped instead of being handed to a plugin.
+   */
+  @Test
+  void nestedNonScalarsAndANullKeyAreSkipped() throws Exception {
+    Path file = Files.createTempFile("weaver-girl-nested", ".yml");
+    try {
+      Files.write(
+          file,
+          ("metricsPort: 9400\n"
+                  + "plugins:\n"
+                  + "  jdbc:\n"
+                  + "    slowQueryThreshold: 1000\n"
+                  + "    tags:\n"
+                  + "      - slow\n"
+                  + "    limits: [1, 2]\n"
+                  + "    ?\n"
+                  + "    note: ~\n")
+              .getBytes(StandardCharsets.UTF_8));
+
+      WeaverConfig config = loader.parseFromFile(file.toString());
+
+      assertEquals("9400", config.getPluginConfig().get("metricsPort"));
+      assertEquals("1000", config.getPluginConfig().get("plugins.jdbc.slowQueryThreshold"));
+      // A list is not a settings map, so it is kept as its printed form rather than expanded.
+      assertEquals("[slow]", config.getPluginConfig().get("plugins.jdbc.tags"));
+      assertEquals("[1, 2]", config.getPluginConfig().get("plugins.jdbc.limits"));
+      // A null value names nothing, and a null key has no name, so neither is kept.
+      assertFalse(config.getPluginConfig().containsKey("plugins.jdbc.note"));
+    } finally {
+      Files.deleteIfExists(file);
+    }
+  }
+
   @Test
   void parseFromFile_acceptsPluginDirectoryAsScalar() throws Exception {
     Path file = Files.createTempFile("weaver-girl-plugin-dir", ".yml");

@@ -88,12 +88,12 @@ class SpanDataTest {
         SpanData.builder()
             .traceId("t1")
             .spanId("s1")
-            .operationName("say \"hi\"\nline2\\path")
+            .operationName("say \"hi\"\nline2\r\\path")
             .attribute("error.message", "expected \"a\", got\tb")
             .build();
 
     String json = span.toOtlpJson();
-    assertTrue(json.contains("\"name\":\"say \\\"hi\\\"\\nline2\\\\path\""), json);
+    assertTrue(json.contains("\"name\":\"say \\\"hi\\\"\\nline2\\r\\\\path\""), json);
     assertTrue(json.contains("\"stringValue\":\"expected \\\"a\\\", got\\tb\""), json);
     assertFalse(json.contains("\"name\":\"say \"hi\""));
   }

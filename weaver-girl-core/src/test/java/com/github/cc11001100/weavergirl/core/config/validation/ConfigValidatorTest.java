@@ -41,6 +41,22 @@ class ConfigValidatorTest {
     assertTrue(result.getErrors().get(0).contains("1-65535"));
   }
 
+  /** A long key that is not a number, and one that is not positive, are both rejected. */
+  @Test
+  void aLongThatDoesNotParseAndANonPositiveLongFail() {
+    Map<String, String> unparsable = new LinkedHashMap<>();
+    unparsable.put("circuitBreakerCooldownMs", "999999999999999999999");
+    ConfigValidationResult overflow = ConfigValidator.validate(unparsable);
+    assertFalse(overflow.isValid());
+    assertTrue(overflow.getErrors().get(0).contains("positive number"));
+
+    Map<String, String> nonPositive = new LinkedHashMap<>();
+    nonPositive.put("circuitBreakerCooldownMs", "0");
+    ConfigValidationResult zero = ConfigValidator.validate(nonPositive);
+    assertFalse(zero.isValid());
+    assertTrue(zero.getErrors().get(0).contains("must be > 0"));
+  }
+
   @Test
   void negativeValue_fails() {
     Map<String, String> config = new LinkedHashMap<>();
