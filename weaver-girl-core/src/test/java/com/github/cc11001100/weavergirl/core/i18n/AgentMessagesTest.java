@@ -260,7 +260,7 @@ class AgentMessagesTest {
    */
   @Test
   void aLocaleWithoutABundleFallsBackAndAMissingKeyIsMarked() {
-    // French has no bundle, so the message comes from the English one.
+    // French has a language bundle but no country bundle, so fr_FR resolves through it.
     String message = AgentMessages.msg("agent.bootstrap.started", Locale.FRANCE, "1.0");
     assertFalse(message.startsWith("!"), "a known key was not found in the fallback bundle");
 
@@ -272,6 +272,22 @@ class AgentMessagesTest {
     assertFalse(AgentMessages.getKeys(Locale.FRANCE).isEmpty());
     assertTrue(AgentMessages.hasKey("agent.bootstrap.started", Locale.FRANCE));
     assertFalse(AgentMessages.hasKey("no.such.key", Locale.FRANCE));
+  }
+
+  /**
+   * A locale that names a country with no bundle of its own, but whose language has one, uses the
+   * language bundle. French has a language bundle and no country bundle.
+   */
+  @Test
+  void aCountryLocaleFallsBackToItsLanguageBundle() throws Exception {
+    // An earlier test may have cached the English fallback for this locale, before the language
+    // bundle mattered. Drop it so the lookup runs again.
+    java.lang.reflect.Field cache = AgentMessages.class.getDeclaredField("bundleCache");
+    cache.setAccessible(true);
+    ((java.util.Map<?, ?>) cache.get(null)).remove(Locale.FRANCE);
+
+    String message = AgentMessages.msg("agent.bootstrap.started", Locale.FRANCE, "1.0");
+    assertTrue(message.contains("démarrage"), "the French language bundle was not used");
   }
 
   /** An empty property is ignored, so initialization follows the JVM locale instead. */
