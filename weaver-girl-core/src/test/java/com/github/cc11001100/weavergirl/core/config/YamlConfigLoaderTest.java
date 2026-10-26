@@ -407,6 +407,21 @@ class YamlConfigLoaderTest {
             .isEmpty());
   }
 
+  /**
+   * A mapping entry with no key is skipped rather than stored. SnakeYAML parses an explicit {@code ?}
+   * as a null key, and the scalar beside it is still collected.
+   */
+  @Test
+  void aNullKeyIsSkippedWhenCollectingPluginOptions() throws Exception {
+    Path file = Files.createTempFile("weaver-girl", ".yml");
+    try {
+      Files.write(file, "metricsPort: 9400\n? \n".getBytes(StandardCharsets.UTF_8));
+      assertEquals("9400", loader.parseFromFile(file.toString()).getPluginOptions().get("metricsPort"));
+    } finally {
+      Files.deleteIfExists(file);
+    }
+  }
+
   /** A config with no interceptor section registers nothing. */
   @Test
   void aConfigWithoutInterceptorsRegistersNothing() {

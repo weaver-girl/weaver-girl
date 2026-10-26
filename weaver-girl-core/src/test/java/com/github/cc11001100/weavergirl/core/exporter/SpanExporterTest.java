@@ -230,6 +230,23 @@ class SpanExporterTest {
     }
   }
 
+  /** The log formatter emits every span, and the no-arg in-memory formatter keeps only its bound. */
+  @Test
+  void theLogFormatterEmitsAndTheDefaultMemoryFormatterDropsTheOverflow() {
+    new SpanFormatter.LoggingSpanFormatter().export(java.util.Collections.singletonList(createSpan("t1", "s1", "op1", 10)));
+
+    SpanFormatter.InMemorySpanFormatter bounded = new SpanFormatter.InMemorySpanFormatter();
+    java.util.List<SpanData> spans = new java.util.ArrayList<>();
+    for (int i = 0; i < 1001; i++) {
+      spans.add(createSpan("t" + i, "s" + i, "op", 1));
+    }
+    bounded.export(spans);
+
+    assertEquals(1000, bounded.size(), "the default bound kept more than a thousand spans");
+    bounded.clear();
+    assertEquals(0, bounded.size());
+  }
+
   /** Runs {@code body} with the exporter's scheduler replaced, and puts the original back after. */
   private void withScheduler(ScheduledExecutorService replacement, Runnable body) throws Exception {
     java.lang.reflect.Field field = SpanExporter.class.getDeclaredField("scheduler");
