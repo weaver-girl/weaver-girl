@@ -137,6 +137,21 @@ class WeaverGirlBootstrapTest {
     assertTrue(hookRan[0], "a removed jar with no transformer must fall back to the retransform hook");
   }
 
+  /** Nothing is woven before a transformer is installed, and unweaving removes what bootstrap wove. */
+  @Test
+  void unweaveReportsNothingBeforeInstallAndRestoresAfter() {
+    assertEquals(0, WeaverGirl.create().unweave());
+
+    WeaverGirl agent = WeaverGirl.bootstrap(instrumentation());
+    try {
+      assertTrue(agent.unweave() >= 0);
+      // The transformer is gone, so a second call has nothing left to restore.
+      assertEquals(0, agent.unweave());
+    } finally {
+      agent.shutdown();
+    }
+  }
+
   @Test
   void refreshAndRetransformReportThroughTheInstalledTransformer() {
     WeaverGirl agent = WeaverGirl.bootstrap(instrumentation());
