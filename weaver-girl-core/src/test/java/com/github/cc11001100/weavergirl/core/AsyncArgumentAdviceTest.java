@@ -9,9 +9,12 @@ import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
 import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
 import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
+import com.github.cc11001100.weavergirl.core.switches.GlobalInterceptionSwitch;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +32,17 @@ class AsyncArgumentAdviceTest {
   @AfterEach
   void tearDown() {
     InterceptorHolder.setRegistry(null);
+    resetSwitch(true);
+  }
+
+  private static void resetSwitch(boolean on) {
+    try {
+      Field enabled = GlobalInterceptionSwitch.class.getDeclaredField("enabled");
+      enabled.setAccessible(true);
+      enabled.setBoolean(null, on);
+    } catch (ReflectiveOperationException e) {
+      throw new IllegalStateException(e);
+    }
   }
 
   @Test
@@ -158,6 +172,98 @@ class AsyncArgumentAdviceTest {
     assertEquals(1, rewriteCount.get(), "Interceptor rewriting the second argument should run");
   }
 
+  /**
+   * The guards the happy path never reaches: interception switched off, no registry installed, a
+   * definition that is not an argument rewrite, an interceptor whose circuit is open, a {@code
+   * before} that throws, a {@code null} argument array, and a rewrite of every bound slot.
+   */
+  @Test
+  void onMethodEnterCoversTheGuardsTheHappyPathSkips() throws Exception {
+    Method method = SampleExecutor.class.getMethod("submit", Runnable.class, Object.class);
+    Runnable task = () -> {};
+
+    resetSwitch(false);
+    AsyncArgumentAdvice.onMethodEnter(
+        SampleExecutor.class, method, new Object[] {task}, task, null, null, null, null, null, null,
+        null);
+
+    resetSwitch(true);
+    InterceptorHolder.setRegistry(null);
+    AsyncArgumentAdvice.onMethodEnter(
+        SampleExecutor.class, method, null, null, null, null, null, null, null, null, null);
+    InterceptorHolder.setRegistry(registry);
+
+    // A plain interceptor is not an argument rewrite, so it is skipped.
+    registry.register(
+        new InterceptorDefinition(
+            "plain", new Pointcut(ClassMatcher.any(), MethodMatcher.any()), new Interceptor() {}));
+
+    // Five consecutive failures open the circuit, so the next call skips the interceptor.
+    registry.register(
+        argumentRewrite(
+            "tripped",
+            MethodMatcher.any(),
+            new Interceptor() {
+              @Override
+              public void before(MethodInvocation invocation) {}
+            }));
+    for (int i = 0; i < 5; i++) {
+      InterceptorHolder.recordOutcome("tripped", false, 0L);
+    }
+
+    AtomicReference<Throwable> thrown = new AtomicReference<>();
+    registry.register(
+        argumentRewrite(
+            "exploding",
+            MethodMatcher.any(),
+            new Interceptor() {
+              @Override
+              public void before(MethodInvocation invocation) {
+                thrown.set(new IllegalStateException("before failed"));
+                throw (RuntimeException) thrown.get();
+              }
+            }));
+
+    AsyncArgumentAdvice.onMethodEnter(
+        SampleExecutor.class, method, new Object[] {task, "r"}, task, "r", null, null, null, null,
+        null, null);
+
+    // Eight arguments exercise every write-back slot, including the last one.
+    Method wide =
+        WideTarget.class.getMethod(
+            "take",
+            Object.class,
+            Object.class,
+            Object.class,
+            Object.class,
+            Object.class,
+            Object.class,
+            Object.class,
+            Object.class);
+    Object[] eight = {"a", "b", "c", "d", "e", "f", "g", "h"};
+    registry.register(
+        argumentRewrite(
+            "wide",
+            MethodMatcher.any(),
+            new Interceptor() {
+              @Override
+              public void before(MethodInvocation invocation) {
+                for (int i = 0; i < 8; i++) {
+                  invocation.setArgument(i, "w" + i);
+                }
+              }
+            }));
+    AsyncArgumentAdvice.onMethodEnter(
+        WideTarget.class, wide, eight, "a", "b", "c", "d", "e", "f", "g", "h");
+  }
+
+  /** A method whose origin ByteBuddy cannot resolve, so the whole enter advice bails out. */
+  @Test
+  void onMethodEnterSwallowsAFailureWhileReadingTheMethod() {
+    AsyncArgumentAdvice.onMethodEnter(
+        SampleExecutor.class, null, new Object[0], null, null, null, null, null, null, null, null);
+  }
+
   private InterceptorDefinition argumentRewrite(
       String name, MethodMatcher matcher, Interceptor interceptor) {
     return new InterceptorDefinition(
@@ -172,5 +278,11 @@ class AsyncArgumentAdviceTest {
     public void submit(Runnable task, Object result) {}
 
     public void submit(Callable<?> task) {}
+  }
+
+  /** Varargs gives a reflected method with eight parameter types for the write-back loop. */
+  static final class WideTarget {
+    public void take(
+        Object a, Object b, Object c, Object d, Object e, Object f, Object g, Object h) {}
   }
 }

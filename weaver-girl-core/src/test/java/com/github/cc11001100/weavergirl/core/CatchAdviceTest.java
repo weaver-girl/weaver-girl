@@ -516,6 +516,75 @@ class CatchAdviceTest {
     assertFalse(reacquired.isReturnOverridden());
   }
 
+  /**
+   * {@link CatchAdvice#onCatchExit} is what ByteBuddy inlines, and it is the only place the
+   * disposition is written back onto the exit frame. Calling it directly runs each write-back: a
+   * return override, a replacement exception, a suppression, and a {@code null} disposition.
+   */
+  @Test
+  void onCatchExitWritesEachDispositionBack() throws Exception {
+    AbstractCatchInterceptor interceptor =
+        new AbstractCatchInterceptor() {
+          private int calls;
+
+          @Override
+          public void onCatch(CatchInvocation invocation) {
+            calls++;
+            if (calls == 1) {
+              invocation.setCatchReturnValue("fallback");
+            } else if (calls == 2) {
+              invocation.setCaughtException(new IllegalStateException("replacement"));
+            } else {
+              invocation.suppressCatch();
+            }
+          }
+
+          @Override
+          public CatchPointcut[] catchPointcuts() {
+            return new CatchPointcut[] {anyExceptionInSampleClass()};
+          }
+        };
+    registerCatchInterceptor(registry, "writeback", interceptor);
+
+    Method method = method("doWork");
+    // Nothing observable escapes the exit advice: the assigned locals are read by ByteBuddy, not by
+    // the caller. Each call must simply complete, covering one branch of the write-back.
+    CatchAdvice.onCatchExit(SampleClass.class, method, new RuntimeException("a"), null);
+    CatchAdvice.onCatchExit(SampleClass.class, method, new RuntimeException("b"), null);
+    CatchAdvice.onCatchExit(SampleClass.class, method, new RuntimeException("c"), null);
+    // No interceptor matches a null throwable, so the disposition is null and nothing is written.
+    CatchAdvice.onCatchExit(SampleClass.class, method, null, null);
+  }
+
+  /** An open circuit breaker skips the matching catch interceptor entirely. */
+  @Test
+  void dispatch_openCircuitBreaker_skipsTheInterceptor() throws Exception {
+    boolean[] called = {false};
+    AbstractCatchInterceptor interceptor =
+        new AbstractCatchInterceptor() {
+          @Override
+          public void onCatch(CatchInvocation invocation) {
+            called[0] = true;
+          }
+
+          @Override
+          public CatchPointcut[] catchPointcuts() {
+            return new CatchPointcut[] {anyExceptionInSampleClass()};
+          }
+        };
+    registerCatchInterceptor(registry, "catch-tripped", interceptor);
+    for (int i = 0; i < 5; i++) {
+      InterceptorHolder.recordOutcome("catch-tripped", false, 0L);
+    }
+
+    CatchAdvice.CatchDisposition result =
+        CatchAdvice.dispatch(
+            SampleClass.class, method("doWork"), new RuntimeException("boom"), registry);
+
+    assertFalse(called[0]);
+    assertNull(result);
+  }
+
   // --- Helper sample class for testing ---
 
   public static class SampleClass {
