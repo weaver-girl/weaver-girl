@@ -1,5 +1,6 @@
 package com.github.cc11001100.weavergirl.core.sampling;
 
+import com.github.cc11001100.weavergirl.api.sampling.SamplingStrategyRegistry;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
@@ -40,15 +41,21 @@ public class SamplingController {
   /**
    * Check if the current invocation should be sampled.
    *
+   * <p>The built-in counter rate runs first, because it is the load-shedding mechanism. Only
+   * invocations it keeps are handed to the active {@link
+   * com.github.cc11001100.weavergirl.api.sampling.SamplingStrategy}, which a plugin registers to
+   * decide by its own criteria. With no strategy active the decision is exactly the counter rate, so
+   * existing behaviour is unchanged.
+   *
    * @return true if the invocation should be intercepted, false to skip
    */
   public boolean shouldSample() {
     long count = invocationCounter.incrementAndGet();
     int rate = samplingRate.get();
-    if (rate <= 1) {
-      return true; // sample everything
+    if (rate > 1 && count % rate != 0) {
+      return false;
     }
-    return count % rate == 0;
+    return SamplingStrategyRegistry.decide();
   }
 
   /** Get the current sampling rate. A rate of 1 means sample all, 10 means 1 in 10, etc. */

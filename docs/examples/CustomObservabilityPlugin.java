@@ -11,6 +11,7 @@ import com.github.cc11001100.weavergirl.api.observability.SpanRecord;
 import com.github.cc11001100.weavergirl.api.observability.SpanSink;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin;
+import com.github.cc11001100.weavergirl.api.sampling.SamplingStrategy;
 import com.github.cc11001100.weavergirl.api.tracing.SpanContext;
 import com.github.cc11001100.weavergirl.api.tracing.SpanProcessor;
 import java.util.ArrayList;
@@ -25,7 +26,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Example: a plugin that plugs into all six observability extension points.
+ * Example: a plugin that plugs into all seven observability extension points.
  *
  * <ul>
  *   <li>{@link SpanProcessor} governs spans before anyone sees them: it drops health checks and
@@ -40,9 +41,11 @@ import java.util.logging.Logger;
  *       appears in {@code /health}, {@code /health/checks} and the Prometheus health gauges.
  *   <li>{@link AlertChannel} plus an {@link AlertRule} route threshold crossings on the plugin's own
  *       metric to a chat webhook or pager, without the host application wiring anything up.
+ *   <li>{@link SamplingStrategy} decides which invocations are worth tracing. The built-in load
+ *       shedding still runs first, so this only narrows what the agent already chose to keep.
  * </ul>
  *
- * <p>All six are registered through {@link PluginContext}, which means the engine withdraws them
+ * <p>All seven are registered through {@link PluginContext}, which means the engine withdraws them
  * automatically when the plugin is unloaded or hot-replaced. Registering through the static
  * helpers works too, but then {@link #destroy()} has to unregister them by hand.
  *
@@ -180,6 +183,21 @@ public class CustomObservabilityPlugin implements WeaverPlugin {
           }
         });
 
+    context.registerSamplingStrategy(
+        new SamplingStrategy() {
+          @Override
+          public String name() {
+            return "custom-observability";
+          }
+
+          @Override
+          public boolean shouldSample() {
+            // Asked on the application thread, after the built-in rate: memory only, never throw.
+            SpanContext span = com.github.cc11001100.weavergirl.api.tracing.Tracer.getCurrentSpan();
+            return span == null || span.getErrorStatus() != null || spansDropped.get() > 0;
+          }
+        });
+
     context.registerAlertRule(
         AlertRule.builder()
             .name("custom-observability-buffer-filling")
@@ -234,9 +252,9 @@ public class CustomObservabilityPlugin implements WeaverPlugin {
 
   @Override
   public void destroy() {
-    // The context withdraws the processor, sink, metric source, resource provider, health check
-    // and alert channel/rule on unload. This method only owns the buffer thread and any connection
-    // it opened.
+    // The context withdraws the processor, sink, metric source, resource provider, health check,
+    // alert channel/rule and sampling strategy on unload. This method only owns the buffer thread
+    // and any connection it opened.
     running = false;
     if (flusher != null) {
       flusher.interrupt();

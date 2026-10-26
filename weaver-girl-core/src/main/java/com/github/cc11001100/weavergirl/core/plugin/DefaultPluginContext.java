@@ -16,6 +16,8 @@ import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.plugin.PluginLogger;
 import com.github.cc11001100.weavergirl.api.plugin.PluginServices;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.api.sampling.SamplingStrategy;
+import com.github.cc11001100.weavergirl.api.sampling.SamplingStrategyRegistry;
 import com.github.cc11001100.weavergirl.api.tracing.SpanProcessor;
 import com.github.cc11001100.weavergirl.api.tracing.SpanProcessors;
 import java.util.Collections;
@@ -44,6 +46,8 @@ public class DefaultPluginContext implements PluginContext {
 
   private final List<AlertChannel> alertChannels = new CopyOnWriteArrayList<>();
   private final List<AlertRule> alertRules = new CopyOnWriteArrayList<>();
+
+  private final List<SamplingStrategy> samplingStrategies = new CopyOnWriteArrayList<>();
 
   private final List<MetricSource> metricSources = new CopyOnWriteArrayList<>();
   private final List<ResourceAttributeProvider> resourceAttributeProviders =
@@ -93,6 +97,14 @@ public class DefaultPluginContext implements PluginContext {
   }
 
   @Override
+  public void registerSamplingStrategy(SamplingStrategy strategy) {
+    // Qualified on the interface: a plain super call to a default method fails to resolve under the
+    // JDK 21 compiler.
+    PluginContext.super.registerSamplingStrategy(strategy);
+    samplingStrategies.add(strategy);
+  }
+
+  @Override
   public void registerMetricSource(MetricSource source) {
     MetricSources.register(source);
     metricSources.add(source);
@@ -134,6 +146,11 @@ public class DefaultPluginContext implements PluginContext {
       AlertEngine.removeRule(rule);
     }
     alertRules.clear();
+    for (SamplingStrategy strategy : samplingStrategies) {
+      // Identity-based: a replacement registered later under the same name stays active.
+      SamplingStrategyRegistry.unregister(strategy);
+    }
+    samplingStrategies.clear();
     for (MetricSource source : metricSources) {
       MetricSources.unregister(source);
     }

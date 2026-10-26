@@ -14,6 +14,7 @@ import com.github.cc11001100.weavergirl.api.observability.SpanSinkStats;
 import com.github.cc11001100.weavergirl.api.observability.SpanSinks;
 import com.github.cc11001100.weavergirl.api.plugin.PluginHealth;
 import com.github.cc11001100.weavergirl.api.plugin.PluginHealthRegistry;
+import com.github.cc11001100.weavergirl.api.sampling.SamplingStrategyRegistry;
 import com.github.cc11001100.weavergirl.api.plugin.PluginInfo;
 import com.github.cc11001100.weavergirl.api.plugin.PluginManager;
 import com.github.cc11001100.weavergirl.api.status.AgentStatusHolder;
@@ -344,6 +345,7 @@ public class PrometheusExporter implements InterceptorEventListener {
     appendPluginHealthMetrics(sb);
     appendPluginStateMetrics(sb);
     appendSpanProcessorMetrics(sb);
+    appendSamplingStrategyMetrics(sb);
     appendSpanSinkMetrics(sb);
     appendJvmMetrics(sb);
     appendRegistryMetrics(sb);
@@ -1164,6 +1166,49 @@ public class PrometheusExporter implements InterceptorEventListener {
           .append("\n");
     }
     sb.append("\n");
+  }
+
+  /**
+   * Decisions made by the active plugin-contributed sampling strategy. Nothing is emitted while the
+   * built-in adaptive sampling is the only gate, so a scrape never implies a strategy is installed
+   * when it isn't. A rising {@code errors} series means a strategy is throwing and being bypassed.
+   */
+  private void appendSamplingStrategyMetrics(StringBuilder sb) {
+    String strategy;
+    long kept;
+    long rejected;
+    long failed;
+    try {
+      strategy = SamplingStrategyRegistry.getActiveName();
+      kept = SamplingStrategyRegistry.getSampled();
+      rejected = SamplingStrategyRegistry.getDropped();
+      failed = SamplingStrategyRegistry.getFailures();
+    } catch (RuntimeException e) {
+      return;
+    }
+    if (kept == 0 && rejected == 0 && failed == 0) {
+      return;
+    }
+
+    sb.append("# HELP weavergirl_sampling_decisions_total Sampling decisions by the active strategy\n");
+    sb.append("# TYPE weavergirl_sampling_decisions_total counter\n");
+    sb.append("weavergirl_sampling_decisions_total{strategy=\"")
+        .append(escape(strategy))
+        .append("\",decision=\"kept\"} ")
+        .append(kept)
+        .append("\n");
+    sb.append("weavergirl_sampling_decisions_total{strategy=\"")
+        .append(escape(strategy))
+        .append("\",decision=\"dropped\"} ")
+        .append(rejected)
+        .append("\n");
+    sb.append("# HELP weavergirl_sampling_strategy_errors_total Sampling strategy invocations that threw\n");
+    sb.append("# TYPE weavergirl_sampling_strategy_errors_total counter\n");
+    sb.append("weavergirl_sampling_strategy_errors_total{strategy=\"")
+        .append(escape(strategy))
+        .append("\"} ")
+        .append(failed)
+        .append("\n\n");
   }
 
   /**

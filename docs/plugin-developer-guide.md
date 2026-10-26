@@ -273,6 +273,7 @@ These services are static and live in `weaver-girl-api`, so a plugin can use the
 | Report whether a component you own is healthy | `PluginContext.registerHealthCheck(HealthCheck)` |
 | Send alerts to your own system | `PluginContext.registerAlertChannel(AlertChannel)` |
 | Define an alert threshold for a metric you produce | `PluginContext.registerAlertRule(AlertRule)` |
+| Decide which invocations are worth tracing | `PluginContext.registerSamplingStrategy(SamplingStrategy)` |
 
 The rows below `registerSpanProcessor` are the observability extension points (the histogram row is
 a capability of `MetricSource`). Register them through the `PluginContext` you were given, not
@@ -283,7 +284,9 @@ on the application thread, so keep it to attribute work only. `SpanSink.onSpanEn
 thread after the processor chain — queue the record and ship it from your own thread rather than
 doing IO inline. Metrics sources and health checks are pulled on every scrape or probe and need no
 thread of their own. Alert channels are notified on the thread that evaluates a rule, so queue
-there too. Full rules, precedence, and a complete example plugin are in
+there too. A `SamplingStrategy` is asked on the application thread for every invocation the built-in
+load shedding kept, so it must be a pure in-memory decision — one throwing strategy is bypassed
+rather than allowed to stop interception. Full rules, precedence, and a complete example plugin are in
 [observability.md §9](observability.md#9-扩展点插件自定义可观测) and
 [examples/CustomObservabilityPlugin.java](examples/CustomObservabilityPlugin.java).
 

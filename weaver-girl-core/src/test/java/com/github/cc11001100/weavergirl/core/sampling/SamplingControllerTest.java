@@ -2,6 +2,9 @@ package com.github.cc11001100.weavergirl.core.sampling;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.github.cc11001100.weavergirl.api.sampling.SamplingStrategy;
+import com.github.cc11001100.weavergirl.api.sampling.SamplingStrategyRegistry;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -17,6 +20,13 @@ class SamplingControllerTest {
     controller.setSamplingRate(1);
     controller.setMaxRate(100);
     controller.setThresholdInvocationsPerSecond(10000);
+    SamplingStrategyRegistry.clear();
+  }
+
+  @AfterEach
+  void tearDown() {
+    // The registry is a global singleton; a strategy left active would drop every later test.
+    SamplingStrategyRegistry.clear();
   }
 
   @Test
@@ -104,6 +114,80 @@ class SamplingControllerTest {
     controller.shouldSample();
     controller.shouldSample();
     assertEquals(3, controller.getInvocationCount());
+  }
+
+  @Test
+  void activeStrategyDropsWhatTheBuiltInRateKept() {
+    SamplingStrategyRegistry.register(never("drop-all"));
+    SamplingStrategyRegistry.setActive("drop-all");
+
+    int sampled = 0;
+    for (int i = 0; i < 20; i++) {
+      if (controller.shouldSample()) {
+        sampled++;
+      }
+    }
+    assertEquals(0, sampled, "an active strategy must be able to drop every invocation");
+    assertEquals(20, SamplingStrategyRegistry.getDropped());
+  }
+
+  @Test
+  void builtInRateRunsBeforeTheStrategy() {
+    controller.setSamplingRate(10);
+    SamplingStrategyRegistry.register(always("keep-all"));
+    SamplingStrategyRegistry.setActive("keep-all");
+
+    int sampled = 0;
+    for (int i = 0; i < 100; i++) {
+      if (controller.shouldSample()) {
+        sampled++;
+      }
+    }
+    assertEquals(10, sampled, "load shedding must still drop before the strategy is asked");
+    assertEquals(10, SamplingStrategyRegistry.getSampled());
+  }
+
+  @Test
+  void throwingStrategyDoesNotStopInterception() {
+    SamplingStrategy broken =
+        new SamplingStrategy() {
+          @Override
+          public String name() {
+            return "broken";
+          }
+
+          @Override
+          public boolean shouldSample() {
+            throw new IllegalStateException("boom");
+          }
+        };
+    SamplingStrategyRegistry.register(broken);
+    SamplingStrategyRegistry.setActive("broken");
+
+    assertTrue(controller.shouldSample());
+    assertEquals(1, SamplingStrategyRegistry.getFailures());
+  }
+
+  private static SamplingStrategy never(final String name) {
+    return constant(name, false);
+  }
+
+  private static SamplingStrategy always(final String name) {
+    return constant(name, true);
+  }
+
+  private static SamplingStrategy constant(final String name, final boolean sample) {
+    return new SamplingStrategy() {
+      @Override
+      public String name() {
+        return name;
+      }
+
+      @Override
+      public boolean shouldSample() {
+        return sample;
+      }
+    };
   }
 
   @Test

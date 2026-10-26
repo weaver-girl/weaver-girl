@@ -492,6 +492,7 @@ curl -s http://localhost:9400/metrics | grep -E 'weavergirl_(agent|jvm|events)'
 | `HealthCheck` | `context.registerHealthCheck(check)` | 探针请求、`/metrics` 抓取时 | 数据库/缓存/下游依赖健康 |
 | `AlertChannel` | `context.registerAlertChannel(channel)` | 规则命中时同步通知 | 钉钉/Slack/工单/值班系统 |
 | `AlertRule` | `context.registerAlertRule(rule)` | 指标值进入 `AlertEngine.evaluate` 时 | 插件为自己产生的指标定义阈值 |
+| `SamplingStrategy` | `context.registerSamplingStrategy(strategy)` | 每次拦截调用（内置限流采样之后） | 按 URL、错误率、业务标记决定哪些调用值得追踪 |
 
 ```text
 Tracer.endSpan ──► SpanProcessors ──► SpanSinks ──► 你的 SpanSink（同步）
@@ -501,6 +502,7 @@ GET /metrics   ──► MetricSources ──► 你的 MetricSource.collect(...
 GET /metrics   ──► HealthChecks  ──► 你的 HealthCheck.check()
 OTLP 导出批次  ──► ResourceAttributes ──► 你的 provider（覆盖默认值，可被显式配置覆盖）
 AlertEngine    ──► AlertChannels ──► 你的 AlertChannel.onAlert(...)
+拦截调用       ──► 内置计数采样（限流）──► 你的 SamplingStrategy.shouldSample()
 ```
 
 `SpanProcessor` 是**唯一的统一治理点**：它位于所有消费者之前，所以一次过滤同时作用于内置
@@ -674,7 +676,34 @@ context.registerAlertChannel(alert -> chatWebhook.send(alert)); // 不要在这�
 - 与 `MetricSource` 配合即可形成“插件产生指标 → 插件定义规则 → 插件接收告警”的闭环，底座
   不参与具体后端。
 
-### 9.8 完整示例
+### 9.8 SamplingStrategy
+
+采样有两层。第一层是内置的计数采样（`SamplingController`），按调用速率自动降采样来保护宿主
+进程，这一层不可被插件绕过。第二层才是插件策略：只有第一层放行的调用才会询问当前激活的
+`SamplingStrategy`。
+
+```java
+context.registerSamplingStrategy(
+    new SamplingStrategy() {
+      @Override public String name() { return "errors-and-slow"; }
+
+      @Override public boolean shouldSample() {
+        // 在应用线程上执行：只做内存判断，不要查外部系统。
+        SpanContext span = Tracer.getCurrentSpan();
+        return span != null && span.getErrorStatus() != null;
+      }
+    });
+```
+
+- 注册即激活：`registerSamplingStrategy` 同时把它设为当前策略，立即生效。
+- 卸载只移除**自己注册的那个实例**；如果它正是激活策略，则回退到内置自适应采样。后注册的同名
+  策略不受影响。
+- 策略抛异常只计入 `weavergirl_sampling_strategy_errors_total`，该次调用照常拦截——坏掉的插件
+  不能让追踪静默停止。
+- 决策计数在 `weavergirl_sampling_decisions_total{strategy,decision}`（`kept` / `dropped`）。
+  没有策略做过决策时不输出任何序列，避免在没装策略时假装有一个。
+
+### 9.9 完整示例
 
 一个同时注册多种扩展点的插件见
 [docs/examples/CustomObservabilityPlugin.java](examples/CustomObservabilityPlugin.java)。

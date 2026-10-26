@@ -29,6 +29,7 @@ class PrometheusExporterTest {
     com.github.cc11001100.weavergirl.api.plugin.PluginHealthRegistry.clear();
     com.github.cc11001100.weavergirl.api.observability.SpanSinks.clear();
     com.github.cc11001100.weavergirl.api.tracing.SpanProcessors.clear();
+    com.github.cc11001100.weavergirl.api.sampling.SamplingStrategyRegistry.clear();
     com.github.cc11001100.weavergirl.api.tracing.Tracer.setCurrentSpan(null);
     com.github.cc11001100.weavergirl.api.plugin.PluginManagerHolder.setInstance(null);
   }
@@ -313,6 +314,38 @@ class PrometheusExporterTest {
         metrics);
     assertTrue(
         metrics.contains("# TYPE weavergirl_span_processor_dropped_total counter"), metrics);
+  }
+
+  @Test
+  void renderMetrics_rendersSamplingStrategyDecisions() {
+    com.github.cc11001100.weavergirl.api.sampling.SamplingStrategyRegistry.register(
+        new com.github.cc11001100.weavergirl.api.sampling.SamplingStrategy() {
+          @Override
+          public String name() {
+            return "errors-only";
+          }
+
+          @Override
+          public boolean shouldSample() {
+            return false;
+          }
+        });
+    com.github.cc11001100.weavergirl.api.sampling.SamplingStrategyRegistry.setActive("errors-only");
+    com.github.cc11001100.weavergirl.api.sampling.SamplingStrategyRegistry.decide();
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(
+        metrics.contains(
+            "weavergirl_sampling_decisions_total{strategy=\"errors-only\",decision=\"dropped\"} 1"),
+        metrics);
+    assertTrue(
+        metrics.contains(
+            "weavergirl_sampling_decisions_total{strategy=\"errors-only\",decision=\"kept\"} 0"),
+        metrics);
+    assertTrue(
+        metrics.contains("weavergirl_sampling_strategy_errors_total{strategy=\"errors-only\"} 0"),
+        metrics);
   }
 
   @Test

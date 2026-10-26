@@ -273,6 +273,33 @@ public interface PluginContext {
   }
 
   /**
+   * Contribute a sampling strategy that decides which intercepted invocations are actually traced.
+   *
+   * <p>The strategy is registered under {@link
+   * com.github.cc11001100.weavergirl.api.sampling.SamplingStrategy#name()} and made the active one, so
+   * it takes effect immediately. The built-in load-shedding rate still runs first: a strategy only
+   * sees invocations the agent has not already dropped to protect the host. It is called on the
+   * application's thread for every remaining invocation, so it must be fast, thread-safe and must not
+   * throw — a strategy that throws is bypassed and the invocation is kept.
+   *
+   * <p>The agent's implementation withdraws the strategy when the plugin is unloaded or destroyed, and
+   * only when it is still the one registered under its name, so a replacement registered later is
+   * left untouched. Withdrawing the active strategy falls back to the built-in adaptive sampling.
+   *
+   * @param strategy the strategy to add and activate
+   * @see com.github.cc11001100.weavergirl.api.sampling.SamplingStrategy
+   * @since 1.0.0
+   */
+  default void registerSamplingStrategy(
+      com.github.cc11001100.weavergirl.api.sampling.SamplingStrategy strategy) {
+    com.github.cc11001100.weavergirl.api.sampling.SamplingStrategyRegistry.register(strategy);
+    if (strategy != null && strategy.name() != null) {
+      com.github.cc11001100.weavergirl.api.sampling.SamplingStrategyRegistry.setActive(
+          strategy.name());
+    }
+  }
+
+  /**
    * Whether {@code className} can be seen from {@code classLoader} without loading it.
    *
    * <p>A plugin decides from this whether the library it instruments is on the classpath. Loading the class

@@ -3,8 +3,11 @@ package com.github.cc11001100.weavergirl.core.plugin;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.api.sampling.SamplingStrategy;
+import com.github.cc11001100.weavergirl.api.sampling.SamplingStrategyRegistry;
 import java.util.HashMap;
 import java.util.Map;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -19,6 +22,12 @@ class DefaultPluginContextTest {
   @BeforeEach
   void setUp() {
     mockRegistry = Mockito.mock(InterceptorRegistry.class);
+  }
+
+  @AfterEach
+  void tearDown() {
+    // A strategy left registered would drop sampling for every later test in the JVM.
+    SamplingStrategyRegistry.clear();
   }
 
   @Test
@@ -220,6 +229,18 @@ class DefaultPluginContextTest {
             return com.github.cc11001100.weavergirl.api.observability.HealthCheckResult.up();
           }
         };
+    SamplingStrategy strategy =
+        new SamplingStrategy() {
+          @Override
+          public String name() {
+            return "test-strategy";
+          }
+
+          @Override
+          public boolean shouldSample() {
+            return true;
+          }
+        };
     com.github.cc11001100.weavergirl.api.alert.AlertChannel channel = alert -> {};
     com.github.cc11001100.weavergirl.api.alert.AlertRule rule =
         com.github.cc11001100.weavergirl.api.alert.AlertRule.builder()
@@ -235,6 +256,7 @@ class DefaultPluginContextTest {
     context.registerHealthCheck(healthCheck);
     context.registerAlertChannel(channel);
     context.registerAlertRule(rule);
+    context.registerSamplingStrategy(strategy);
     context.registerMetricSource(source);
     context.registerResourceAttributes(provider);
 
@@ -250,6 +272,8 @@ class DefaultPluginContextTest {
         com.github.cc11001100.weavergirl.api.alert.AlertEngine.getChannels().contains(channel));
     assertTrue(
         com.github.cc11001100.weavergirl.api.alert.AlertEngine.getRules().contains(rule));
+    assertSame(strategy, SamplingStrategyRegistry.get("test-strategy"));
+    assertEquals("test-strategy", SamplingStrategyRegistry.getActiveName());
     assertTrue(
         com.github.cc11001100.weavergirl.api.observability.MetricSources.getSources()
             .contains(source));
@@ -277,6 +301,10 @@ class DefaultPluginContextTest {
     assertFalse(
         com.github.cc11001100.weavergirl.api.alert.AlertEngine.getRules().contains(rule),
         "an unloaded plugin must not keep firing alerts");
+    assertNull(
+        SamplingStrategyRegistry.get("test-strategy"),
+        "an unloaded plugin must not keep deciding what is sampled");
+    assertEquals("adaptive", SamplingStrategyRegistry.getActiveName());
     assertFalse(
         com.github.cc11001100.weavergirl.api.observability.MetricSources.getSources()
             .contains(source),

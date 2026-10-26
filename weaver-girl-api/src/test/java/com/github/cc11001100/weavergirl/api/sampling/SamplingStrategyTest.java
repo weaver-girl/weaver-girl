@@ -10,8 +10,8 @@ class SamplingStrategyTest {
 
   @AfterEach
   void tearDown() {
-    // Reset registry active strategy
-    SamplingStrategyRegistry.setActive("fixed");
+    // The registry is a global singleton; leave it as the built-ins only.
+    SamplingStrategyRegistry.clear();
   }
 
   // ===== SamplingStrategy interface =====
@@ -171,5 +171,84 @@ class SamplingStrategyTest {
   @Test
   void registry_registerNullIgnored() {
     assertDoesNotThrow(() -> SamplingStrategyRegistry.register(null));
+  }
+
+  @Test
+  void registry_unregisterRemovesOnlyThatInstance() {
+    SamplingStrategy first = strategy("shared", true);
+    SamplingStrategy replacement = strategy("shared", false);
+
+    SamplingStrategyRegistry.register(first);
+    assertTrue(SamplingStrategyRegistry.unregister(first));
+    assertNull(SamplingStrategyRegistry.get("shared"));
+
+    SamplingStrategyRegistry.register(replacement);
+    assertFalse(
+        SamplingStrategyRegistry.unregister(first),
+        "withdrawing an old instance must not remove its replacement");
+    assertSame(replacement, SamplingStrategyRegistry.get("shared"));
+  }
+
+  @Test
+  void registry_unregisterFallsBackWhenItWasActive() {
+    SamplingStrategy custom = strategy("custom", true);
+    SamplingStrategyRegistry.register(custom);
+    assertTrue(SamplingStrategyRegistry.setActive("custom"));
+
+    assertTrue(SamplingStrategyRegistry.unregister(custom));
+    assertEquals("adaptive", SamplingStrategyRegistry.getActiveName());
+  }
+
+  @Test
+  void decide_keepsEverythingWhenNothingIsActive() {
+    assertEquals("adaptive", SamplingStrategyRegistry.getActiveName());
+    assertTrue(SamplingStrategyRegistry.decide());
+    assertEquals(0, SamplingStrategyRegistry.getSampled());
+    assertEquals(0, SamplingStrategyRegistry.getDropped());
+  }
+
+  @Test
+  void decide_countsKeptAndDropped() {
+    SamplingStrategyRegistry.register(strategy("custom", false));
+    SamplingStrategyRegistry.setActive("custom");
+
+    assertFalse(SamplingStrategyRegistry.decide());
+    assertEquals(0, SamplingStrategyRegistry.getSampled());
+    assertEquals(1, SamplingStrategyRegistry.getDropped());
+  }
+
+  @Test
+  void decide_keepsTheInvocationWhenTheStrategyThrows() {
+    SamplingStrategy broken =
+        new SamplingStrategy() {
+          @Override
+          public String name() {
+            return "broken";
+          }
+
+          @Override
+          public boolean shouldSample() {
+            throw new IllegalStateException("boom");
+          }
+        };
+    SamplingStrategyRegistry.register(broken);
+    SamplingStrategyRegistry.setActive("broken");
+
+    assertTrue(SamplingStrategyRegistry.decide());
+    assertEquals(1, SamplingStrategyRegistry.getFailures());
+  }
+
+  private static SamplingStrategy strategy(final String name, final boolean sample) {
+    return new SamplingStrategy() {
+      @Override
+      public String name() {
+        return name;
+      }
+
+      @Override
+      public boolean shouldSample() {
+        return sample;
+      }
+    };
   }
 }
