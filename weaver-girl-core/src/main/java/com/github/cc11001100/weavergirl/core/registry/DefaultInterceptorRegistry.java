@@ -101,8 +101,14 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
           String[] ordered = declarePrecedence.value().split(",");
           for (int i = 0; i < ordered.length; i++) {
             String name = ordered[i].trim();
-            if (!name.isEmpty() && !newMap.containsKey(name)) {
-              newMap.put(name, i);
+            if (name.isEmpty() || newMap.containsKey(name)) {
+              continue;
+            }
+            newMap.put(name, i);
+            // Nested classes are written with dots in source and dollars in Class.getName().
+            Class<?> resolved = resolveAspectClass(name);
+            if (resolved != null) {
+              newMap.put(resolved.getName(), i);
             }
           }
         }
@@ -113,6 +119,27 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
     }
     precedenceMap.clear();
     precedenceMap.putAll(newMap);
+  }
+
+  /**
+   * {@code @DeclarePrecedence} names nested classes with dots. {@code Class.getName()} uses
+   * {@code $}. Walk the dots from the right until the class loads.
+   */
+  private static Class<?> resolveAspectClass(String name) {
+    ClassLoader loader = Thread.currentThread().getContextClassLoader();
+    String candidate = name;
+    while (candidate != null) {
+      try {
+        return Class.forName(candidate, false, loader);
+      } catch (Throwable ignored) {
+        int dot = candidate.lastIndexOf('.');
+        if (dot < 0) {
+          return null;
+        }
+        candidate = candidate.substring(0, dot) + '$' + candidate.substring(dot + 1);
+      }
+    }
+    return null;
   }
 
   /**

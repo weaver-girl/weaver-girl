@@ -733,9 +733,12 @@ class DefaultInterceptorRegistryTest {
   void annotationLoader_fqnDeclarePrecedence_ordersEqualPriorityDefinitions() {
     com.github.cc11001100.weavergirl.core.plugin.AnnotationPluginLoader loader =
         new com.github.cc11001100.weavergirl.core.plugin.AnnotationPluginLoader();
-    java.util.Set<Class<?>> aspects = new java.util.HashSet<>();
-    aspects.add(SecurityAspect.class);
+    // Insertion order is deliberately the reverse of the precedence order: a HashSet iterates in
+    // identity-hash order, which made this test flaky, and registering Logging first proves the
+    // precedence list — not registration order — decided the result.
+    java.util.Set<Class<?>> aspects = new java.util.LinkedHashSet<>();
     aspects.add(LoggingAspect.class);
+    aspects.add(SecurityAspect.class);
     aspects.add(OrderingConfig.class);
     loader.loadAnnotatedInterceptors(aspects, registry);
 

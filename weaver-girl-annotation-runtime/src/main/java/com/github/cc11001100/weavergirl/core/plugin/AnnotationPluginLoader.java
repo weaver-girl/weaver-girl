@@ -627,6 +627,22 @@ public class AnnotationPluginLoader {
     allTargetMethods.addAll(warnIfSlowMethods.keySet());
 
     if (allTargetMethods.isEmpty()) {
+      // A class can exist only to declare @DeclarePrecedence. It has no advice methods, but the
+      // registry learns precedence by loading registered aspect classes, so it still has to be
+      // registered. The method name matches nothing, so the definition does not weave real methods.
+      if (clazz.getAnnotation(DeclarePrecedence.class) != null) {
+        registry.register(
+            new InterceptorDefinition(
+                "annotation-" + clazz.getSimpleName() + "-precedence",
+                new Pointcut(classMatcher, MethodMatcher.byName("__weavergirl_precedence_only__")),
+                new Interceptor() {},
+                priority,
+                InterceptorDefinition.AdviceMode.STANDARD,
+                false,
+                null,
+                null,
+                clazz.getName()));
+      }
       return;
     }
 
