@@ -541,6 +541,6 @@ public class MyProcessor implements SpanProcessor, ConfigurableExtension {
 
 ## 参考
 
-- [CustomObservabilityPlugin](../examples/CustomObservabilityPlugin.java) - 完整示例插件
+- [CustomObservabilityPlugin](examples/CustomObservabilityPlugin.java) - 完整示例插件
 - [observability.md](observability.md) - 可观测性总体设计
-- [extension-point-improvement-plan.md](extension-point-improvement.md) - 扩展点改进计划
+- [extension-point-improvement-plan.md](extension-point-improvement-plan.md) - 扩展点改进计划
