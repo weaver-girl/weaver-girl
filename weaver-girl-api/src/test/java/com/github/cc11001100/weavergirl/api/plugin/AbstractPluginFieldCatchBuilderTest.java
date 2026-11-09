@@ -270,12 +270,14 @@ class AbstractPluginFieldCatchBuilderTest {
 
     com.github.cc11001100.weavergirl.api.interceptor.Interceptor interceptor =
         def.getInterceptor();
-    assertTrue(interceptor.hasAround());
+    assertFalse(
+        interceptor.hasAround(),
+        "timing-style around(before, after) must not skipOn the original body");
 
     com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation invocation =
         new com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation(
             AbstractPluginFieldCatchBuilderTest.class, "work", null, null);
-    interceptor.around(invocation);
+    interceptor.before(invocation);
     interceptor.onException(invocation);
 
     assertEquals(java.util.Arrays.asList("around", "after"), calls);

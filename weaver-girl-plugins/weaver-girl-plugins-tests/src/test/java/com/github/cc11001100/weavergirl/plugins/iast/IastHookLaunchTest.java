@@ -313,7 +313,10 @@ class IastHookLaunchTest {
     assertTrue(listing.contains("\"start\":\"" + attributes.get("start") + "\""));
     assertTrue(listing.contains("\"end\":\"" + attributes.get("end") + "\""));
     assertTrue(listing.contains("\"traceId\":\"" + span.getTraceId() + "\""));
-    assertTrue(listing.contains("\"spanId\":\"" + span.getSpanId() + "\""));
+    // Servlet starts a child of the caller's span. The finding is stamped with that child.
+    String stampedSpanId = attributes.get("spanId");
+    assertTrue(stampedSpanId != null && !stampedSpanId.isEmpty(), "finding must carry a span id");
+    assertTrue(listing.contains("\"spanId\":\"" + stampedSpanId + "\""));
     attributes.put("listingTraceId", span.getTraceId());
     System.out.println("IAST launch listing " + listing);
     System.out.println(

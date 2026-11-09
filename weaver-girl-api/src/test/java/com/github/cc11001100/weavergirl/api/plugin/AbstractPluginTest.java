@@ -148,6 +148,84 @@ class AbstractPluginTest {
   }
 
   @Test
+  void theTwoCallbackAroundIsNotAroundAdviceSoTheTargetMethodRuns() {
+    AtomicInteger befores = new AtomicInteger();
+    InterceptorDefinition definition =
+        plugin
+            .intercept("com.example.Service")
+            .around(invocation -> befores.incrementAndGet(), invocation -> {})
+            .build();
+
+    assertFalse(
+        definition.getInterceptor().hasAround(),
+        "timing-style around(before, after) must not skipOn the original body");
+    MethodInvocation armed = invocation();
+    definition.getInterceptor().before(armed);
+
+    assertEquals(1, befores.get());
+    assertFalse(armed.isProceedCalled());
+    assertFalse(armed.isSkipped());
+  }
+
+  @Test
+  void twoTimingStyleAroundsBothRunWithoutSkipping() {
+    AtomicInteger befores = new AtomicInteger();
+    InterceptorDefinition first =
+        plugin
+            .intercept("com.example.Service")
+            .around(invocation -> befores.incrementAndGet(), invocation -> {})
+            .build();
+    InterceptorDefinition second =
+        plugin
+            .intercept("com.example.Service")
+            .around(invocation -> befores.incrementAndGet(), invocation -> {})
+            .build();
+
+    assertFalse(first.getInterceptor().hasAround());
+    assertFalse(second.getInterceptor().hasAround());
+    MethodInvocation armed = invocation();
+    first.getInterceptor().before(armed);
+    second.getInterceptor().before(armed);
+
+    assertEquals(2, befores.get());
+    assertFalse(armed.isSkipped());
+  }
+
+  @Test
+  void theTwoCallbackAroundDoesNotProceedTwiceWhenBeforeAlreadyDid() {
+    InterceptorDefinition definition =
+        plugin
+            .intercept("com.example.Service")
+            .around(
+                invocation -> invocation.proceed(),
+                invocation -> {})
+            .build();
+
+    MethodInvocation armed = invocation();
+    armed.setProceedable(true);
+    assertDoesNotThrow(() -> definition.getInterceptor().around(armed));
+    assertEquals(1, armed.getProceedDepth());
+  }
+
+  @Test
+  void theTwoCallbackAroundHonorsAnExplicitSkip() {
+    InterceptorDefinition definition =
+        plugin
+            .intercept("com.example.Service")
+            .around(
+                invocation -> invocation.skipMethod(),
+                invocation -> {})
+            .build();
+
+    MethodInvocation armed = invocation();
+    armed.setProceedable(true);
+    definition.getInterceptor().around(armed);
+
+    assertTrue(armed.isSkipped());
+    assertFalse(armed.isProceedCalled());
+  }
+
+  @Test
   void aDefinitionWithoutCallbacksIsANoOp() {
     InterceptorDefinition definition = plugin.intercept("com.example.Service").build();
 

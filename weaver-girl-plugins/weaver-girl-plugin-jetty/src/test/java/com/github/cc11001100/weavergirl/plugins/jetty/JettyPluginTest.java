@@ -35,7 +35,10 @@ class JettyPluginTest {
     plugin.init(context(new HashMap<>()));
     List<InterceptorDefinition> defs = registerAndCollect();
     assertEquals(1, defs.size());
-    assertEquals(MatchType.INTERFACE, defs.get(0).getPointcut().getClassMatcher().getMatchType());
+    assertEquals(MatchType.EXACT_NAME, defs.get(0).getPointcut().getClassMatcher().getMatchType());
+    assertEquals(
+        "org.eclipse.jetty.server.HttpChannel",
+        defs.get(0).getPointcut().getClassMatcher().getPattern());
   }
 
   @Test

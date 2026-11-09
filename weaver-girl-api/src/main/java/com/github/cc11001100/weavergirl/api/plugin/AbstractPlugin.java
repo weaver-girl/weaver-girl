@@ -438,7 +438,11 @@ public abstract class AbstractPlugin implements WeaverPlugin {
     }
 
     /**
-     * Register both a before and after callback, creating an around-advice interceptor.
+     * Register both a before and after callback that observe the call without wrapping it.
+     *
+     * <p>These callbacks time or log the invocation. They are not around advice: the target method
+     * always runs, and {@link MethodInvocation#proceed()} is not required. Use {@link
+     * #around(AroundCallback)} when the interceptor itself must decide whether the body runs.
      *
      * <p>The after callback is also invoked on exception, allowing cleanup logic to run regardless
      * of whether the method succeeded or threw. Either callback can be combined with a later
@@ -450,9 +454,15 @@ public abstract class AbstractPlugin implements WeaverPlugin {
      */
     public InterceptorDefinitionBuilder around(
         final BeforeCallback beforeCallback, final AfterCallback afterCallback) {
-      this.aroundCallback = beforeCallback::before;
+      // Timing-style around(before, after) must not be dispatched as around advice.
+      // Around advice that does not call proceed() makes ByteBuddy skipOn drop the
+      // original body (Jetty Handler.handle → HTTP 404, H2 TableFilter → NPE).
+      // These two callbacks only observe the call, so they run on the before/after
+      // path and the target method always runs.
+      this.beforeCallback = beforeCallback;
       this.afterCallback = afterCallback;
-      this.exceptionCallback = afterCallback::after;
+      this.exceptionCallback = afterCallback == null ? null : afterCallback::after;
+      this.aroundCallback = null;
       return this;
     }
 
@@ -517,7 +527,13 @@ public abstract class AbstractPlugin implements WeaverPlugin {
           name != null
               ? name
               : plugin.name() + "-" + classMatcher.getPattern() + "-" + methodMatcher.getPattern();
-      return new InterceptorDefinition(definitionName, pointcut, interceptor, priority);
+      return new InterceptorDefinition(
+          definitionName,
+          pointcut,
+          interceptor,
+          priority,
+          InterceptorDefinition.AdviceMode.STANDARD,
+          interceptor.hasAround());
     }
   }
 
@@ -562,7 +578,9 @@ public abstract class AbstractPlugin implements WeaverPlugin {
       if (beforeCallback != null) {
         beforeCallback.before(invocation);
       }
-      aroundCallback.around(invocation);
+      if (aroundCallback != null) {
+        aroundCallback.around(invocation);
+      }
     }
 
     @Override

@@ -8,6 +8,7 @@ import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.matcher.MethodMatcher;
+import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
 import com.github.cc11001100.weavergirl.api.pointcut.Pointcut;
 import com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
@@ -15,6 +16,7 @@ import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
 import java.lang.reflect.Method;
 import java.util.Collections;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,6 +54,84 @@ class InterceptAdviceTest {
 
     assertNull(
         result, "Should return null when no interceptors match — original method should execute");
+  }
+
+  @Test
+  void onMethodEnter_twoCallbackAround_doesNotSkipTheTargetMethod() throws Exception {
+    // Plugins register timing as around(before, after). That form used to leave proceed()
+    // uncalled, so ByteBuddy skipOn dropped the original body (Jetty handle → 404,
+    // H2 TableFilter → NPE). The enter result must not be the invocation itself.
+    AtomicInteger befores = new AtomicInteger();
+    AbstractPlugin plugin =
+        new AbstractPlugin() {
+          @Override
+          public String name() {
+            return "timing-style";
+          }
+
+          @Override
+          public void registerInterceptors(InterceptorRegistry registry) {}
+        };
+    InterceptorDefinition timing =
+        plugin
+            .intercept(SampleClass.class.getName())
+            .method("greet")
+            .around(invocation -> befores.incrementAndGet(), invocation -> {})
+            .build();
+    assertFalse(timing.getInterceptor().hasAround());
+    registry.register(timing);
+
+    Method method = SampleClass.class.getMethod("greet");
+    Object result =
+        InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
+
+    assertEquals(1, befores.get());
+    assertFalse(
+        result instanceof MethodInvocation,
+        "timing-style around must let the original method body run");
+  }
+
+  @Test
+  void onMethodEnter_twoStackedCallbackArounds_doNotSkipTheTargetMethod() throws Exception {
+    // A second around(before, after) used to see proceed depth 1 and refuse to proceed.
+    // onMethodEnter treats an unchanged depth as a short-circuit and returns the invocation,
+    // which ByteBuddy skipOn uses to drop the target body.
+    AtomicInteger befores = new AtomicInteger();
+    AbstractPlugin plugin =
+        new AbstractPlugin() {
+          @Override
+          public String name() {
+            return "timing-style";
+          }
+
+          @Override
+          public void registerInterceptors(InterceptorRegistry registry) {}
+        };
+    registry.register(
+        plugin
+            .intercept(SampleClass.class.getName())
+            .method("greet")
+            .name("timing-a")
+            .priority(0)
+            .around(invocation -> befores.incrementAndGet(), invocation -> {})
+            .build());
+    registry.register(
+        plugin
+            .intercept(SampleClass.class.getName())
+            .method("greet")
+            .name("timing-b")
+            .priority(1)
+            .around(invocation -> befores.incrementAndGet(), invocation -> {})
+            .build());
+
+    Method method = SampleClass.class.getMethod("greet");
+    Object result =
+        InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
+
+    assertEquals(2, befores.get(), "both timing-style around callbacks must run");
+    assertFalse(
+        result instanceof MethodInvocation,
+        "stacked timing-style around must let the original method body run");
   }
 
   @Test

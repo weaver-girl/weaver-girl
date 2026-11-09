@@ -344,7 +344,7 @@ class PluginMatchTypeRegressionTest {
 
     assertEquals(1, defs.size(), "TraceCorrelationPlugin should register 1 definition");
     MatchType mt = defs.get(0).getPointcut().getClassMatcher().getMatchType();
-    // Default entryPointPattern is ".*Servlet$|.*Controller$|.*Filter$" — a regex
+    // Default entryPointPattern is a regex over application Servlet/Controller/Filter names.
     assertEquals(
         MatchType.NAME_PATTERN, mt, "TraceCorrelationPlugin should use NAME_PATTERN, got " + mt);
   }

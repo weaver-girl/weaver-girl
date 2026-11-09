@@ -24,8 +24,11 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li>{@code headerName} — HTTP header name for trace propagation (default: X-Trace-Id)
- *   <li>{@code entryPointPattern} — Regex for entry point class names (default:
- *       ".*Servlet$|.*Controller$|.*Filter$")
+ *   <li>{@code entryPointPattern} — Regex for entry point class names (default: application
+ *       classes whose simple name ends with Servlet, Controller, or Filter). JDK, servlet-API,
+ *       Jetty, and H2 classes are excluded: a bare {@code .*Filter$} also matches {@code
+ *       org.h2.table.TableFilter}, and weaving every method of that class (or of {@code
+ *       javax.servlet.http.HttpServlet}) skips or corrupts the original body.
  *   <li>{@code mdcKey} — MDC key name for traceId (default: traceId)
  *   <li>{@code enabled} — Enable/disable (default: true)
  * </ul>
@@ -34,8 +37,16 @@ public class TraceCorrelationPlugin extends AbstractPlugin {
 
   private static final Logger log = LoggerFactory.getLogger(TraceCorrelationPlugin.class);
 
+  /**
+   * Application entry points only. The negative lookahead keeps the servlet API, Jetty's own
+   * servlets, and H2's {@code TableFilter} out of an {@code anyMethod} around-advice.
+   */
+  static final String DEFAULT_ENTRY_POINT_PATTERN =
+      "(?!(?:java|javax|jakarta|sun|jdk)\\.|org\\.eclipse\\.jetty\\.|org\\.h2\\.)"
+          + ".*(?:Servlet|Controller|Filter)$";
+
   private String headerName = "X-Trace-Id";
-  private String entryPointPattern = ".*Servlet$|.*Controller$|.*Filter$";
+  private String entryPointPattern = DEFAULT_ENTRY_POINT_PATTERN;
   private String mdcKey = "traceId";
   private boolean enabled = true;
 
@@ -47,8 +58,7 @@ public class TraceCorrelationPlugin extends AbstractPlugin {
   @Override
   public void init(PluginContext context) {
     headerName = context.getConfig("headerName", "X-Trace-Id");
-    entryPointPattern =
-        context.getConfig("entryPointPattern", ".*Servlet$|.*Controller$|.*Filter$");
+    entryPointPattern = context.getConfig("entryPointPattern", DEFAULT_ENTRY_POINT_PATTERN);
     mdcKey = context.getConfig("mdcKey", "traceId");
     enabled = context.getConfigBoolean("enabled", true);
   }

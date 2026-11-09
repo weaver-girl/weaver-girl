@@ -6,12 +6,12 @@ import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 
 /**
- * Eclipse Jetty instrumentation plugin. Times request handling at the handler chain, the point every
- * request passes through before it reaches a servlet.
+ * Eclipse Jetty instrumentation plugin. Times each request at {@code HttpChannel.handle()}, the
+ * channel method Jetty 9 calls once per HTTP request.
  *
- * <p>{@code org.eclipse.jetty.server.Handler} is an interface implemented by every handler in the
- * chain, so it is matched by interface. {@code handle} is the method the server calls for each
- * request.
+ * <p>Weaving every {@code Handler.handle} implementation skips or corrupts servlet dispatch
+ * (HTTP 404 for mapped servlets). The channel is a single concrete class, so the servlet
+ * mappings stay intact.
  *
  * <p>Configuration:
  *
@@ -25,7 +25,7 @@ public class JettyPlugin extends AbstractPlugin {
   private long slowRequestThresholdMs = 1000;
   private boolean enabled = true;
 
-  private static final String HANDLER = "org.eclipse.jetty.server.Handler";
+  private static final String HTTP_CHANNEL = "org.eclipse.jetty.server.HttpChannel";
 
   @Override
   public String name() {
@@ -34,7 +34,7 @@ public class JettyPlugin extends AbstractPlugin {
 
   @Override
   public String instrumentedLibrary() {
-    return "org.eclipse.jetty.server.Handler";
+    return HTTP_CHANNEL;
   }
 
   @Override
@@ -51,9 +51,10 @@ public class JettyPlugin extends AbstractPlugin {
         new TimingInterceptor(name(), "slow-jetty", "jetty-error", slowRequestThresholdMs);
 
     registry.register(
-        interceptImplementing(HANDLER)
+        intercept(HTTP_CHANNEL)
             .method("handle")
-            .around(timing::before, timing::after)
+            .before(timing::before)
+            .after(timing::after)
             .onException(timing::onException)
             .priority(10)
             .build());

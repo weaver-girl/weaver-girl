@@ -6,6 +6,7 @@ import com.github.cc11001100.weavergirl.api.context.ThreadContext;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
+import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import java.util.ArrayList;
@@ -63,6 +64,25 @@ class TraceCorrelationPluginTest {
     plugin.registerInterceptors(registry);
     // Should register with custom entryPointPattern
     assertEquals(1, registry.definitions.size());
+  }
+
+  @Test
+  void defaultEntryPointsMatchApplicationTypesNotFrameworkOrH2() {
+    plugin.init(new StubContext(new HashMap<String, String>()));
+    plugin.registerInterceptors(registry);
+
+    ClassMatcher matcher = registry.definitions.get(0).getPointcut().getClassMatcher();
+    assertTrue(matcher.matches("com.example.web.UserServlet"));
+    assertTrue(matcher.matches("com.example.web.OrderController"));
+    assertTrue(matcher.matches("com.example.web.AuthFilter"));
+    assertFalse(matcher.matches("org.h2.table.TableFilter"));
+    assertFalse(matcher.matches("javax.servlet.http.HttpServlet"));
+    assertFalse(matcher.matches("javax.servlet.GenericServlet"));
+    assertFalse(matcher.matches("javax.servlet.Servlet"));
+    assertFalse(matcher.matches("javax.servlet.Filter"));
+    assertFalse(matcher.matches("jakarta.servlet.http.HttpServlet"));
+    assertFalse(
+        matcher.matches("org.eclipse.jetty.servlet.ServletHandler$Default404Servlet"));
   }
 
   @Test
