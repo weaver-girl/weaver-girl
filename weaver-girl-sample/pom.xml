@@ -159,11 +159,15 @@
             <version>4.0.1</version>
         </dependency>
 
-        <!-- H2 in-memory database for demonstrating JDBC plugin -->
+        <!-- H2 in-memory database for demonstrating JDBC plugin.
+             2.2.224 is the last release whose root classes are Java 8 bytecode
+             (major 52, Build-Jdk 1.8; newer APIs live under META-INF/versions).
+             2.3+ is class-file 55 and will not load on JDK 8, which this sample
+             has to run on: it is the HTTP + JDBC attach proof for the agent. -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <version>2.5.250</version>
+            <version>2.2.224</version>
         </dependency>
 
         <dependency>

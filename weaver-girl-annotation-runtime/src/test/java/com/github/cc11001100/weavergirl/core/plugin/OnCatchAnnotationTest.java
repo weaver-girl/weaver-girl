@@ -84,7 +84,7 @@ class OnCatchAnnotationTest {
             CatchHandlers.class, "process", new FileNotFoundException("missing.txt"));
     ioInterceptor.onCatch(invocation);
 
-    assertEquals(List.of("io:missing.txt"), CatchHandlers.invocations);
+    assertEquals(java.util.Collections.singletonList("io:missing.txt"), CatchHandlers.invocations);
   }
 
   @Test
@@ -123,6 +123,6 @@ class OnCatchAnnotationTest {
     mathInterceptor.onCatch(
         new CatchInvocation(CatchHandlers.class, "divide", new ArithmeticException("/ by zero")));
 
-    assertEquals(List.of("math:/ by zero"), CatchHandlers.invocations);
+    assertEquals(java.util.Collections.singletonList("math:/ by zero"), CatchHandlers.invocations);
   }
 }

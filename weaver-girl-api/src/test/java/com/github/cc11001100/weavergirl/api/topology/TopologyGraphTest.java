@@ -17,7 +17,7 @@ class TopologyGraphTest {
 
   @Test
   void node_creation() {
-    ServiceNode node = new ServiceNode("order-service", "http", Map.of("version", "1.0"));
+    ServiceNode node = new ServiceNode("order-service", "http", java.util.Collections.singletonMap("version", "1.0"));
     assertEquals("order-service", node.getName());
     assertEquals("http", node.getType());
     assertEquals("1.0", node.getMetadata().get("version"));

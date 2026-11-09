@@ -909,6 +909,14 @@
                             </excludes>
                         </configuration>
                     </execution>
+                    <execution>
+                        <id>default-testCompile</id>
+                        <configuration>
+                            <!-- Tests run on a newer JDK, but they must still be source that a
+                                 JDK 8 compiler accepts. Same API surface as main code. -->
+                            <release>8</release>
+                        </configuration>
+                    </execution>
                     <!-- JPMS descriptor for JDK 9+, plus any class that has to be compiled against the
                          Java 9 API (src/main/java9). Compiled separately against the Java 8 classes and
                          packaged as multi-release entries (META-INF/versions/9) by the jar plugin, so the
@@ -1085,6 +1093,13 @@
                 <configuration>
                     <failOnError>true</failOnError>
                     <quiet>false</quiet>
+                    <!-- Main sources are the Java 8 API surface. module-info.java lives in
+                         src/main/java9 and is packaged only under META-INF/versions/9. Without
+                         legacy mode the plugin sees that descriptor inside the jar, switches
+                         to JPMS, and points module-source-path at an empty tree, so javadoc
+                         reports that the package has no source files. Legacy mode documents
+                         the real src/main/java sources. failOnError stays on. -->
+                    <legacyMode>true</legacyMode>
                     <!-- Existing API examples intentionally contain annotation and DSL
                          syntax that Javadoc's HTML parser treats as tags/entities. The
                          generated docs still fail on tool errors; doclint is disabled

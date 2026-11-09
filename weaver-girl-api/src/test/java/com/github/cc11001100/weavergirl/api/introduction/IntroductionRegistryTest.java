@@ -37,7 +37,7 @@ class IntroductionRegistryTest {
   void register_addsToAllDefinitions() {
     IntroductionDefinition def = definition("d1", ClassMatcher.byName("com.example.Foo"));
     registry.register(def);
-    assertEquals(List.of(def), registry.getAllDefinitions());
+    assertEquals(java.util.Collections.singletonList(def), registry.getAllDefinitions());
   }
 
   @Test
@@ -77,7 +77,7 @@ class IntroductionRegistryTest {
 
     List<IntroductionDefinition> result = registry.getDefinitionsForClass("com.example.Foo");
 
-    assertEquals(List.of(matching), result);
+    assertEquals(java.util.Collections.singletonList(matching), result);
   }
 
   @Test
@@ -93,7 +93,7 @@ class IntroductionRegistryTest {
     registry.register(d1);
     registry.register(d2);
 
-    assertEquals(List.of(d1, d2), registry.getDefinitionsForClass("com.example.Foo"));
+    assertEquals(java.util.Arrays.asList(d1, d2), registry.getDefinitionsForClass("com.example.Foo"));
   }
 
   @Test

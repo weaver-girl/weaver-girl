@@ -143,7 +143,7 @@ class RewriteArgWeavingIntegrationTest {
     // definition; the rewrite's before() executes on entry via AsyncArgumentAdvice while
     // @Before executes via InterceptAdvice), so it observes the rewritten value — exactly once.
     assertEquals(
-        List.of("rewrite:world", "before:WORLD"),
+        java.util.Arrays.asList("rewrite:world", "before:WORLD"),
         RewriteAdvice.calls,
         "@RewriteArg and @Before on the same method must each fire exactly once");
   }
@@ -159,6 +159,6 @@ class RewriteArgWeavingIntegrationTest {
     CtorTarget withArg = new CtorTarget("custom");
     assertEquals("custom", withArg.value);
     assertEquals(
-        List.of("ctor:custom"), CtorAdvice.calls, "String overload must fire exactly once");
+        java.util.Collections.singletonList("ctor:custom"), CtorAdvice.calls, "String overload must fire exactly once");
   }
 }

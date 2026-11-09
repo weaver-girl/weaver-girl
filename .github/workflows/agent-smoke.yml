@@ -3,11 +3,12 @@ name: Agent Smoke
 # Exercises the PACKAGED agent jar the way a real user attaches it. Two jobs:
 #
 # 1. bare-attach (matrix JDK 8/11/17/21): the agent's #1 job is to attach to an
-#    arbitrary JVM. The Jetty/H2 sample can't run on JDK 8 (H2 2.2 needs Java 11),
-#    so for the cross-JDK matrix we use a tiny JDK-8-compatible target
-#    (scripts/bare-target/MinimalApp.java) compiled to 1.8 bytecode, build the agent
-#    once on JDK 17, then attach on each JDK and assert /health, /ready, /metrics.
-#    This is the regression net for JVM-version compatibility.
+#    arbitrary JVM. The matrix uses a tiny JDK-8-compatible target
+#    (scripts/bare-target/MinimalApp.java) compiled to 1.8 bytecode, builds the agent
+#    once on JDK 17, then attaches on each JDK and asserts /health, /ready, /metrics.
+#    This is the regression net for JVM-version compatibility. The Jetty + H2 sample
+#    also runs on JDK 8 (H2 2.2.224; H2 2.3+ is class-file 55) and is covered by
+#    sample-attach below plus the JDK 8 container run of SampleApplication.
 #
 # 2. sample-attach (JDK 17): the richer end-to-end — the embedded Jetty + H2 sample —
 #    to exercise servlet/jdbc plugin instrumentation under a real -javaagent attach.

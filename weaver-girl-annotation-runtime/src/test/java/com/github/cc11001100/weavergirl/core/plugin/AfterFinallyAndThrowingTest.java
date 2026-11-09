@@ -91,7 +91,7 @@ class AfterFinallyAndThrowingTest {
     assertFalse(FinallyInterceptor.calls.contains("finally"),
         "@AfterFinally must NOT fire via after()");
     interceptor.afterFinally(inv);
-    assertEquals(List.of("finally"), FinallyInterceptor.calls);
+    assertEquals(java.util.Collections.singletonList("finally"), FinallyInterceptor.calls);
   }
 
   @Test
@@ -103,7 +103,7 @@ class AfterFinallyAndThrowingTest {
     assertFalse(FinallyInterceptor.calls.contains("finally"),
         "@AfterFinally must NOT fire via onException()");
     interceptor.afterFinally(inv);
-    assertEquals(List.of("finally"), FinallyInterceptor.calls);
+    assertEquals(java.util.Collections.singletonList("finally"), FinallyInterceptor.calls);
   }
 
   @Test
@@ -112,7 +112,7 @@ class AfterFinallyAndThrowingTest {
     MethodInvocation inv = new MethodInvocation(String.class, "process", "target", new Object[0]);
     inv.skipMethod();
     interceptor.afterFinally(inv);
-    assertEquals(List.of("finally"), FinallyInterceptor.calls,
+    assertEquals(java.util.Collections.singletonList("finally"), FinallyInterceptor.calls,
         "@AfterFinally must fire even when the method was skipped");
   }
 

@@ -138,7 +138,7 @@ class RewriteArgAnnotationTest {
         new MethodInvocation(String.class, "greet", "target", new Object[] {"hello"});
     interceptor.before(inv);
 
-    assertEquals(List.of("rewrite"), RewriteInterceptor.calls);
+    assertEquals(java.util.Collections.singletonList("rewrite"), RewriteInterceptor.calls);
     assertEquals("HELLO", inv.getArgument(0), "setArgument must be visible on the invocation");
   }
 

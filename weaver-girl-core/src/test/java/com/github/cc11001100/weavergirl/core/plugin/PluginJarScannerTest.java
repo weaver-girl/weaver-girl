@@ -49,8 +49,8 @@ class PluginJarScannerTest {
 
   @Test
   void scan_directoryWithNonJarFiles_returnsEmptyList(@TempDir Path tempDir) throws Exception {
-    Files.writeString(tempDir.resolve("readme.txt"), "not a jar");
-    Files.writeString(tempDir.resolve("config.xml"), "<xml/>");
+    Files.write(tempDir.resolve("readme.txt"), "not a jar".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    Files.write(tempDir.resolve("config.xml"), "<xml/>".getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
     PluginJarScanner scanner = new PluginJarScanner();
     List<PluginClassLoader> result = scanner.scan(tempDir.toString(), getClass().getClassLoader());

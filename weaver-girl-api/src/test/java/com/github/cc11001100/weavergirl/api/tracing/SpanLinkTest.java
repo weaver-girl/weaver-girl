@@ -9,7 +9,7 @@ class SpanLinkTest {
 
   @Test
   void builderCreatesImmutableLink() {
-    Map<String, String> source = Map.of("kind", "batch");
+    Map<String, String> source = java.util.Collections.singletonMap("kind", "batch");
     SpanLink link =
         SpanLink.builder()
             .traceId("trace")

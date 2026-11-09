@@ -134,7 +134,7 @@ class AnnotationWeavingIntegrationTest {
     String result = new WeaveTarget1().greet("world");
     assertEquals("hello world", result);
     assertEquals(
-        List.of("before:world", "after:hello world", "finally"), GreetAdvice.calls,
+        java.util.Arrays.asList("before:world", "after:hello world", "finally"), GreetAdvice.calls,
         "before/after/afterFinally should all fire on a real woven invocation");
   }
 
@@ -145,7 +145,7 @@ class AnnotationWeavingIntegrationTest {
         assertThrows(IllegalStateException.class, () -> new WeaveTarget2().fail("x"));
     assertEquals("fail x", thrown.getMessage(), "original exception must propagate");
     assertEquals(
-        List.of("afterThrowing:fail x", "finally"), FailAdvice.calls,
+        java.util.Arrays.asList("afterThrowing:fail x", "finally"), FailAdvice.calls,
         "afterThrowing + afterFinally should fire on a real throwing invocation");
   }
 }

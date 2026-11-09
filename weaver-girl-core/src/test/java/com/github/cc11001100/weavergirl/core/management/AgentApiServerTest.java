@@ -82,7 +82,7 @@ class AgentApiServerTest {
 
   @Test
   void metricsEndpoint_includesValuesAndLabels() throws Exception {
-    MetricRegistry.record("api.metric", Map.of("zone", "east", "kind", "request"), 4.5);
+    MetricRegistry.record("api.metric", new java.util.LinkedHashMap<String, String>() {{ put("zone", "east"); put("kind", "request"); }}, 4.5);
     String response = get("/metrics");
     assertTrue(response.contains("api.metric{"));
     assertTrue(response.contains("\"count\":1"));

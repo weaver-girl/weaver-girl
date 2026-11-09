@@ -10,17 +10,17 @@ class MetricValueObjectsTest {
   @Test
   void labelsSupportConvenienceFactoriesAndImmutableBuilds() {
     MetricLabels labels = new MetricLabels().label("a", "1").label("b", "2");
-    assertEquals(Map.of("a", "1", "b", "2"), labels.build());
-    assertEquals(Map.of("x", "y"), MetricLabels.of("x", "y").build());
-    assertEquals(Map.of("x", "1", "y", "2"), MetricLabels.of("x", "1", "y", "2").build());
+    assertEquals(new java.util.LinkedHashMap<String, String>() {{ put("a", "1"); put("b", "2"); }}, labels.build());
+    assertEquals(java.util.Collections.singletonMap("x", "y"), MetricLabels.of("x", "y").build());
+    assertEquals(new java.util.LinkedHashMap<String, String>() {{ put("x", "1"); put("y", "2"); }}, MetricLabels.of("x", "1", "y", "2").build());
     assertTrue(MetricLabels.empty().isEmpty());
     assertThrows(UnsupportedOperationException.class, () -> labels.build().put("c", "3"));
   }
 
   @Test
   void snapshotCalculatesAverageRateAndUsesDefensiveCopies() {
-    Map<Double, Double> percentiles = Map.of(0.5, 4.0, 0.99, 9.0);
-    Map<String, String> labels = Map.of("route", "/items");
+    Map<Double, Double> percentiles = new java.util.LinkedHashMap<Double, Double>() {{ put(0.5, 4.0); put(0.99, 9.0); }};
+    Map<String, String> labels = java.util.Collections.singletonMap("route", "/items");
     MetricSnapshot snapshot =
         new MetricSnapshot(1000, 3000, "latency", 4, 20, 1, 9, percentiles, labels);
     assertEquals(1000, snapshot.getWindowStartMs());
@@ -46,7 +46,7 @@ class MetricValueObjectsTest {
     assertEquals(0, empty.getRatePerSecond());
     assertTrue(empty.getLabels().isEmpty());
     assertTrue(empty.getPercentiles().isEmpty());
-    MetricSnapshot reversed = new MetricSnapshot(20, 10, "reversed", 1, 1, 1, 1, Map.of());
+    MetricSnapshot reversed = new MetricSnapshot(20, 10, "reversed", 1, 1, 1, 1, java.util.Collections.emptyMap());
     assertEquals(0, reversed.getRatePerSecond());
   }
 }

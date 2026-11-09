@@ -140,7 +140,7 @@ class RabbitMQPluginTest {
         registry.definitions.stream()
             .filter(d -> d.getName().contains("basicPublish"))
             .findFirst()
-            .orElseThrow();
+            .orElseThrow(IllegalStateException::new);
     Interceptor interceptor = pubDef.getInterceptor();
 
     MethodInvocation inv =
@@ -165,7 +165,7 @@ class RabbitMQPluginTest {
         registry.definitions.stream()
             .filter(d -> d.getName().contains("basicPublish"))
             .findFirst()
-            .orElseThrow();
+            .orElseThrow(IllegalStateException::new);
     Interceptor interceptor = pubDef.getInterceptor();
 
     MethodInvocation inv =
@@ -187,7 +187,7 @@ class RabbitMQPluginTest {
         registry.definitions.stream()
             .filter(d -> d.getName().contains("basicAck"))
             .findFirst()
-            .orElseThrow();
+            .orElseThrow(IllegalStateException::new);
     Interceptor interceptor = ackDef.getInterceptor();
 
     MethodInvocation inv =
@@ -208,7 +208,7 @@ class RabbitMQPluginTest {
         registry.definitions.stream()
             .filter(d -> d.getName().contains("newConnection"))
             .findFirst()
-            .orElseThrow();
+            .orElseThrow(IllegalStateException::new);
     Interceptor interceptor = connDef.getInterceptor();
 
     MethodInvocation inv = new MethodInvocation(Object.class, "newConnection", null, null);
@@ -228,7 +228,7 @@ class RabbitMQPluginTest {
         registry.definitions.stream()
             .filter(d -> d.getName().contains("newConnection"))
             .findFirst()
-            .orElseThrow();
+            .orElseThrow(IllegalStateException::new);
     Interceptor interceptor = connDef.getInterceptor();
 
     MethodInvocation inv = new MethodInvocation(Object.class, "newConnection", null, null);
@@ -328,7 +328,7 @@ class RabbitMQPluginTest {
         registry.definitions.stream()
             .filter(d -> d.getName().contains("basicPublish"))
             .findFirst()
-            .orElseThrow();
+            .orElseThrow(IllegalStateException::new);
     Interceptor interceptor = pubDef.getInterceptor();
 
     com.github.cc11001100.weavergirl.api.context.ThreadContext.put("traceId", "trace-123");

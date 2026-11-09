@@ -22,4 +22,7 @@ Thumbs.db
 
 # Internal planning (superpowers)
 docs/superpowers/
+
+# Local goal evidence (logs). Scratch is wiped; this copy stays on disk.
+goal-evidence/
 .sisu-plexus.jar

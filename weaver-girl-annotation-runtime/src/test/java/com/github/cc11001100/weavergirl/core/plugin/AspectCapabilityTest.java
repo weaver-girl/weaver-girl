@@ -133,7 +133,7 @@ class AspectCapabilityTest {
     // @Around only decides whether to proceed; after-phase advice (@AfterReturning/@AfterFinally)
     // runs later when the engine calls after()/afterFinally(). So the event list only contains
     // the around wrapper and before advice at this point.
-    assertEquals(List.of("around-enter", "before", "around-exit:done"), AroundGuard.events);
+    assertEquals(java.util.Arrays.asList("around-enter", "before", "around-exit:done"), AroundGuard.events);
   }
 
   @Test
@@ -149,7 +149,7 @@ class AspectCapabilityTest {
     assertFalse(inv.isProceedCalled(), "advice that returns early must not reach the target");
     assertEquals("blocked", inv.getReturnValue());
     assertTrue(inv.isReturnOverridden());
-    assertEquals(List.of("around-enter", "around-blocked"), AroundGuard.events);
+    assertEquals(java.util.Arrays.asList("around-enter", "around-blocked"), AroundGuard.events);
   }
 
   @Test
@@ -203,7 +203,7 @@ class AspectCapabilityTest {
     interceptor.around(inv);
 
     assertEquals(
-        List.of("first-enter", "second-enter", "second-exit", "first-exit"), LayeredAround.events);
+        java.util.Arrays.asList("first-enter", "second-enter", "second-exit", "first-exit"), LayeredAround.events);
     assertTrue(inv.isProceedCalled());
   }
 

@@ -850,6 +850,31 @@
                     </execution>
                 </executions>
             </plugin>
+            <!-- After package, the agent jar and target/plugins exist. Re-run the bytecode
+                 scanner against those jars and fail the build if a root class is newer than
+                 Java 8 or a module-info is visible outside META-INF/versions. The test-phase
+                 run still skips on a clean tree, before the jars have been packed. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>packaged-bytecode</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>test</goal>
+                        </goals>
+                        <configuration>
+                            <includes>
+                                <include>**/ShippedBytecodeVersionTest.java</include>
+                            </includes>
+                            <systemPropertyVariables>
+                                <weaver.checkPackagedJars>true</weaver.checkPackagedJars>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 

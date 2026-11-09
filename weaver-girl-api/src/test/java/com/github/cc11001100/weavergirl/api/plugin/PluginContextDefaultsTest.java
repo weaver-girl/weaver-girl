@@ -5,6 +5,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import com.github.cc11001100.weavergirl.api.alert.AlertChannel;
 import com.github.cc11001100.weavergirl.api.alert.AlertEngine;
 import com.github.cc11001100.weavergirl.api.alert.AlertRule;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventListener;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
+import com.github.cc11001100.weavergirl.api.exporter.DataExporter;
+import com.github.cc11001100.weavergirl.api.exporter.ExporterRegistry;
 import com.github.cc11001100.weavergirl.api.observability.HealthCheck;
 import com.github.cc11001100.weavergirl.api.observability.HealthCheckResult;
 import com.github.cc11001100.weavergirl.api.observability.HealthChecks;
@@ -22,6 +27,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -40,7 +46,50 @@ class PluginContextDefaultsTest {
     HealthChecks.clear();
     SamplingStrategyRegistry.clear();
     ResourceAttributes.clear();
+    ExporterRegistry.shutdownAll();
     System.clearProperty("demo.key");
+  }
+
+  @Test
+  void defaultEventRegistrationActivatesExporterAndDedupsListener() {
+    PluginContext context = context("demo");
+    InterceptorEventPublisher publisher = InterceptorEventPublisher.getInstance();
+    final AtomicInteger listens = new AtomicInteger();
+    final AtomicInteger exports = new AtomicInteger();
+    InterceptorEventListener listener =
+        new InterceptorEventListener() {
+          @Override
+          public void onEvent(InterceptorEvent event) {
+            listens.incrementAndGet();
+          }
+        };
+    DataExporter exporter =
+        new DataExporter() {
+          @Override
+          public String name() {
+            return "defaults-export";
+          }
+
+          @Override
+          public void export(InterceptorEvent event) {
+            exports.incrementAndGet();
+          }
+        };
+    int before = publisher.getListenerCount();
+    context.registerEventListener(null);
+    context.registerDataExporter(null);
+    context.registerEventListener(listener);
+    context.registerEventListener(listener);
+    context.registerDataExporter(exporter);
+
+    assertEquals(before + 1, publisher.getListenerCount());
+    assertTrue(ExporterRegistry.getActiveExporterNames().contains("defaults-export"));
+    publisher.publish(
+        InterceptorEvent.builder().type("defaults").plugin("demo").className("C").methodName("m").build());
+
+    assertEquals(1, listens.get());
+    assertEquals(1, exports.get());
+    publisher.removeListener(listener);
   }
 
   @Test

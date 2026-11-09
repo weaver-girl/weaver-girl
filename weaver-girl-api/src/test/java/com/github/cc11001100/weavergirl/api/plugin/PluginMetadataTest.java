@@ -29,13 +29,13 @@ class PluginMetadataTest {
     assertEquals("1.2.3", metadata.getVersion());
     assertEquals("Demo", metadata.getDescription());
     assertEquals("Team", metadata.getAuthor());
-    assertEquals(java.util.List.of("jdbc", "redis"), metadata.getDepends());
-    assertEquals(java.util.List.of("storage", "audit"), metadata.getRequires());
+    assertEquals(java.util.Arrays.asList("jdbc", "redis"), metadata.getDepends());
+    assertEquals(java.util.Arrays.asList("storage", "audit"), metadata.getRequires());
     assertEquals(
-        java.util.List.of("com.example.clock", "com.example.clock.Clock"), metadata.getExports());
+        java.util.Arrays.asList("com.example.clock", "com.example.clock.Clock"), metadata.getExports());
     assertFalse(metadata.isExportedClass(0), "a package was recorded as a single class");
     assertTrue(metadata.isExportedClass(1), "the class marker was dropped");
-    assertEquals(java.util.List.of("spring", "kafka"), metadata.getTargetFrameworks());
+    assertEquals(java.util.Arrays.asList("spring", "kafka"), metadata.getTargetFrameworks());
     assertEquals("1.0.0", metadata.getMinimumAgentVersion());
     assertEquals("1.0.0", metadata.getApiVersion());
     assertEquals("abc", metadata.getExpectedSha256());
@@ -47,12 +47,12 @@ class PluginMetadataTest {
     PluginMetadata renamed = metadata.withName("other");
     assertEquals("other", renamed.getName());
     assertEquals("1.2.3", renamed.getVersion());
-    assertEquals(java.util.List.of("jdbc", "redis"), renamed.getDepends());
-    assertEquals(java.util.List.of("storage", "audit"), renamed.getRequires());
+    assertEquals(java.util.Arrays.asList("jdbc", "redis"), renamed.getDepends());
+    assertEquals(java.util.Arrays.asList("storage", "audit"), renamed.getRequires());
     assertEquals(
-        java.util.List.of("com.example.clock", "com.example.clock.Clock"), renamed.getExports());
+        java.util.Arrays.asList("com.example.clock", "com.example.clock.Clock"), renamed.getExports());
     assertTrue(renamed.isExportedClass(1), "renaming forgot which export names a class");
-    assertEquals(java.util.List.of("spring", "kafka"), renamed.getTargetFrameworks());
+    assertEquals(java.util.Arrays.asList("spring", "kafka"), renamed.getTargetFrameworks());
     assertEquals("abc", renamed.getExpectedSha256());
     assertEquals("demo", metadata.getName(), "renaming returned a view of the original");
   }
@@ -85,9 +85,9 @@ class PluginMetadataTest {
             .build();
     assertEquals("n", built.getName());
     assertEquals("1.0.0", built.getApiVersion());
-    assertEquals(java.util.List.of("one"), built.getDepends());
-    assertEquals(java.util.List.of("clock"), built.getRequires());
-    assertEquals(java.util.List.of("com.example.clock"), built.getExports());
-    assertEquals(java.util.List.of("java"), built.getTargetFrameworks());
+    assertEquals(java.util.Collections.singletonList("one"), built.getDepends());
+    assertEquals(java.util.Collections.singletonList("clock"), built.getRequires());
+    assertEquals(java.util.Collections.singletonList("com.example.clock"), built.getExports());
+    assertEquals(java.util.Collections.singletonList("java"), built.getTargetFrameworks());
   }
 }

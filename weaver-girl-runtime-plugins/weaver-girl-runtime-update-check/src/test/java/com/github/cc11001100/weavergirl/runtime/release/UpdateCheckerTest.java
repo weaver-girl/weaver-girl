@@ -225,7 +225,7 @@ class UpdateCheckerTest {
     staging.deleteOnExit();
     AgentUpdater updater = new AgentUpdater(staging);
     VersionInfo version =
-        VersionInfo.builder().version("2.0.0").downloadUrl(url).sha256("0".repeat(64)).build();
+        VersionInfo.builder().version("2.0.0").downloadUrl(url).sha256(new String(new char[64]).replace("\u0000", "0")).build();
 
     AgentUpdater.UpdateResult result = updater.stageUpdate(version, null);
     assertFalse(result.isSuccess());
