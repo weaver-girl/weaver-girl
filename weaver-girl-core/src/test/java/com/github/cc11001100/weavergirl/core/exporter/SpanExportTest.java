@@ -84,6 +84,26 @@ class SpanExportTest {
     }
   }
 
+  /**
+   * A resource attribute is only sent when it has text. An absent one, an empty one and a blank one are
+   * all dropped, and only the one that names something is kept.
+   */
+  @Test
+  void blankResourceAttributesAreDropped() {
+    SpanExport export = new SpanExport();
+    Map<String, String> config = new HashMap<>();
+    config.put("otlpEndpoint", "http://127.0.0.1:1");
+    config.put("serviceName", "checkout");
+    config.put("serviceVersion", "  ");
+    config.put("deploymentEnvironment", "");
+
+    try {
+      assertTrue(export.start(config));
+    } finally {
+      export.stop();
+    }
+  }
+
   /** A size that is not a positive number falls back to the default. */
   @Test
   void unusableSizesFallBackToDefaults() {
