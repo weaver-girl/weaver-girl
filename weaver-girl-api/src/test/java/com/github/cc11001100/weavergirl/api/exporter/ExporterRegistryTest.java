@@ -35,8 +35,8 @@ class ExporterRegistryTest {
     assertFalse(ExporterRegistry.activate("missing"));
     assertTrue(ExporterRegistry.activate("test-exporter"));
     assertTrue(ExporterRegistry.activate("test-exporter"));
-    assertEquals(java.util.List.of("test-exporter"), ExporterRegistry.getActiveExporterNames());
-    ExporterRegistry.initExporter("test-exporter", Map.of("k", "v"));
+    assertEquals(java.util.Collections.singletonList("test-exporter"), ExporterRegistry.getActiveExporterNames());
+    ExporterRegistry.initExporter("test-exporter", java.util.Collections.singletonMap("k", "v"));
     ExporterRegistry.initExporter("test-exporter", null);
     ExporterRegistry.exportEvent(null);
     ExporterRegistry.exportEvent(null);

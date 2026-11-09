@@ -8,12 +8,18 @@ import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
  * <p>Implementations can send data to various backends: files, OTLP collectors, Zipkin, Jaeger,
  * custom HTTP endpoints, etc.
  *
- * <h3>Usage:</h3>
+ * <h3>Usage from a plugin:</h3>
  *
  * <pre>
- * DataExporter exporter = new MyCustomExporter();
+ * context.registerDataExporter(new MyCustomExporter());
+ * </pre>
+ *
+ * <p>That registration receives events immediately and is withdrawn with the plugin. Code that is
+ * not a plugin uses the static registry, which stays inactive until it is activated:
+ *
+ * <pre>
  * ExporterRegistry.register(exporter);
- * ExporterRegistry.setActive("my-exporter");
+ * ExporterRegistry.activate(exporter.name());
  * </pre>
  *
  * @since 1.2.0

@@ -3,7 +3,6 @@ package com.github.cc11001100.weavergirl.sample.audit;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.exporter.DataExporter;
-import com.github.cc11001100.weavergirl.api.exporter.ExporterRegistry;
 import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
 import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
@@ -20,7 +19,8 @@ import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
  * <ul>
  *   <li>records an audit line for every charge and refund, with the card number masked
  *   <li>counts charged cents in {@link MetricRegistry}, which is what a product reads back
- *   <li>publishes each audit line as an event and ships it through its own {@link DataExporter}
+ *   <li>publishes each audit line as an event and ships it through its own {@link DataExporter},
+ *       registered on the {@link PluginContext} so the engine withdraws it with the plugin
  * </ul>
  *
  * <p>The trail is written to the audit log and to the platform's metric registry rather than held in
@@ -48,8 +48,7 @@ public class AuditPlugin extends AbstractPlugin {
   public void init(PluginContext context) {
     enabled = context.getConfigBoolean("enabled", true);
     context.getLogger().info("payment audit plugin initialised, enabled=" + enabled);
-    ExporterRegistry.register(new AuditExporter());
-    ExporterRegistry.activate("payment-audit-log");
+    context.registerDataExporter(new AuditExporter());
   }
 
   @Override

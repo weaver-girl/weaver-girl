@@ -47,6 +47,7 @@ class JsonEventsPluginTest {
     assertEquals(before + 1, publisher.getListenerCount());
 
     plugin.destroy();
+    plugin.destroy();
     assertEquals(
         before,
         publisher.getListenerCount(),

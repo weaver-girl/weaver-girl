@@ -2,6 +2,11 @@ package com.github.cc11001100.weavergirl.core.plugin;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventListener;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
+import com.github.cc11001100.weavergirl.api.exporter.DataExporter;
+import com.github.cc11001100.weavergirl.api.exporter.ExporterRegistry;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.api.sampling.SamplingStrategy;
 import com.github.cc11001100.weavergirl.api.sampling.SamplingStrategyRegistry;
@@ -26,8 +31,9 @@ class DefaultPluginContextTest {
 
   @AfterEach
   void tearDown() {
-    // A strategy left registered would drop sampling for every later test in the JVM.
+    // A strategy or exporter left registered would leak into every later test in the JVM.
     SamplingStrategyRegistry.clear();
+    ExporterRegistry.shutdownAll();
   }
 
   @Test
@@ -249,8 +255,32 @@ class DefaultPluginContextTest {
             .threshold(1)
             .build();
 
+    final java.util.concurrent.atomic.AtomicInteger deliveries =
+        new java.util.concurrent.atomic.AtomicInteger();
+    InterceptorEventListener listener =
+        new InterceptorEventListener() {
+          @Override
+          public void onEvent(InterceptorEvent event) {
+            deliveries.incrementAndGet();
+          }
+        };
+    DataExporter exporter =
+        new DataExporter() {
+          @Override
+          public String name() {
+            return "context-export";
+          }
+
+          @Override
+          public void export(InterceptorEvent event) {
+            deliveries.incrementAndGet();
+          }
+        };
+
     DefaultPluginContext context =
         new DefaultPluginContext(mockRegistry, null, "test-plugin");
+    context.registerEventListener(listener);
+    context.registerDataExporter(exporter);
     context.registerSpanSink(sink);
     context.registerSpanProcessor(processor);
     context.registerHealthCheck(healthCheck);
@@ -260,6 +290,9 @@ class DefaultPluginContextTest {
     context.registerMetricSource(source);
     context.registerResourceAttributes(provider);
 
+    assertTrue(InterceptorEventPublisher.getInstance().getListeners().contains(listener));
+    assertSame(exporter, ExporterRegistry.get("context-export"));
+    assertTrue(ExporterRegistry.getActiveExporterNames().contains("context-export"));
     assertTrue(
         com.github.cc11001100.weavergirl.api.observability.SpanSinks.getSinks().contains(sink));
     assertTrue(
@@ -284,6 +317,12 @@ class DefaultPluginContextTest {
 
     context.withdrawServices();
 
+    InterceptorEventPublisher.getInstance()
+        .publish(
+            InterceptorEvent.builder().type("after-withdraw").plugin("test-plugin").build());
+    assertEquals(0, deliveries.get(), "an unloaded plugin must not keep receiving events");
+    assertFalse(InterceptorEventPublisher.getInstance().getListeners().contains(listener));
+    assertNull(ExporterRegistry.get("context-export"));
     assertFalse(
         com.github.cc11001100.weavergirl.api.observability.SpanSinks.getSinks().contains(sink),
         "an unloaded plugin must not keep receiving spans");

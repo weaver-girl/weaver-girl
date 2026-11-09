@@ -260,7 +260,8 @@ These services are static and live in `weaver-girl-api`, so a plugin can use the
 |------|-----|
 | Spans, baggage, trace context across a call | `Tracer` — `startSpan()`, `endSpan(operation, status)`, `inject` / `extract`, `setBaggage` |
 | A metric with a time window and percentiles | `MetricRegistry.record(name, value)`, `MetricRegistry.snapshot(name)` |
-| Ship events to your own backend | implement `DataExporter`, then `ExporterRegistry.register` and `activate` |
+| Subscribe to interceptor events | `context.registerEventListener(InterceptorEventListener)` — the same instance is delivered once, and the engine withdraws it |
+| Ship events to your own backend | `context.registerDataExporter(DataExporter)` — receives events immediately, withdrawn with the plugin |
 | A service calling another | `TopologyGraph.recordCall(source, target, protocol, durationMs, error)` |
 | Fire when a metric crosses a line | `AlertEngine.addRule`, `AlertEngine.addChannel` (prefer the `PluginContext` registration below) |
 | Tell every other plugin that something happened | `InterceptorEventPublisher.getInstance().publish(...)` |
@@ -290,7 +291,7 @@ rather than allowed to stop interception. Full rules, precedence, and a complete
 [observability.md §9](observability.md#9-扩展点插件自定义可观测) and
 [examples/CustomObservabilityPlugin.java](examples/CustomObservabilityPlugin.java).
 
-An exporter is how your product gets data out. Registering it is not enough; it also has to be activated:
+An exporter is how your product gets events out. Register it on the `PluginContext` you were given. That both activates it, so there is no separate `activate` call, and hands it back to the engine, which withdraws it when the plugin is unloaded, destroyed, or left inactive. The same context registers an event listener. Registering the same listener instance again does not put it on the dispatch list a second time. Both run on the thread that published the event — queue the work, do not block — and one that throws is skipped so the others still receive the event. When that thread has a current span, the delivered event carries its `traceId` and `spanId`.
 
 ```java
 public class MyBackendExporter implements DataExporter {
@@ -301,8 +302,18 @@ public class MyBackendExporter implements DataExporter {
     }
 }
 
-ExporterRegistry.register(new MyBackendExporter());
-ExporterRegistry.activate("my-backend");
+@Override
+public void init(PluginContext context) {
+    context.registerEventListener(event -> { /* queue it; no IO here */ });
+    context.registerDataExporter(new MyBackendExporter());
+}
+```
+
+A later exporter registered under the same name is left in place when this plugin is withdrawn. Code that is not a plugin still uses the static registry, which does not deliver anything until it is activated:
+
+```java
+ExporterRegistry.register(exporter);
+ExporterRegistry.activate(exporter.name());
 ```
 
 `AlertEngine.evaluate(metric, value)` returns the alerts that tripped and delivers them to every registered channel, so call it from the same place you record the metric.
@@ -338,7 +349,7 @@ try {
 6. **`registerInterceptors`** — only when enabled. Optional: the default is a no-op, so a capability-only plugin does not need an empty method.
 7. **`destroy()`** — at agent shutdown.
 
-Because `init` runs even when the plugin is switched off, it must not start servers, open sockets, or register anything that `destroy` would have to undo. Read configuration there; do the real work in `registerInterceptors` or behind the `isEnabled` check.
+Because `init` runs even when the plugin is switched off, it must not start servers or open sockets. An inactive plugin is not in the loaded set, so `destroy()` does not run for it. Contributions registered through the `PluginContext` — an event listener, a data exporter, and the other observability extensions — are withdrawn by the engine when the plugin is left inactive, unloaded, or destroyed, so they do not keep receiving events. Read configuration in `init`; start threads and sockets only once the plugin is actually activated.
 
 ```java
 @Override

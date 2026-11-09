@@ -191,6 +191,27 @@ public class PluginLoader {
     }
   }
 
+  /**
+   * The plugin ran {@code init} and then was not activated. It is not in the loaded set, so neither
+   * hot unload nor {@link #destroyAll()} would visit it, and anything it registered would keep
+   * receiving events. Record it as inactive and withdraw the context now.
+   */
+  private void retireInactive(WeaverPlugin plugin) {
+    inactivePlugins.add(plugin);
+    withdrawServices(plugin);
+  }
+
+  /**
+   * A plugin that threw during init or interceptor registration is not activated. Withdraw whatever
+   * it already published. A plugin that did get into the loaded set is left for {@link #destroyAll()}
+   * and hot unload, which withdraw as well.
+   */
+  private void withdrawIfNotLoaded(WeaverPlugin plugin) {
+    if (!loadedPlugins.contains(plugin)) {
+      withdrawServices(plugin);
+    }
+  }
+
   /** The ownership record for the plugins this loader activated. */
   public PluginOwnership ownership() {
     return ownership;
@@ -622,7 +643,9 @@ public class PluginLoader {
 
   /** Destroy all loaded plugins in reverse order. Should be called during agent shutdown. */
   public void destroyAll() {
-    // Destroy in reverse order of loading
+    // Destroy in reverse order of loading. withdraw after destroy so a plugin that already
+    // removes its own listeners in destroy() and one that left them on the context both end
+    // clean, and calling destroy() again afterwards is a no-op for both.
     for (int i = loadedPlugins.size() - 1; i >= 0; i--) {
       WeaverPlugin plugin = loadedPlugins.get(i);
       try {
@@ -631,6 +654,8 @@ public class PluginLoader {
         log.info("Plugin {} destroyed", plugin.name());
       } catch (Exception e) {
         log.error("Failed to destroy plugin {}: {}", plugin.name(), e.getMessage(), e);
+      } finally {
+        withdrawServices(plugin);
       }
     }
     loadedPlugins.clear();
@@ -662,14 +687,14 @@ public class PluginLoader {
         if (!plugin.isEnabled(context)) {
           log.info(
               "Plugin {} is disabled via isEnabled() check — skipping interceptors", plugin.name());
-          inactivePlugins.add(plugin);
+          retireInactive(plugin);
           AgentStatus.getInstance()
               .recordPluginStatus(plugin.name(), false, "disabled via isEnabled()");
           perPluginMs.put(plugin.name(), (System.nanoTime() - pluginStart) / 1_000_000L);
           continue;
         }
         if (!instrumentedLibraryPresent(plugin, context)) {
-          inactivePlugins.add(plugin);
+          retireInactive(plugin);
           perPluginMs.put(plugin.name(), (System.nanoTime() - pluginStart) / 1_000_000L);
           continue;
         }
@@ -684,6 +709,7 @@ public class PluginLoader {
         String errorMsg = e.getClass().getSimpleName() + ": " + e.getMessage();
         AgentStatus.getInstance().recordPluginStatus(plugin.name(), false, errorMsg);
         log.error("Failed to load plugin {}: {}", plugin.name(), e.getMessage(), e);
+        withdrawIfNotLoaded(plugin);
       }
       perPluginMs.put(plugin.name(), (System.nanoTime() - pluginStart) / 1_000_000L);
     }
@@ -945,7 +971,7 @@ public class PluginLoader {
       if (!plugin.isEnabled(context)) {
         log.info(
             "Plugin {} is disabled via isEnabled() check — skipping interceptors", plugin.name());
-        inactivePlugins.add(plugin);
+        retireInactive(plugin);
         AgentStatus.getInstance()
             .recordPluginStatus(plugin.name(), false, "disabled via isEnabled()");
         perPluginMs.put(plugin.name(), (System.nanoTime() - pluginStart) / 1_000_000L);
@@ -953,7 +979,7 @@ public class PluginLoader {
         return;
       }
       if (!instrumentedLibraryPresent(plugin, context)) {
-        inactivePlugins.add(plugin);
+        retireInactive(plugin);
         perPluginMs.put(plugin.name(), (System.nanoTime() - pluginStart) / 1_000_000L);
         publishInactive(plugin);
         return;
@@ -970,6 +996,7 @@ public class PluginLoader {
       String errorMsg = e.getClass().getSimpleName() + ": " + e.getMessage();
       AgentStatus.getInstance().recordPluginStatus(plugin.name(), false, errorMsg);
       log.error("Failed to load plugin {}: {}", plugin.name(), e.getMessage(), e);
+      withdrawIfNotLoaded(plugin);
     }
     try {
       InterceptorEventPublisher.getInstance()

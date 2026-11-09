@@ -41,6 +41,37 @@ public final class ExporterRegistry {
   }
 
   /**
+   * Drop {@code exporter} only when that exact instance is still registered under its name.
+   *
+   * <p>A later registration of a different instance under the same name is left in place, including
+   * its active state, even when the two instances compare equal. Deactivation happens only when
+   * this instance was the one removed and nothing has replaced it.
+   *
+   * @param exporter the instance to remove
+   * @return true when that instance was removed
+   */
+  public static boolean unregister(DataExporter exporter) {
+    if (exporter == null || exporter.name() == null) {
+      return false;
+    }
+    java.util.concurrent.atomic.AtomicBoolean removed =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+    exporters.compute(
+        exporter.name(),
+        (name, current) -> {
+          if (current == exporter) {
+            removed.set(true);
+            return null;
+          }
+          return current;
+        });
+    if (removed.get() && exporters.get(exporter.name()) == null) {
+      activeExporters.remove(exporter.name());
+    }
+    return removed.get();
+  }
+
+  /**
    * Activate an exporter so it receives events.
    *
    * @param name the exporter name
