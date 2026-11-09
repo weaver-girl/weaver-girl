@@ -276,6 +276,39 @@ weavergirl_health_check_timestamp_seconds{component="orders-db"} 1730000000.123
 没有注册任何处理器时不输出。告警建议：`dropped_total` 突然跳到接近该服务的总 span 量，
 或 `errors_total > 0` 持续增长（后者说明规则本身有 bug）。
 
+### 4.2.7 扩展点性能指标（ExtensionPerformanceTracker）
+
+4.2.3、4.2.6 是分别给 sink、处理器定制的指标。所有扩展点（`SpanProcessor`、`SpanSink`、
+`MetricSource`、`HealthCheck`/`HealthCheckExtension`、`TagEnricher`）的调用次数、异常、平均耗时
+另外汇总在同一组序列里，标签是 `kind` + `extension`：
+
+```text
+# TYPE weavergirl_extension_invocations_total counter
+weavergirl_extension_invocations_total{kind="span-sink",extension="my-apm"} 120
+weavergirl_extension_invocations_total{kind="tag-enricher",extension="tenant-enricher"} 120
+# TYPE weavergirl_extension_errors_total counter
+weavergirl_extension_errors_total{kind="span-sink",extension="my-apm"} 3
+# TYPE weavergirl_extension_error_rate gauge
+weavergirl_extension_error_rate{kind="span-sink",extension="my-apm"} 0.0250
+# TYPE weavergirl_extension_avg_duration_ms gauge
+weavergirl_extension_avg_duration_ms{kind="span-sink",extension="my-apm"} 0.412
+```
+
+| 指标 | 类型 | 含义 |
+| --- | --- | --- |
+| `weavergirl_extension_invocations_total` | counter | 该扩展点被调用的次数（含失败） |
+| `weavergirl_extension_errors_total` | counter | 抛出异常的次数 |
+| `weavergirl_extension_error_rate` | gauge | `errors / invocations`，0~1 |
+| `weavergirl_extension_avg_duration_ms` | gauge | 平均单次耗时（毫秒），含失败样本 |
+
+`kind` 取值：`span-processor`、`span-sink`、`metric-source`、`health-check`、`tag-enricher`。
+`health-check` 的 `extension` 是插件限定的组件名（如 `orders-plugin/db-pool`，见 4.2.5/9.6）。
+从未被调用过的扩展点不输出序列；插件卸载时 `DefaultPluginContext.withdrawServices()` 会清掉它
+留下的计数器，避免热重载后新旧实例共用一条曲线。
+
+告警表达式：`weavergirl_extension_error_rate > 0.1`（某个扩展点开始大面积抛异常）；
+`weavergirl_extension_avg_duration_ms{kind="span-sink"} > 5`（sink 开始拖慢业务线程）。
+
 ### 4.3 JVM 指标
 
 基于 `java.lang.management`，每次抓取读取一次：
@@ -490,23 +523,30 @@ curl -s http://localhost:9400/metrics | grep -E 'weavergirl_(agent|jvm|events)'
 | `MetricSource` | `context.registerMetricSource(source)` | Prometheus 每次抓取时 | 队列深度、缓存命中率、连接池状态 |
 | `ResourceAttributeProvider` | `context.registerResourceAttributes(provider)` | OTLP 每次导出时 | 集群/区域/租户等运行时元数据 |
 | `HealthCheck` | `context.registerHealthCheck(check)` | 探针请求、`/metrics` 抓取时 | 数据库/缓存/下游依赖健康 |
+| `HealthCheckExtension` | `context.registerHealthCheckExtension(extension)` | 同上，与 `HealthCheck` 同批评估 | 可观测插件用它为自己的组件上报健康 |
+| `TagEnricher` | `context.registerTagEnricher(enricher)` | 每个 span 结束、**处理器链之前** | 自动补充租户/请求/用户等标签 |
 | `AlertChannel` | `context.registerAlertChannel(channel)` | 规则命中时同步通知 | 钉钉/Slack/工单/值班系统 |
 | `AlertRule` | `context.registerAlertRule(rule)` | 指标值进入 `AlertEngine.evaluate` 时 | 插件为自己产生的指标定义阈值 |
 | `SamplingStrategy` | `context.registerSamplingStrategy(strategy)` | 每次拦截调用（内置限流采样之后） | 按 URL、错误率、业务标记决定哪些调用值得追踪 |
+| `InterceptorEventListener` | `context.registerEventListener(listener)` | `InterceptorEventPublisher.publish` 的调用线程上 | 订阅拦截事件；同一实例只投递一次 |
+| `DataExporter` | `context.registerDataExporter(exporter)` | 同上，注册后立即收到事件 | 把事件送到自有后端；卸载时按实例摘除 |
 
 ```text
-Tracer.endSpan ──► SpanProcessors ──► SpanSinks ──► 你的 SpanSink（同步）
-                │            └────► 其它 SpanCompletionListener（内置 OTLP 导出器）
-                └─ 返回 null 时整条链路都不再看到这个 span
+Tracer.endSpan ──► TagEnrichers ──► SpanProcessors ──► SpanSinks ──► 你的 SpanSink（同步）
+                                                    └────► 其它 SpanCompletionListener（内置 OTLP 导出器）
+                                     └─ 返回 null 时整条链路都不再看到这个 span
 GET /metrics   ──► MetricSources ──► 你的 MetricSource.collect(...)
 GET /metrics   ──► HealthChecks  ──► 你的 HealthCheck.check()
 OTLP 导出批次  ──► ResourceAttributes ──► 你的 provider（覆盖默认值，可被显式配置覆盖）
 AlertEngine    ──► AlertChannels ──► 你的 AlertChannel.onAlert(...)
 拦截调用       ──► 内置计数采样（限流）──► 你的 SamplingStrategy.shouldSample()
+publish(event) ──► 当前 span 的 traceId/spanId ──► 你的 EventListener 与 DataExporter
 ```
 
 `SpanProcessor` 是**唯一的统一治理点**：它位于所有消费者之前，所以一次过滤同时作用于内置
-OTLP 导出、所有 `SpanSink` 和其它监听器，不会出现“导出器看到的和 sink 看到的不是同一份数据”。
+OTLP 导出、所有 `SpanSink` 和其它监听器，不会出现”导出器看到的和 sink 看到的不是同一份数”。
+
+**处理器执行顺序**：按优先级（`priority()`，默认0，越小越先）。低优先级先执行（如噪声过滤），高优先级后执行（如元数据补充）。优先级相同的保持注册顺序。
 
 **注册必须走 `PluginContext`。** `DefaultPluginContext` 会记录插件注册了什么，并在插件卸载/热
 替换时调用 `withdrawServices()` 自动摘除。直接调用静态的 `SpanSinks.register` 也能生效，但
@@ -703,7 +743,72 @@ context.registerSamplingStrategy(
 - 决策计数在 `weavergirl_sampling_decisions_total{strategy,decision}`（`kept` / `dropped`）。
   没有策略做过决策时不输出任何序列，避免在没装策略时假装有一个。
 
-### 9.9 完整示例
+### 9.9 事件订阅与数据导出
+
+拦截事件走 `InterceptorEventPublisher.publish`。插件不要直接 `addListener` 或
+`ExporterRegistry.register` 之后再自己 `activate`：那两步都不会随插件卸载摘掉。
+
+- `context.registerEventListener(listener)` 把订阅者挂到发布器上。同一个实例再注册一次不会进分发列表，所以一条事件只通知它一次。直接调用 `addListener` 的行为不变，同一个实例可以在列表里出现多次。
+- `context.registerDataExporter(exporter)` 注册并立刻激活，调用方不用再 `activate`。静态 `ExporterRegistry` 仍是「注册」和「激活」两步，给不经过插件上下文的调用方用。
+- 发布线程上有当前 span 时，送达的事件带有该 span 的 `traceId` 与 `spanId`。
+- 一个订阅者或导出器抛出异常只丢掉这一家，其余消费者仍收到事件，发布调用也不失败。回调在业务线程上执行，不要在里面做阻塞 IO。
+- 卸载、热卸载、`destroyAll`，以及加载后因 `isEnabled` 为假或要织入的库不存在而未激活，都会摘掉这个插件经上下文注册的订阅者和导出器。同名导出器若已换成另一个仍在使用的实例，该实例继续留在注册表里并继续收到事件。
+
+### 9.10 完整示例
 
 一个同时注册多种扩展点的插件见
 [docs/examples/CustomObservabilityPlugin.java](examples/CustomObservabilityPlugin.java)。
+
+### 9.11 TagEnricher
+
+标签增强器是独立注册的扩展点，不再需要自己包装成 `SpanProcessor`：
+
+```java
+context.registerTagEnricher(new TagEnricher() {
+  @Override public String name() { return "tenant"; }
+
+  @Override public int priority() { return 100; } // 越小越先，默认 0
+
+  @Override public Map<String, String> enrichTags(SpanContext span) {
+    return TenantContext.current() == null
+        ? Collections.<String, String>emptyMap()
+        : Collections.singletonMap("tenant.id", TenantContext.current());
+  }
+});
+```
+
+行为约定：
+
+- 在 `Tracer.endSpan` 里早于 `SpanProcessor` 链执行。因此处理器可以针对增强出来的标签做脱敏
+  或丢弃；反过来不成立——被处理器丢弃的 span 不会再经过任何增强器。
+- 按 `priority()` 升序执行，同优先级保持注册顺序。后执行的增强器能看到前面写入的属性，相同时
+  以**后写者**为准。
+- 返回 `null` 或空 map 等同于“不修改”；返回的标签逐个写成 span 属性。
+- 单个增强器抛异常只被跳过，连同异常一起计入
+  `weavergirl_extension_errors_total{kind="tag-enricher"}`，span 照常发布。
+- 可通过 `TagEnrichers.register/unregister` 直接注册（不经过上下文），此时卸载要自己注销。
+
+### 9.12 HealthCheckExtension
+
+`HealthCheck` 是“一个检查对象”，`HealthCheckExtension` 是“一个可观测能力”：可观测插件实现它，
+让引擎以自己的名字和插件限定的组件名统一上报、统一计时、统一在卸载时摘除。
+
+```java
+public final class DbPoolHealth implements HealthCheckExtension {
+  @Override public String name() { return "db-pool"; }
+
+  @Override public HealthCheckResult checkHealth() {
+    return pool.isReachable()
+        ? HealthCheckResult.up()
+        : HealthCheckResult.down("connection refused");
+  }
+}
+
+context.registerHealthCheckExtension(new DbPoolHealth()); // 组件名: "orders-plugin/db-pool"
+```
+
+- 组件名由插件名加前缀（`插件名/扩展名`），两个插件各自上报同名的 `backend` 不会互相覆盖。
+- 与普通 `HealthCheck` 在同一次 `HealthChecks.checkAll()` 里评估，普通检查先执行；名字仍需唯一，
+  同名以先注册者为准。
+- 抛异常或返回 `null` 只把自己标成 `DOWN`，不影响其它检查。
+- 插件卸载时随 `withdrawServices()` 自动摘除，并清掉它留下的性能计数。

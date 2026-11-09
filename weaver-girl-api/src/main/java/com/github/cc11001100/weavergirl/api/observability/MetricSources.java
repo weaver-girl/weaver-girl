@@ -8,8 +8,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 /**
  * Registry of {@link MetricSource}s.
  *
- * <p>Sources are collected in registration order. Register during plugin initialization through
- * {@link com.github.cc11001100.weavergirl.api.plugin.PluginContext#registerMetricSource}, which
+ * <p>Sources are collected in priority order (ascending priority). Register during plugin initialization
+ * through {@link com.github.cc11001100.weavergirl.api.plugin.PluginContext#registerMetricSource}, which
  * withdraws the source automatically when the plugin is unloaded. Registering the same instance
  * twice is a no-op.
  *
@@ -25,6 +25,8 @@ public final class MetricSources {
   public static void register(MetricSource source) {
     if (source != null && !sources.contains(source)) {
       sources.add(source);
+      // Sort by priority after registration
+      sources.sort((a, b) -> Integer.compare(a.priority(), b.priority()));
     }
   }
 
@@ -35,7 +37,7 @@ public final class MetricSources {
     }
   }
 
-  /** The registered sources, in collection order. */
+  /** The registered sources, in priority order. */
   public static List<MetricSource> getSources() {
     return Collections.unmodifiableList(new ArrayList<>(sources));
   }

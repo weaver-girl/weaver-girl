@@ -4,14 +4,20 @@ import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.event.LifecycleEvents;
+import com.github.cc11001100.weavergirl.api.plugin.PluginHealth;
+import com.github.cc11001100.weavergirl.api.plugin.PluginHealthRegistry;
 import com.github.cc11001100.weavergirl.api.plugin.PluginInfo;
 import com.github.cc11001100.weavergirl.api.plugin.PluginManager;
 import com.github.cc11001100.weavergirl.api.plugin.PluginManagerHolder;
+import com.github.cc11001100.weavergirl.api.plugin.PluginPerformanceTracker;
 import com.github.cc11001100.weavergirl.api.plugin.PluginState;
 import com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,6 +45,35 @@ public class DefaultPluginManager implements PluginManager {
   private final ConcurrentHashMap<WeaverPlugin, PluginEntry> pluginEntries = new ConcurrentHashMap<>();
 
   /**
+   * Background health check scheduler. Periodically evaluates plugin health based on performance metrics.
+   */
+  private final ScheduledExecutorService healthCheckScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+    Thread t = new Thread(r, "weaver-girl-plugin-health-checker");
+    t.setDaemon(true);
+    return t;
+  });
+
+  /**
+   * Health check interval in seconds. Configurable via system property.
+   */
+  private final long healthCheckIntervalSeconds;
+
+  /**
+   * Error rate threshold for marking a plugin as degraded (0.0-1.0).
+   */
+  private final double degradedErrorRateThreshold;
+
+  /**
+   * Error rate threshold for marking a plugin as unhealthy (0.0-1.0).
+   */
+  private final double unhealthyErrorRateThreshold;
+
+  /**
+   * Average duration threshold in ms for marking a plugin as degraded.
+   */
+  private final long degradedDurationThresholdMs;
+
+  /**
    * Create a DefaultPluginManager.
    *
    * @param pluginLoader the plugin loader that has already loaded plugins
@@ -57,6 +92,10 @@ public class DefaultPluginManager implements PluginManager {
     this.pluginLoader = pluginLoader;
     this.registry = registry;
     this.ownership = ownership;
+    this.healthCheckIntervalSeconds = Long.getLong("weavergirl.plugin.healthCheckInterval", 30);
+    this.degradedErrorRateThreshold = Double.parseDouble(System.getProperty("weavergirl.plugin.degradedErrorRate", "0.05"));
+    this.unhealthyErrorRateThreshold = Double.parseDouble(System.getProperty("weavergirl.plugin.unhealthyErrorRate", "0.20"));
+    this.degradedDurationThresholdMs = Long.getLong("weavergirl.plugin.degradedDurationMs", 100);
     PluginManagerHolder.setInstance(this);
 
     // The loader recorded ownership while the plugins loaded, so there is nothing to replay here.
@@ -76,6 +115,9 @@ public class DefaultPluginManager implements PluginManager {
       entry.interceptorNames.addAll(ownership.interceptorsOf(plugin));
       pluginEntries.put(plugin, entry);
     }
+
+    // Start periodic health checks
+    startHealthCheckScheduler();
   }
 
   /**
@@ -412,12 +454,24 @@ public class DefaultPluginManager implements PluginManager {
     }
     PluginEntry chosen = entries.get(0);
     int interceptors = 0;
+    long totalInvocations = 0;
+    long totalErrors = 0;
+    double totalDuration = 0.0;
+    long lastInvocation = 0;
     for (PluginEntry entry : entries) {
       interceptors += entry.interceptorCount;
+      com.github.cc11001100.weavergirl.api.plugin.PluginPerformanceTracker.PluginMetricsSnapshot metrics = entry.getMetrics();
+      if (metrics != null) {
+        totalInvocations += metrics.getInvocationCount();
+        totalErrors += metrics.getErrorCount();
+        totalDuration += metrics.getAvgDurationMs();
+        lastInvocation = Math.max(lastInvocation, metrics.getLastInvocationAt());
+      }
       if (entry.state == PluginState.ACTIVE) {
         chosen = entry;
       }
     }
+    double avgDuration = totalInvocations > 0 ? totalDuration / entries.size() : 0.0;
     PluginInfo info = chosen.toPluginInfo();
     return Optional.of(
         new PluginInfo(
@@ -426,7 +480,11 @@ public class DefaultPluginManager implements PluginManager {
             info.getVersion(),
             interceptors,
             info.getLoadedAt(),
-            info.getLastStateChangedAt()));
+            info.getLastStateChangedAt(),
+            totalInvocations,
+            totalErrors,
+            avgDuration,
+            lastInvocation));
   }
 
   @Override
@@ -571,6 +629,97 @@ public class DefaultPluginManager implements PluginManager {
   /** The words the builders insert between a plugin name and its class pattern. */
   private static final String[] DEFINITION_KIND_MARKERS = {"field", "catch"};
 
+  /**
+   * Start the periodic health check scheduler.
+   */
+  private void startHealthCheckScheduler() {
+    if (healthCheckIntervalSeconds <= 0) {
+      log.info("[PluginManager] Health check scheduler disabled (interval <= 0)");
+      return;
+    }
+    healthCheckScheduler.scheduleAtFixedRate(
+        this::evaluatePluginHealth,
+        healthCheckIntervalSeconds,
+        healthCheckIntervalSeconds,
+        TimeUnit.SECONDS);
+    log.info(
+        "[PluginManager] Health check scheduler started (interval={}s, degradedErrorRate={}, unhealthyErrorRate={}, degradedDurationMs={})",
+        healthCheckIntervalSeconds,
+        degradedErrorRateThreshold,
+        unhealthyErrorRateThreshold,
+        degradedDurationThresholdMs);
+  }
+
+  /**
+   * Evaluate health of all active plugins based on performance metrics.
+   * Plugins with high error rates or slow average duration are marked as degraded or unhealthy.
+   */
+  private void evaluatePluginHealth() {
+    try {
+      for (PluginEntry entry : new ArrayList<>(pluginEntries.values())) {
+        if (entry.state != PluginState.ACTIVE) {
+          continue;
+        }
+        entry.refreshMetrics();
+        com.github.cc11001100.weavergirl.api.plugin.PluginPerformanceTracker.PluginMetricsSnapshot metrics = entry.metrics;
+        if (metrics == null || metrics.getInvocationCount() < 10) {
+          // Not enough data to evaluate; report as healthy
+          PluginHealthRegistry.reportHealthy(entry.plugin.name());
+          continue;
+        }
+
+        double errorRate = metrics.getErrorRate();
+        double avgDuration = metrics.getAvgDurationMs();
+
+        if (errorRate >= unhealthyErrorRateThreshold) {
+          PluginHealthRegistry.reportUnhealthy(
+              entry.plugin.name(),
+              String.format(
+                  "Error rate %.2f%% exceeds threshold %.2f%%",
+                  errorRate * 100,
+                  unhealthyErrorRateThreshold * 100));
+          log.warn(
+              "[PluginManager] Plugin '{}' marked unhealthy: error rate={:.2f}%, avgDuration={}ms",
+              entry.plugin.name(),
+              errorRate * 100,
+              avgDuration);
+        } else if (errorRate >= degradedErrorRateThreshold
+            || avgDuration >= degradedDurationThresholdMs) {
+          PluginHealthRegistry.reportDegraded(
+              entry.plugin.name(),
+              String.format(
+                  "Error rate %.2f%% or avg duration %.2fms exceeds threshold",
+                  errorRate * 100,
+                  avgDuration));
+          log.info(
+              "[PluginManager] Plugin '{}' marked degraded: error rate={:.2f}%, avgDuration={}ms",
+              entry.plugin.name(),
+              errorRate * 100,
+              avgDuration);
+        } else {
+          PluginHealthRegistry.reportHealthy(entry.plugin.name());
+        }
+      }
+    } catch (Throwable t) {
+      log.error("[PluginManager] Health check evaluation failed: {}", t.getMessage(), t);
+    }
+  }
+
+  /**
+   * Stop the health check scheduler. Called during shutdown.
+   */
+  public void shutdown() {
+    healthCheckScheduler.shutdown();
+    try {
+      if (!healthCheckScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+        healthCheckScheduler.shutdownNow();
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    log.info("[PluginManager] Health check scheduler stopped");
+  }
+
   /** Internal tracking entry for a managed plugin. */
   private static class PluginEntry {
     final WeaverPlugin plugin;
@@ -590,6 +739,11 @@ public class DefaultPluginManager implements PluginManager {
      */
     volatile boolean suspended;
 
+    /**
+     * Cached performance metrics snapshot. Updated periodically by health check scheduler.
+     */
+    volatile com.github.cc11001100.weavergirl.api.plugin.PluginPerformanceTracker.PluginMetricsSnapshot metrics;
+
     PluginEntry(
         WeaverPlugin plugin,
         PluginState state,
@@ -605,8 +759,29 @@ public class DefaultPluginManager implements PluginManager {
     }
 
     PluginInfo toPluginInfo() {
+      com.github.cc11001100.weavergirl.api.plugin.PluginPerformanceTracker.PluginMetricsSnapshot m = getMetrics();
       return new PluginInfo(
-          plugin.name(), state, version, interceptorCount, loadedAt, lastStateChangedAt);
+          plugin.name(),
+          state,
+          version,
+          interceptorCount,
+          loadedAt,
+          lastStateChangedAt,
+          m != null ? m.getInvocationCount() : 0,
+          m != null ? m.getErrorCount() : 0,
+          m != null ? m.getAvgDurationMs() : 0.0,
+          m != null ? m.getLastInvocationAt() : 0);
+    }
+
+    com.github.cc11001100.weavergirl.api.plugin.PluginPerformanceTracker.PluginMetricsSnapshot getMetrics() {
+      if (metrics == null) {
+        metrics = PluginPerformanceTracker.getMetrics(plugin.name());
+      }
+      return metrics;
+    }
+
+    void refreshMetrics() {
+      metrics = PluginPerformanceTracker.getMetrics(plugin.name());
     }
   }
 }

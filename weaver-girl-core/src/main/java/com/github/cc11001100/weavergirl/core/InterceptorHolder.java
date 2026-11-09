@@ -198,9 +198,56 @@ public class InterceptorHolder {
    * Record an interceptor outcome and its duration, driving both failure-count and slow-call
    * (auto-degradation) circuit breaking in one call. Used by the inlined {@code @Advice} so a hook
    * that is consistently slow — but never throws — is still tripped.
+   *
+   * Also records plugin-level performance metrics for health monitoring.
    */
   public static void recordOutcome(String interceptorName, boolean success, long durationNanos) {
     circuitBreaker.recordOutcome(interceptorName, success, durationNanos);
+    // Record plugin-level metrics for health monitoring
+    try {
+      String pluginName = extractPluginName(interceptorName);
+      if (pluginName != null) {
+        com.github.cc11001100.weavergirl.api.plugin.PluginPerformanceTracker.recordInvocationByName(
+            pluginName, durationNanos / 1_000_000, !success);
+      }
+    } catch (Throwable t) {
+      // Don't let plugin performance tracking break the core interceptor pipeline
+      LOG.debug("Failed to record plugin performance metrics: {}", t.getMessage());
+    }
+  }
+
+  /**
+   * Extract plugin name from interceptor definition name.
+   *
+   * <p>Definition naming convention: {@code pluginName-classPattern-methodPattern} or
+   * {@code pluginName-field-fieldName} or {@code pluginName-catch-exceptionType}.
+   * Extract everything before the first dot (which separates class pattern from method pattern).
+   */
+  private static String extractPluginName(String interceptorName) {
+    if (interceptorName == null) {
+      return null;
+    }
+    int dotIndex = interceptorName.indexOf('.');
+    if (dotIndex < 0) {
+      // No class pattern (unusual), return the whole name
+      return interceptorName;
+    }
+    // Find the last hyphen before the dot to separate plugin name from class pattern
+    int lastHyphen = interceptorName.lastIndexOf('-', dotIndex);
+    if (lastHyphen < 0) {
+      // No hyphen before dot, entire name is plugin name
+      return interceptorName.substring(0, dotIndex);
+    }
+    // Skip kind markers like "-field-" or "-catch-"
+    String beforeHyphen = interceptorName.substring(0, lastHyphen);
+    int kindMarker = beforeHyphen.lastIndexOf('-');
+    if (kindMarker >= 0) {
+      String suffix = beforeHyphen.substring(kindMarker + 1);
+      if ("field".equals(suffix) || "catch".equals(suffix)) {
+        return beforeHyphen.substring(0, kindMarker);
+      }
+    }
+    return beforeHyphen;
   }
 
   /**

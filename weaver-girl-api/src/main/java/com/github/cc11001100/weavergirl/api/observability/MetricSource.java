@@ -45,4 +45,18 @@ public interface MetricSource {
    * @param collector the collector to report gauges and counters to, never null
    */
   void collect(MetricCollector collector);
+
+  /**
+   * Execution priority. Lower values run first. Default is 0.
+   *
+   * <p>Metric sources are invoked in priority order (ascending priority). This allows for
+   * predictable ordering when multiple sources emit the same metric name. Lower priority sources
+   * run first and can set baseline values, while higher priority sources can override them.
+   *
+   * @return the priority value, default 0
+   * @since 1.2.0
+   */
+  default int priority() {
+    return 0;
+  }
 }

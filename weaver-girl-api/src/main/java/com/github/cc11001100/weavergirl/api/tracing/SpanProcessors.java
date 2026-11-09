@@ -1,5 +1,6 @@
 package com.github.cc11001100.weavergirl.api.tracing;
 
+import com.github.cc11001100.weavergirl.api.observability.ExtensionPerformanceTracker;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -41,7 +42,10 @@ public final class SpanProcessors {
   /**
    * Register a processor. Registering the same instance twice is a no-op.
    *
-   * @param processor the processor to add to the end of the chain
+   * <p>Processors are sorted by priority (ascending) after registration, so lower priority values
+   * run first.
+   *
+   * @param processor the processor to add to the chain
    */
   public static void register(SpanProcessor processor) {
     if (processor == null) {
@@ -54,6 +58,8 @@ public final class SpanProcessors {
         }
       }
       holders.add(new Holder(processor));
+      // Sort by priority after registration
+      holders.sort((a, b) -> Integer.compare(a.priority, b.priority));
     }
   }
 
@@ -146,6 +152,8 @@ public final class SpanProcessors {
   /** A processor plus its counters and rate-limited failure logging state. */
   private static final class Holder {
     private final SpanProcessor processor;
+    private final int priority;
+    private final String name;
     private final AtomicLong processed = new AtomicLong(0);
     private final AtomicLong dropped = new AtomicLong(0);
     private final AtomicLong failures = new AtomicLong(0);
@@ -153,22 +161,40 @@ public final class SpanProcessors {
 
     Holder(SpanProcessor processor) {
       this.processor = processor;
+      this.priority = processor.priority();
+      String reported;
+      try {
+        reported = processor.name();
+      } catch (RuntimeException e) {
+        reported = null;
+      }
+      this.name = reported == null || reported.trim().isEmpty() ? "unknown" : reported.trim();
     }
 
     String name() {
-      String name = processor.name();
-      return name == null || name.trim().isEmpty() ? "unknown" : name.trim();
+      return name;
     }
 
     SpanContext apply(SpanContext span) {
+      long start = System.nanoTime();
       SpanContext result;
       try {
         result = processor.process(span);
       } catch (RuntimeException e) {
         failures.incrementAndGet();
+        ExtensionPerformanceTracker.record(
+            ExtensionPerformanceTracker.KIND_SPAN_PROCESSOR,
+            name,
+            System.nanoTime() - start,
+            true);
         warn(e);
         return span;
       }
+      ExtensionPerformanceTracker.record(
+          ExtensionPerformanceTracker.KIND_SPAN_PROCESSOR,
+          name,
+          System.nanoTime() - start,
+          false);
       if (result == null) {
         dropped.incrementAndGet();
       } else {

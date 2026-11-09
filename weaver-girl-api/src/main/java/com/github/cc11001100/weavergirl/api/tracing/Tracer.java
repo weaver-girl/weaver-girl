@@ -1,5 +1,6 @@
 package com.github.cc11001100.weavergirl.api.tracing;
 
+import com.github.cc11001100.weavergirl.api.observability.TagEnrichers;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -203,8 +204,11 @@ public final class Tracer {
     SpanContext finalSpan = builder.build();
     CURRENT_SPAN.remove();
 
+    // Enrichment runs before governance, so a processor can redact or drop a tag an enricher added.
+    SpanContext enriched = TagEnrichers.apply(finalSpan);
+
     // Governance runs first: one processor governs exporters, sinks and every other listener.
-    SpanContext published = SpanProcessors.apply(finalSpan);
+    SpanContext published = SpanProcessors.apply(enriched);
     if (published == null) {
       return null;
     }

@@ -4,7 +4,13 @@ import com.github.cc11001100.weavergirl.api.ValidationUtils;
 import com.github.cc11001100.weavergirl.api.alert.AlertChannel;
 import com.github.cc11001100.weavergirl.api.alert.AlertEngine;
 import com.github.cc11001100.weavergirl.api.alert.AlertRule;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventListener;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
+import com.github.cc11001100.weavergirl.api.exporter.DataExporter;
+import com.github.cc11001100.weavergirl.api.exporter.ExporterRegistry;
+import com.github.cc11001100.weavergirl.api.observability.ExtensionPerformanceTracker;
 import com.github.cc11001100.weavergirl.api.observability.HealthCheck;
+import com.github.cc11001100.weavergirl.api.observability.HealthCheckExtension;
 import com.github.cc11001100.weavergirl.api.observability.HealthChecks;
 import com.github.cc11001100.weavergirl.api.observability.MetricSource;
 import com.github.cc11001100.weavergirl.api.observability.MetricSources;
@@ -12,6 +18,8 @@ import com.github.cc11001100.weavergirl.api.observability.ResourceAttributeProvi
 import com.github.cc11001100.weavergirl.api.observability.ResourceAttributes;
 import com.github.cc11001100.weavergirl.api.observability.SpanSink;
 import com.github.cc11001100.weavergirl.api.observability.SpanSinks;
+import com.github.cc11001100.weavergirl.api.observability.TagEnricher;
+import com.github.cc11001100.weavergirl.api.observability.TagEnrichers;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.plugin.PluginLogger;
 import com.github.cc11001100.weavergirl.api.plugin.PluginServices;
@@ -44,6 +52,10 @@ public class DefaultPluginContext implements PluginContext {
 
   private final List<HealthCheck> healthChecks = new CopyOnWriteArrayList<>();
 
+  private final List<HealthCheckExtension> healthCheckExtensions = new CopyOnWriteArrayList<>();
+
+  private final List<TagEnricher> tagEnrichers = new CopyOnWriteArrayList<>();
+
   private final List<AlertChannel> alertChannels = new CopyOnWriteArrayList<>();
   private final List<AlertRule> alertRules = new CopyOnWriteArrayList<>();
 
@@ -52,6 +64,9 @@ public class DefaultPluginContext implements PluginContext {
   private final List<MetricSource> metricSources = new CopyOnWriteArrayList<>();
   private final List<ResourceAttributeProvider> resourceAttributeProviders =
       new CopyOnWriteArrayList<>();
+
+  private final List<InterceptorEventListener> eventListeners = new CopyOnWriteArrayList<>();
+  private final List<DataExporter> dataExporters = new CopyOnWriteArrayList<>();
 
   public DefaultPluginContext(
       InterceptorRegistry registry, Map<String, String> config, String pluginName) {
@@ -85,6 +100,22 @@ public class DefaultPluginContext implements PluginContext {
   }
 
   @Override
+  public void registerHealthCheckExtension(HealthCheckExtension extension) {
+    HealthChecks.register(pluginName, extension);
+    if (extension != null && !containsInstance(healthCheckExtensions, extension)) {
+      healthCheckExtensions.add(extension);
+    }
+  }
+
+  @Override
+  public void registerTagEnricher(TagEnricher enricher) {
+    TagEnrichers.register(enricher);
+    if (enricher != null && !containsInstance(tagEnrichers, enricher)) {
+      tagEnrichers.add(enricher);
+    }
+  }
+
+  @Override
   public void registerAlertChannel(AlertChannel channel) {
     AlertEngine.addChannel(channel);
     alertChannels.add(channel);
@@ -102,6 +133,28 @@ public class DefaultPluginContext implements PluginContext {
     // JDK 21 compiler.
     PluginContext.super.registerSamplingStrategy(strategy);
     samplingStrategies.add(strategy);
+  }
+
+  @Override
+  public void registerEventListener(InterceptorEventListener listener) {
+    if (listener == null || containsInstance(eventListeners, listener)) {
+      return;
+    }
+    // Already on the bus from a direct addListener call. That registration is not ours to withdraw.
+    boolean alreadyPublished =
+        containsInstance(InterceptorEventPublisher.getInstance().getListeners(), listener);
+    PluginContext.super.registerEventListener(listener);
+    if (!alreadyPublished) {
+      eventListeners.add(listener);
+    }
+  }
+
+  @Override
+  public void registerDataExporter(DataExporter exporter) {
+    PluginContext.super.registerDataExporter(exporter);
+    if (exporter != null && exporter.name() != null && !containsInstance(dataExporters, exporter)) {
+      dataExporters.add(exporter);
+    }
   }
 
   @Override
@@ -137,6 +190,20 @@ public class DefaultPluginContext implements PluginContext {
       HealthChecks.unregister(check);
     }
     healthChecks.clear();
+    for (HealthCheckExtension extension : healthCheckExtensions) {
+      HealthChecks.unregister(extension);
+      // Drop the counters too: the component is gone, so its health series must not linger.
+      ExtensionPerformanceTracker.remove(
+          ExtensionPerformanceTracker.KIND_HEALTH_CHECK,
+          HealthChecks.componentName(pluginName, extension));
+    }
+    healthCheckExtensions.clear();
+    for (TagEnricher enricher : tagEnrichers) {
+      TagEnrichers.unregister(enricher);
+      ExtensionPerformanceTracker.remove(
+          ExtensionPerformanceTracker.KIND_TAG_ENRICHER, enricherName(enricher));
+    }
+    tagEnrichers.clear();
     for (AlertChannel channel : alertChannels) {
       AlertEngine.removeChannel(channel);
     }
@@ -159,6 +226,33 @@ public class DefaultPluginContext implements PluginContext {
       ResourceAttributes.unregister(provider);
     }
     resourceAttributeProviders.clear();
+    for (InterceptorEventListener listener : eventListeners) {
+      InterceptorEventPublisher.getInstance().removeListener(listener);
+    }
+    eventListeners.clear();
+    for (DataExporter exporter : dataExporters) {
+      // Identity: a different instance later registered under this name stays active.
+      ExporterRegistry.unregister(exporter);
+    }
+    dataExporters.clear();
+  }
+
+  private static String enricherName(TagEnricher enricher) {
+    try {
+      String name = enricher.name();
+      return name == null || name.trim().isEmpty() ? "unknown" : name.trim();
+    } catch (RuntimeException e) {
+      return "unknown";
+    }
+  }
+
+  private static boolean containsInstance(List<?> items, Object candidate) {
+    for (Object item : items) {
+      if (item == candidate) {
+        return true;
+      }
+    }
+    return false;
   }
 
   @Override

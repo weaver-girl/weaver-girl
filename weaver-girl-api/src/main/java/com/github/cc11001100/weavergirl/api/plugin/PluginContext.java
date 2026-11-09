@@ -3,7 +3,12 @@ package com.github.cc11001100.weavergirl.api.plugin;
 import com.github.cc11001100.weavergirl.api.alert.AlertChannel;
 import com.github.cc11001100.weavergirl.api.alert.AlertEngine;
 import com.github.cc11001100.weavergirl.api.alert.AlertRule;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventListener;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
+import com.github.cc11001100.weavergirl.api.exporter.DataExporter;
+import com.github.cc11001100.weavergirl.api.exporter.ExporterRegistry;
 import com.github.cc11001100.weavergirl.api.observability.HealthCheck;
+import com.github.cc11001100.weavergirl.api.observability.HealthCheckExtension;
 import com.github.cc11001100.weavergirl.api.observability.HealthChecks;
 import com.github.cc11001100.weavergirl.api.observability.MetricSource;
 import com.github.cc11001100.weavergirl.api.observability.MetricSources;
@@ -11,6 +16,8 @@ import com.github.cc11001100.weavergirl.api.observability.ResourceAttributeProvi
 import com.github.cc11001100.weavergirl.api.observability.ResourceAttributes;
 import com.github.cc11001100.weavergirl.api.observability.SpanSink;
 import com.github.cc11001100.weavergirl.api.observability.SpanSinks;
+import com.github.cc11001100.weavergirl.api.observability.TagEnricher;
+import com.github.cc11001100.weavergirl.api.observability.TagEnrichers;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.api.tracing.SpanProcessor;
 import com.github.cc11001100.weavergirl.api.tracing.SpanProcessors;
@@ -242,6 +249,47 @@ public interface PluginContext {
   }
 
   /**
+   * Report the health of an extension this plugin owns, without building a separate {@link
+   * HealthCheck} object.
+   *
+   * <p>This is the recommended shape when the extension that keeps the stateful resource (a sink, a
+   * source, a backend client) is the same object that knows whether it is healthy: implement {@link
+   * HealthCheckExtension} on it and register it here. The component name is the extension's {@link
+   * HealthCheckExtension#name()} prefixed with this plugin's name, so two plugins can report the
+   * same component name without colliding in the health report.
+   *
+   * <p>Runs on the caller's thread when health is evaluated — keep it fast and non-blocking. A check
+   * that throws is reported as {@code DOWN} without affecting others, and is counted in {@link
+   * com.github.cc11001100.weavergirl.api.observability.ExtensionPerformanceTracker}. The agent's
+   * implementation withdraws the check when the plugin is unloaded or destroyed.
+   *
+   * @param extension the extension to monitor
+   * @see HealthCheckExtension
+   * @since 1.2.0
+   */
+  default void registerHealthCheckExtension(HealthCheckExtension extension) {
+    HealthChecks.register(extension);
+  }
+
+  /**
+   * Register an enricher that adds application-specific tags to every span before it is exported.
+   *
+   * <p>Enrichers run inside {@code Tracer.endSpan}, before the {@code SpanProcessor} chain, so
+   * governance still sees — and can redact or drop — what an enricher added. They run on the thread
+   * that ends the span: keep them cheap and non-blocking. An enricher that throws is skipped and
+   * counted, and the span is exported unchanged.
+   *
+   * <p>The agent's implementation withdraws the enricher when the plugin is unloaded or destroyed.
+   *
+   * @param enricher the enricher to add
+   * @see TagEnricher
+   * @since 1.2.0
+   */
+  default void registerTagEnricher(TagEnricher enricher) {
+    TagEnrichers.register(enricher);
+  }
+
+  /**
    * Deliver alerts raised by {@link AlertEngine} to a channel this plugin owns (a chat webhook, a
    * ticketing API, an on-call integration).
    *
@@ -297,6 +345,60 @@ public interface PluginContext {
       com.github.cc11001100.weavergirl.api.sampling.SamplingStrategyRegistry.setActive(
           strategy.name());
     }
+  }
+
+  /**
+   * Subscribe to interceptor events published through {@link InterceptorEventPublisher}.
+   *
+   * <p>The same listener instance is added to the dispatch list at most once, so registering it
+   * again from this context does not deliver the event twice. Calling {@link
+   * InterceptorEventPublisher#addListener} directly is unchanged and can still add the same
+   * instance more than once. The agent's implementation withdraws the subscription when the plugin
+   * is unloaded or destroyed. The default implementation only registers, which is all a test double
+   * of this interface can do.
+   *
+   * <p>The listener runs on the thread that published the event. Do not block or do IO here. A
+   * listener that throws is skipped; the other listeners and the exporters still receive the event.
+   *
+   * @param listener the subscriber to add
+   * @see InterceptorEventListener
+   * @since 1.0.0
+   */
+  default void registerEventListener(InterceptorEventListener listener) {
+    if (listener == null) {
+      return;
+    }
+    InterceptorEventPublisher publisher = InterceptorEventPublisher.getInstance();
+    for (InterceptorEventListener existing : publisher.getListeners()) {
+      if (existing == listener) {
+        return;
+      }
+    }
+    publisher.addListener(listener);
+  }
+
+  /**
+   * Export interceptor events to a backend this plugin owns.
+   *
+   * <p>Unlike {@link ExporterRegistry#register}, which leaves the exporter idle until {@link
+   * ExporterRegistry#activate}, registering here makes it receive events immediately. The agent's
+   * implementation withdraws it on unload only when this instance is still the one registered under
+   * its name, so a replacement registered later keeps receiving events. The default implementation
+   * registers and activates on {@link ExporterRegistry}, which is all a test double can do.
+   *
+   * <p>Called on the thread that published the event. An exporter that throws is skipped and does
+   * not stop the others, or fail the publish.
+   *
+   * @param exporter the exporter to register and activate
+   * @see DataExporter
+   * @since 1.0.0
+   */
+  default void registerDataExporter(DataExporter exporter) {
+    if (exporter == null || exporter.name() == null) {
+      return;
+    }
+    ExporterRegistry.register(exporter);
+    ExporterRegistry.activate(exporter.name());
   }
 
   /**

@@ -165,25 +165,43 @@ public final class SpanSinks {
   /** A sink plus its counters and rate-limited failure logging state. */
   private static final class SinkHolder {
     private final SpanSink sink;
+    private final String name;
     private final AtomicLong lastWarningAt = new AtomicLong(0);
     private final AtomicLong failures = new AtomicLong(0);
     private final AtomicLong deliveries = new AtomicLong(0);
 
     SinkHolder(SpanSink sink) {
       this.sink = sink;
+      String reported;
+      try {
+        reported = sink.name();
+      } catch (RuntimeException e) {
+        reported = null;
+      }
+      this.name = reported == null || reported.trim().isEmpty() ? "unknown" : reported.trim();
     }
 
     String name() {
-      String name = sink.name();
-      return name == null || name.trim().isEmpty() ? "unknown" : name.trim();
+      return name;
     }
 
     void deliver(SpanRecord record) {
       deliveries.incrementAndGet();
+      long start = System.nanoTime();
       try {
         sink.onSpanEnd(record);
+        ExtensionPerformanceTracker.record(
+            ExtensionPerformanceTracker.KIND_SPAN_SINK,
+            name,
+            System.nanoTime() - start,
+            false);
       } catch (RuntimeException e) {
         long count = failures.incrementAndGet();
+        ExtensionPerformanceTracker.record(
+            ExtensionPerformanceTracker.KIND_SPAN_SINK,
+            name,
+            System.nanoTime() - start,
+            true);
         long now = System.currentTimeMillis();
         long last = lastWarningAt.get();
         if (now - last >= FAILURE_LOG_INTERVAL_MS
@@ -191,7 +209,7 @@ public final class SpanSinks {
           log.log(
               Level.WARNING,
               "SpanSink '"
-                  + sink.name()
+                  + name
                   + "' threw ("
                   + count
                   + " failures so far); further failures are not logged for a minute",

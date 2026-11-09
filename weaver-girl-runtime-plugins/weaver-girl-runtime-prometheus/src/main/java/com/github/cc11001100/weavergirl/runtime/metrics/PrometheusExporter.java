@@ -4,6 +4,8 @@ import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventListener;
 import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
 import com.github.cc11001100.weavergirl.api.metrics.MetricSnapshot;
+import com.github.cc11001100.weavergirl.api.observability.ExtensionPerformanceTracker;
+import com.github.cc11001100.weavergirl.api.observability.ExtensionStats;
 import com.github.cc11001100.weavergirl.api.observability.HealthCheckResult;
 import com.github.cc11001100.weavergirl.api.observability.HealthChecks;
 import com.github.cc11001100.weavergirl.api.observability.HealthReport;
@@ -14,6 +16,7 @@ import com.github.cc11001100.weavergirl.api.observability.SpanSinkStats;
 import com.github.cc11001100.weavergirl.api.observability.SpanSinks;
 import com.github.cc11001100.weavergirl.api.plugin.PluginHealth;
 import com.github.cc11001100.weavergirl.api.plugin.PluginHealthRegistry;
+import com.github.cc11001100.weavergirl.api.plugin.PluginPerformanceTracker;
 import com.github.cc11001100.weavergirl.api.sampling.SamplingStrategyRegistry;
 import com.github.cc11001100.weavergirl.api.plugin.PluginInfo;
 import com.github.cc11001100.weavergirl.api.plugin.PluginManager;
@@ -343,6 +346,8 @@ public class PrometheusExporter implements InterceptorEventListener {
     appendAgentMetrics(sb);
     appendHealthCheckMetrics(sb);
     appendPluginHealthMetrics(sb);
+    appendPluginPerformanceMetrics(sb);
+    appendExtensionPerformanceMetrics(sb);
     appendPluginStateMetrics(sb);
     appendSpanProcessorMetrics(sb);
     appendSamplingStrategyMetrics(sb);
@@ -539,10 +544,21 @@ public class PrometheusExporter implements InterceptorEventListener {
 
     Map<String, MetricFamily> families = new LinkedHashMap<String, MetricFamily>();
     for (MetricSource source : ordered) {
+      String name = sourceName(source);
+      long start = System.nanoTime();
       try {
         source.collect(new RecordingCollector(families));
+        ExtensionPerformanceTracker.record(
+            ExtensionPerformanceTracker.KIND_METRIC_SOURCE,
+            name,
+            System.nanoTime() - start,
+            false);
       } catch (RuntimeException e) {
-        String name = sourceName(source);
+        ExtensionPerformanceTracker.record(
+            ExtensionPerformanceTracker.KIND_METRIC_SOURCE,
+            name,
+            System.nanoTime() - start,
+            true);
         AtomicLong errors = metricSourceErrors.get(name);
         if (errors == null) {
           AtomicLong created = new AtomicLong();
@@ -992,6 +1008,151 @@ public class PrometheusExporter implements InterceptorEventListener {
           .append(escape(name))
           .append("\"} ")
           .append(formatNumber(plugin.getCheckTimestamp() / 1000.0))
+          .append("\n");
+    }
+    sb.append("\n");
+  }
+
+  /**
+   * Plugin performance metrics from {@link PluginPerformanceTracker}.
+   *
+   * <p>Includes invocation count, error count, error rate, and average duration per plugin.
+   */
+  private void appendPluginPerformanceMetrics(StringBuilder sb) {
+    java.util.Map<String, PluginPerformanceTracker.PluginMetricsSnapshot> metrics;
+    try {
+      metrics = PluginPerformanceTracker.getAllMetrics();
+    } catch (RuntimeException e) {
+      return;
+    }
+    if (metrics == null || metrics.isEmpty()) {
+      return;
+    }
+
+    List<String> names = new ArrayList<String>(metrics.keySet());
+    Collections.sort(names);
+
+    sb.append("# HELP weavergirl_plugin_invocations_total Total interceptor invocations per plugin\n");
+    sb.append("# TYPE weavergirl_plugin_invocations_total counter\n");
+    for (String name : names) {
+      PluginPerformanceTracker.PluginMetricsSnapshot m = metrics.get(name);
+      if (m == null) continue;
+      sb.append("weavergirl_plugin_invocations_total{plugin=\"")
+          .append(escape(name))
+          .append("\"} ")
+          .append(m.getInvocationCount())
+          .append("\n");
+    }
+    sb.append("\n");
+
+    sb.append("# HELP weavergirl_plugin_errors_total Total interceptor errors per plugin\n");
+    sb.append("# TYPE weavergirl_plugin_errors_total counter\n");
+    for (String name : names) {
+      PluginPerformanceTracker.PluginMetricsSnapshot m = metrics.get(name);
+      if (m == null) continue;
+      sb.append("weavergirl_plugin_errors_total{plugin=\"")
+          .append(escape(name))
+          .append("\"} ")
+          .append(m.getErrorCount())
+          .append("\n");
+    }
+    sb.append("\n");
+
+    sb.append("# HELP weavergirl_plugin_error_rate Error rate per plugin (0.0-1.0)\n");
+    sb.append("# TYPE weavergirl_plugin_error_rate gauge\n");
+    for (String name : names) {
+      PluginPerformanceTracker.PluginMetricsSnapshot m = metrics.get(name);
+      if (m == null) continue;
+      sb.append("weavergirl_plugin_error_rate{plugin=\"")
+          .append(escape(name))
+          .append("\"} ")
+          .append(String.format("%.4f", m.getErrorRate()))
+          .append("\n");
+    }
+    sb.append("\n");
+
+    sb.append("# HELP weavergirl_plugin_avg_duration_ms Average callback duration per plugin\n");
+    sb.append("# TYPE weavergirl_plugin_avg_duration_ms gauge\n");
+    for (String name : names) {
+      PluginPerformanceTracker.PluginMetricsSnapshot m = metrics.get(name);
+      if (m == null) continue;
+      sb.append("weavergirl_plugin_avg_duration_ms{plugin=\"")
+          .append(escape(name))
+          .append("\"} ")
+          .append(String.format("%.2f", m.getAvgDurationMs()))
+          .append("\n");
+    }
+    sb.append("\n");
+  }
+
+  /**
+   * Per-extension call counters and timings from {@link ExtensionPerformanceTracker}.
+   *
+   * <p>Covers every extension point the agent calls on the application's behalf — span processors,
+   * span sinks, metric sources, health checks and tag enrichers. This is the only place a broken or
+   * slow extension becomes visible: each one is isolated, so a throwing sink or enricher never
+   * fails the application and would otherwise leave no trace.
+   *
+   * <p>Nothing is emitted until an extension has actually been called, so a deployment with no
+   * extensions looks exactly as before.
+   */
+  private void appendExtensionPerformanceMetrics(StringBuilder sb) {
+    List<ExtensionStats> stats;
+    try {
+      stats = ExtensionPerformanceTracker.getAll();
+    } catch (RuntimeException e) {
+      return;
+    }
+    if (stats == null || stats.isEmpty()) {
+      return;
+    }
+
+    sb.append(
+        "# HELP weavergirl_extension_invocations_total Times the agent called an extension\n");
+    sb.append("# TYPE weavergirl_extension_invocations_total counter\n");
+    for (ExtensionStats stat : stats) {
+      sb.append("weavergirl_extension_invocations_total{kind=\"")
+          .append(escape(stat.getKind()))
+          .append("\",extension=\"")
+          .append(escape(stat.getName()))
+          .append("\"} ")
+          .append(stat.getInvocations())
+          .append("\n");
+    }
+
+    sb.append("# HELP weavergirl_extension_errors_total Extension calls that threw\n");
+    sb.append("# TYPE weavergirl_extension_errors_total counter\n");
+    for (ExtensionStats stat : stats) {
+      sb.append("weavergirl_extension_errors_total{kind=\"")
+          .append(escape(stat.getKind()))
+          .append("\",extension=\"")
+          .append(escape(stat.getName()))
+          .append("\"} ")
+          .append(stat.getErrors())
+          .append("\n");
+    }
+
+    sb.append("# HELP weavergirl_extension_error_rate Share of an extension's calls that threw\n");
+    sb.append("# TYPE weavergirl_extension_error_rate gauge\n");
+    for (ExtensionStats stat : stats) {
+      sb.append("weavergirl_extension_error_rate{kind=\"")
+          .append(escape(stat.getKind()))
+          .append("\",extension=\"")
+          .append(escape(stat.getName()))
+          .append("\"} ")
+          .append(String.format("%.4f", stat.getErrorRate()))
+          .append("\n");
+    }
+
+    sb.append("# HELP weavergirl_extension_avg_duration_ms Mean time the agent spent in an extension\n");
+    sb.append("# TYPE weavergirl_extension_avg_duration_ms gauge\n");
+    for (ExtensionStats stat : stats) {
+      sb.append("weavergirl_extension_avg_duration_ms{kind=\"")
+          .append(escape(stat.getKind()))
+          .append("\",extension=\"")
+          .append(escape(stat.getName()))
+          .append("\"} ")
+          .append(String.format("%.3f", stat.getAvgDurationMs()))
           .append("\n");
     }
     sb.append("\n");

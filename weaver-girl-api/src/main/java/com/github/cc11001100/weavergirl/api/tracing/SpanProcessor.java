@@ -53,4 +53,23 @@ public interface SpanProcessor {
    * @return the span to publish, or {@code null} to drop it
    */
   SpanContext process(SpanContext span);
+
+  /**
+   * Execution priority. Lower values run first. Default is 0.
+   *
+   * <p>Processors are invoked in priority order (ascending priority). This allows for
+   * predictable ordering when multiple processors are registered, for example:
+   *
+   * <ul>
+   *   <li>A noise-filter processor (priority -100) runs first to drop health checks
+   *   <li>A redaction processor (priority 0) runs second to remove sensitive data
+   *   <li>An enrichment processor (priority 100) runs last to add application metadata
+   * </ul>
+   *
+   * @return the priority value, default 0
+   * @since 1.2.0
+   */
+  default int priority() {
+    return 0;
+  }
 }

@@ -32,6 +32,8 @@ class PrometheusExporterTest {
     com.github.cc11001100.weavergirl.api.sampling.SamplingStrategyRegistry.clear();
     com.github.cc11001100.weavergirl.api.tracing.Tracer.setCurrentSpan(null);
     com.github.cc11001100.weavergirl.api.plugin.PluginManagerHolder.setInstance(null);
+    com.github.cc11001100.weavergirl.api.observability.TagEnrichers.clear();
+    com.github.cc11001100.weavergirl.api.observability.ExtensionPerformanceTracker.clear();
   }
 
   @Test
@@ -950,6 +952,127 @@ class PrometheusExporterTest {
             body.accept(collector);
           }
         });
+  }
+
+  @Test
+  void renderMetrics_rendersExtensionPerformanceForSpanSinkAndProcessor() {
+    com.github.cc11001100.weavergirl.api.observability.SpanSinks.register(
+        new com.github.cc11001100.weavergirl.api.observability.SpanSink() {
+          @Override
+          public String name() {
+            return "my-apm";
+          }
+
+          @Override
+          public void onSpanEnd(com.github.cc11001100.weavergirl.api.observability.SpanRecord span) {
+            throw new IllegalStateException("backend down");
+          }
+        });
+    com.github.cc11001100.weavergirl.api.tracing.SpanProcessors.register(
+        new com.github.cc11001100.weavergirl.api.tracing.SpanProcessor() {
+          @Override
+          public String name() {
+            return "redactor";
+          }
+
+          @Override
+          public com.github.cc11001100.weavergirl.api.tracing.SpanContext process(
+              com.github.cc11001100.weavergirl.api.tracing.SpanContext span) {
+            return span;
+          }
+        });
+    com.github.cc11001100.weavergirl.api.tracing.Tracer.startSpan("op");
+    com.github.cc11001100.weavergirl.api.tracing.Tracer.endSpan(null, null);
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(
+        metrics.contains(
+            "weavergirl_extension_invocations_total{kind=\"span-sink\",extension=\"my-apm\"} 1"),
+        metrics);
+    assertTrue(
+        metrics.contains(
+            "weavergirl_extension_errors_total{kind=\"span-sink\",extension=\"my-apm\"} 1"),
+        metrics);
+    assertTrue(
+        metrics.contains(
+            "weavergirl_extension_error_rate{kind=\"span-sink\",extension=\"my-apm\"} 1.0000"),
+        metrics);
+    assertTrue(
+        metrics.contains(
+            "weavergirl_extension_invocations_total{kind=\"span-processor\",extension=\"redactor\"}"
+                + " 1"),
+        metrics);
+    assertTrue(
+        metrics.contains(
+            "# TYPE weavergirl_extension_avg_duration_ms gauge"),
+        metrics);
+  }
+
+  @Test
+  void renderMetrics_rendersHealthCheckExtensionCounters() {
+    com.github.cc11001100.weavergirl.api.observability.HealthChecks.register(
+        "orders-plugin",
+        new com.github.cc11001100.weavergirl.api.observability.HealthCheckExtension() {
+          @Override
+          public String name() {
+            return "db-pool";
+          }
+
+          @Override
+          public com.github.cc11001100.weavergirl.api.observability.HealthCheckResult checkHealth() {
+            return com.github.cc11001100.weavergirl.api.observability.HealthCheckResult.down(
+                "exhausted");
+          }
+        });
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(
+        metrics.contains("weavergirl_health_check{component=\"orders-plugin/db-pool\""), metrics);
+    assertTrue(
+        metrics.contains(
+            "weavergirl_extension_invocations_total{kind=\"health-check\","
+                + "extension=\"orders-plugin/db-pool\"} 1"),
+        metrics);
+  }
+
+  @Test
+  void renderMetrics_rendersTagEnricherCounters() {
+    com.github.cc11001100.weavergirl.api.observability.TagEnrichers.register(
+        new com.github.cc11001100.weavergirl.api.observability.TagEnricher() {
+          @Override
+          public String name() {
+            return "tenant";
+          }
+
+          @Override
+          public java.util.Map<String, String> enrichTags(
+              com.github.cc11001100.weavergirl.api.tracing.SpanContext span) {
+            return java.util.Collections.singletonMap("tenant.id", "t-1");
+          }
+        });
+    com.github.cc11001100.weavergirl.api.tracing.Tracer.startSpan("op");
+    com.github.cc11001100.weavergirl.api.tracing.Tracer.endSpan(null, null);
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(
+        metrics.contains(
+            "weavergirl_extension_invocations_total{kind=\"tag-enricher\",extension=\"tenant\"} 1"),
+        metrics);
+    assertTrue(
+        metrics.contains(
+            "weavergirl_extension_errors_total{kind=\"tag-enricher\",extension=\"tenant\"} 0"),
+        metrics);
+  }
+
+  @Test
+  void renderMetrics_omitsExtensionMetricsUntilAnExtensionIsCalled() {
+    String metrics = exporter.renderMetrics();
+
+    assertFalse(metrics.contains("weavergirl_extension_invocations_total"), metrics);
+    assertFalse(metrics.contains("weavergirl_extension_avg_duration_ms"), metrics);
   }
 
   @Test
