@@ -7,9 +7,14 @@ import com.github.cc11001100.weavergirl.api.event.InterceptorEventListener;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.exporter.DataExporter;
 import com.github.cc11001100.weavergirl.api.exporter.ExporterRegistry;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventTransformer;
+import com.github.cc11001100.weavergirl.api.event.EventTransformers;
 import com.github.cc11001100.weavergirl.api.observability.HealthCheck;
 import com.github.cc11001100.weavergirl.api.observability.HealthCheckExtension;
 import com.github.cc11001100.weavergirl.api.observability.HealthChecks;
+import com.github.cc11001100.weavergirl.api.observability.MetricPoint;
+import com.github.cc11001100.weavergirl.api.observability.MetricProcessor;
+import com.github.cc11001100.weavergirl.api.observability.MetricProcessors;
 import com.github.cc11001100.weavergirl.api.observability.MetricSource;
 import com.github.cc11001100.weavergirl.api.observability.MetricSources;
 import com.github.cc11001100.weavergirl.api.observability.ResourceAttributeProvider;
@@ -318,6 +323,42 @@ public interface PluginContext {
    */
   default void registerAlertRule(AlertRule rule) {
     AlertEngine.addRule(rule);
+  }
+
+  /**
+   * Register a processor that governs every metric sample this plugin's {@link MetricSource}s
+   * emit, before the agent renders them for a consumer.
+   *
+   * <p>Processors run on the scrape thread inside the collector, in {@link MetricProcessor#priority()}
+   * order. Returning {@code null} drops the sample, returning a rebuilt {@link MetricPoint} changes
+   * it (rename, relabel, revalue). A processor that throws is skipped and counted; the sample is
+   * kept as it was. The agent's implementation withdraws the processor when the plugin is unloaded
+   * or destroyed.
+   *
+   * @param processor the processor to add
+   * @see MetricProcessor
+   * @since 1.3.0
+   */
+  default void registerMetricProcessor(MetricProcessor processor) {
+    MetricProcessors.register(processor);
+  }
+
+  /**
+   * Register a transformer that governs every interceptor event this plugin (or any other) publishes,
+   * before listeners, exporters and the event history see it.
+   *
+   * <p>Transformers run on the thread that published the event, in {@link
+   * InterceptorEventTransformer#priority()} order. Returning {@code null} drops the event, returning
+   * a modified {@code InterceptorEvent} changes it. A transformer that throws is skipped and counted;
+   * the event is delivered unchanged. The agent's implementation withdraws the transformer when the
+   * plugin is unloaded or destroyed.
+   *
+   * @param transformer the transformer to add
+   * @see InterceptorEventTransformer
+   * @since 1.3.0
+   */
+  default void registerEventTransformer(InterceptorEventTransformer transformer) {
+    EventTransformers.register(transformer);
   }
 
   /**

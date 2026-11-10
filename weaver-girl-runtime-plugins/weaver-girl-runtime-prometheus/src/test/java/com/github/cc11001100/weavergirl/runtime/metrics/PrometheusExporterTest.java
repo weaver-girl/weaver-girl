@@ -34,6 +34,9 @@ class PrometheusExporterTest {
     com.github.cc11001100.weavergirl.api.plugin.PluginManagerHolder.setInstance(null);
     com.github.cc11001100.weavergirl.api.observability.TagEnrichers.clear();
     com.github.cc11001100.weavergirl.api.observability.ExtensionPerformanceTracker.clear();
+    com.github.cc11001100.weavergirl.api.observability.MetricProcessors.clear();
+    com.github.cc11001100.weavergirl.api.event.EventTransformers.clear();
+    com.github.cc11001100.weavergirl.api.tracing.TracingMetrics.reset();
   }
 
   @Test
@@ -1073,6 +1076,143 @@ class PrometheusExporterTest {
 
     assertFalse(metrics.contains("weavergirl_extension_invocations_total"), metrics);
     assertFalse(metrics.contains("weavergirl_extension_avg_duration_ms"), metrics);
+  }
+
+  @Test
+  void renderMetrics_metricSourceSamplesPassThroughTheGovernanceChain() {
+    com.github.cc11001100.weavergirl.api.observability.MetricSources.register(
+        new com.github.cc11001100.weavergirl.api.observability.MetricSource() {
+          @Override
+          public String name() {
+            return "pool";
+          }
+
+          @Override
+          public void collect(
+              com.github.cc11001100.weavergirl.api.observability.MetricCollector collector) {
+            collector.gauge(
+                "pool_connections",
+                "Connections",
+                java.util.Collections.singletonMap("route", "/x"),
+                5);
+            collector.counter("noisy_hits", "Noise", 9);
+          }
+        });
+    com.github.cc11001100.weavergirl.api.observability.MetricProcessors.register(
+        new com.github.cc11001100.weavergirl.api.observability.MetricProcessor() {
+          @Override
+          public String name() {
+            return "governor";
+          }
+
+          @Override
+          public com.github.cc11001100.weavergirl.api.observability.MetricPoint process(
+              com.github.cc11001100.weavergirl.api.observability.MetricPoint point) {
+            if (point.name().startsWith("noisy_")) {
+              return null;
+            }
+            return point.toBuilder().name("app_" + point.name()).labels(null).build();
+          }
+        });
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(metrics.contains("app_pool_connections 5"), metrics);
+    assertFalse(metrics.contains("pool_connections{route="), "the label was not stripped: " + metrics);
+    assertFalse(metrics.contains("noisy_hits"), metrics);
+  }
+
+  @Test
+  void renderMetrics_rendersMetricProcessorCounters() {
+    com.github.cc11001100.weavergirl.api.observability.MetricSources.register(
+        new com.github.cc11001100.weavergirl.api.observability.MetricSource() {
+          @Override
+          public String name() {
+            return "pool";
+          }
+
+          @Override
+          public void collect(
+              com.github.cc11001100.weavergirl.api.observability.MetricCollector collector) {
+            collector.gauge("kept", null, 1);
+            collector.gauge("dropped", null, 2);
+          }
+        });
+    com.github.cc11001100.weavergirl.api.observability.MetricProcessors.register(
+        new com.github.cc11001100.weavergirl.api.observability.MetricProcessor() {
+          @Override
+          public String name() {
+            return "half";
+          }
+
+          @Override
+          public com.github.cc11001100.weavergirl.api.observability.MetricPoint process(
+              com.github.cc11001100.weavergirl.api.observability.MetricPoint point) {
+            return "dropped".equals(point.name()) ? null : point;
+          }
+        });
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(
+        metrics.contains("weavergirl_metric_processor_processed_total{processor=\"half\"} 1"),
+        metrics);
+    assertTrue(
+        metrics.contains("weavergirl_metric_processor_dropped_total{processor=\"half\"} 1"),
+        metrics);
+    assertTrue(
+        metrics.contains("weavergirl_metric_processor_errors_total{processor=\"half\"} 0"),
+        metrics);
+  }
+
+  @Test
+  void renderMetrics_rendersEventTransformerCounters() {
+    com.github.cc11001100.weavergirl.api.event.EventTransformers.register(
+        new com.github.cc11001100.weavergirl.api.event.InterceptorEventTransformer() {
+          @Override
+          public String name() {
+            return "redactor";
+          }
+
+          @Override
+          public InterceptorEvent transform(InterceptorEvent event) {
+            return event.toBuilder().attribute("sql", "***").build();
+          }
+        });
+    com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher.getInstance()
+        .publish(InterceptorEvent.builder().type("slow-query").plugin("jdbc").build());
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(
+        metrics.contains(
+            "weavergirl_event_transformer_processed_total{transformer=\"redactor\"} 1"),
+        metrics);
+    assertTrue(
+        metrics.contains(
+            "weavergirl_event_transformer_dropped_total{transformer=\"redactor\"} 0"),
+        metrics);
+  }
+
+  @Test
+  void renderMetrics_rendersTracingSelfTelemetry() {
+    com.github.cc11001100.weavergirl.api.tracing.Tracer.startSpan("op");
+    com.github.cc11001100.weavergirl.api.tracing.Tracer.endSpan("op", "OK");
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(metrics.contains("weavergirl_spans_started_total 1"), metrics);
+    assertTrue(metrics.contains("weavergirl_spans_ended_total 1"), metrics);
+    assertTrue(metrics.contains("weavergirl_spans_published_total 1"), metrics);
+    assertTrue(metrics.contains("weavergirl_spans_dropped_total 0"), metrics);
+    assertTrue(metrics.contains("weavergirl_spans_drop_ratio 0.0000"), metrics);
+  }
+
+  @Test
+  void renderMetrics_omitsTracingSelfTelemetryBeforeAnySpan() {
+    String metrics = exporter.renderMetrics();
+
+    assertFalse(metrics.contains("weavergirl_spans_started_total"), metrics);
   }
 
   @Test

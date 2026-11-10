@@ -28,6 +28,9 @@ import java.util.concurrent.atomic.LongAdder;
  *   <li>{@code metric-source} — a {@link MetricSource} collected during a scrape
  *   <li>{@code health-check} — a {@link HealthCheck}, including {@link HealthCheckExtension} adapters
  *   <li>{@code tag-enricher} — {@link TagEnrichers}
+ *   <li>{@code metric-processor} — {@link MetricProcessors}
+ *   <li>{@code event-transformer} —
+ *       {@link com.github.cc11001100.weavergirl.api.event.EventTransformers}
  * </ul>
  *
  * <p>Recording is a couple of concurrent map lookups and adder increments, so it is safe to call on
@@ -54,6 +57,12 @@ public final class ExtensionPerformanceTracker {
 
   /** Extension point: a {@code TagEnricher} enriching a finished span. */
   public static final String KIND_TAG_ENRICHER = "tag-enricher";
+
+  /** Extension point: a {@code MetricProcessor} governing one metric sample. */
+  public static final String KIND_METRIC_PROCESSOR = "metric-processor";
+
+  /** Extension point: an {@code InterceptorEventTransformer} governing one interceptor event. */
+  public static final String KIND_EVENT_TRANSFORMER = "event-transformer";
 
   private static final ConcurrentMap<String, ConcurrentMap<String, Counter>> byKind =
       new ConcurrentHashMap<>();

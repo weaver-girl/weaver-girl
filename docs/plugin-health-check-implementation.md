@@ -330,6 +330,38 @@ weavergirl_extension_avg_duration_ms{kind="span-sink",extension="my-apm"} 0.412
 - 按 `priority()` 升序执行，同优先级保持注册顺序；后执行的增强器能看到前者写入的属性
 - 返回 `null`/空 map 不修改；抛异常只跳过自己并计入 `kind="tag-enricher"` 计数
 
+## 八、管道治理与追踪自监控
+
+在“扩展点可观测”之上，本次补齐了**数据管道本身的治理与自监控**：指标和事件可以像 span 一样
+被插件治理，追踪管线本身也有计数。
+
+### 1. MetricProcessor - 指标治理管道
+
+- `MetricPoint`：一个样本的不可变快照（name/help/type/labels/value，histogram 带桶）
+- `MetricProcessor`：`priority()` + `process(point)`，返回 `null` 丢弃
+- `MetricProcessors`：注册表 + 链表执行 + `MetricProcessorStats`（processed/dropped/failures）
+- 接入点：Prometheus `RecordingCollector`，在指标名前缀校验之前执行，治理后的名字仍受校验
+- 指标：`weavergirl_metric_processor_{processed,dropped,errors}_total{processor}`
+
+### 2. InterceptorEventTransformer - 事件治理管道
+
+- `InterceptorEventTransformer`：`priority()` + `transform(event)`
+- `EventTransformers`：注册表 + 链表执行 + `EventTransformerStats`
+- `InterceptorEvent.toBuilder()`：改一个字段时保留时间戳与 trace 关联
+- 接入点：`InterceptorEventPublisher.publish`，在盖 traceId/spanId 之后、监听器/导出器/历史之前
+- 指标：`weavergirl_event_transformer_{processed,dropped,errors}_total{transformer}`
+
+### 3. TracingMetrics - 追踪管线自监控
+
+- 计数：started / ended / published / dropped
+- 指标：`weavergirl_spans_{started,ended,published,dropped}_total`、`weavergirl_spans_drop_ratio`
+- 用途：区分“处理器把 span 吃掉了”“应用不再产生 span”“没有消费者接住 span”
+
+### 4. 生命周期
+
+两类治理扩展都走 `PluginContext.registerMetricProcessor` / `registerEventTransformer`，
+`withdrawServices()` 摘除实例并清掉 `weavergirl_extension_*` 中属于它的计数。
+
 ## 文件变更清单
 
 ### 新增文件
@@ -345,6 +377,18 @@ weavergirl_extension_avg_duration_ms{kind="span-sink",extension="my-apm"} 0.412
 - `weaver-girl-api/src/test/java/com/github/cc11001100/weavergirl/api/observability/TagEnrichersTest.java`
 - `weaver-girl-core/src/test/java/com/github/cc11001100/weavergirl/core/plugin/PluginContextEnricherAndHealthExtensionTest.java`
 - `weaver-girl-core/src/test/java/com/github/cc11001100/weavergirl/core/integration/ContextPropagationIntegrationTest.java` - 上下文传播织入集成测试
+- `weaver-girl-api/src/main/java/com/github/cc11001100/weavergirl/api/observability/MetricPoint.java` - 指标样本快照
+- `weaver-girl-api/src/main/java/com/github/cc11001100/weavergirl/api/observability/MetricProcessor.java` - 指标治理扩展点
+- `weaver-girl-api/src/main/java/com/github/cc11001100/weavergirl/api/observability/MetricProcessorStats.java` - 治理计数
+- `weaver-girl-api/src/main/java/com/github/cc11001100/weavergirl/api/observability/MetricProcessors.java` - 指标治理注册表
+- `weaver-girl-api/src/main/java/com/github/cc11001100/weavergirl/api/event/InterceptorEventTransformer.java` - 事件治理扩展点
+- `weaver-girl-api/src/main/java/com/github/cc11001100/weavergirl/api/event/EventTransformers.java` - 事件治理注册表
+- `weaver-girl-api/src/main/java/com/github/cc11001100/weavergirl/api/event/EventTransformerStats.java` - 事件治理计数
+- `weaver-girl-api/src/main/java/com/github/cc11001100/weavergirl/api/tracing/TracingMetrics.java` - 追踪管线自监控
+- `weaver-girl-api/src/test/java/com/github/cc11001100/weavergirl/api/observability/MetricProcessorsTest.java`
+- `weaver-girl-api/src/test/java/com/github/cc11001100/weavergirl/api/event/EventTransformersTest.java`
+- `weaver-girl-api/src/test/java/com/github/cc11001100/weavergirl/api/tracing/TracingMetricsTest.java`
+- `weaver-girl-core/src/test/java/com/github/cc11001100/weavergirl/core/plugin/PluginContextGovernanceExtensionsTest.java`
 - `docs/extension-point-guide.md` - 扩展点开发指南
 
 ### 修改文件
@@ -362,3 +406,9 @@ weavergirl_extension_avg_duration_ms{kind="span-sink",extension="my-apm"} 0.412
 - `weaver-girl-api/src/main/java/com/github/cc11001100/weavergirl/api/tracing/Tracer.java` - endSpan 接入 TagEnrichers
 - `weaver-girl-api/src/main/java/com/github/cc11001100/weavergirl/api/plugin/PluginContext.java` - 新增 registerHealthCheckExtension/registerTagEnricher
 - `weaver-girl-core/src/main/java/com/github/cc11001100/weavergirl/core/plugin/DefaultPluginContext.java` - 记录并卸载新的扩展点
+- `weaver-girl-api/src/main/java/com/github/cc11001100/weavergirl/api/plugin/PluginContext.java` - 新增 registerMetricProcessor/registerEventTransformer
+- `weaver-girl-api/src/main/java/com/github/cc11001100/weavergirl/api/event/InterceptorEventPublisher.java` - publish 接入事件治理链
+- `weaver-girl-api/src/main/java/com/github/cc11001100/weavergirl/api/event/InterceptorEvent.java` - 新增 toBuilder()
+- `weaver-girl-api/src/main/java/com/github/cc11001100/weavergirl/api/tracing/Tracer.java` - 接入 TracingMetrics
+- `weaver-girl-api/src/main/java/com/github/cc11001100/weavergirl/api/observability/ExtensionPerformanceTracker.java` - 新增 metric-processor/event-transformer kind
+- `weaver-girl-runtime-plugins/weaver-girl-runtime-prometheus/src/main/java/com/github/cc11001100/weavergirl/runtime/metrics/PrometheusExporter.java` - 接入指标治理链并导出治理/追踪指标

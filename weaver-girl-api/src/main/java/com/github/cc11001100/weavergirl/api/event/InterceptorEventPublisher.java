@@ -101,6 +101,12 @@ public class InterceptorEventPublisher {
       return;
     }
     event = stampActiveSpan(event);
+    // Governance runs first: a transformer can redact or drop the event before any listener,
+    // exporter or the history sees it.
+    event = EventTransformers.transform(event);
+    if (event == null) {
+      return;
+    }
     recordHistory(event);
     for (InterceptorEventListener listener : listeners) {
       try {

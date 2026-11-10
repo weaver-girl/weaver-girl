@@ -3,9 +3,13 @@ package com.github.cc11001100.weavergirl.docs.examples;
 import com.github.cc11001100.weavergirl.api.alert.AlertChannel;
 import com.github.cc11001100.weavergirl.api.alert.AlertEvent;
 import com.github.cc11001100.weavergirl.api.alert.AlertRule;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventTransformer;
 import com.github.cc11001100.weavergirl.api.observability.HealthCheck;
 import com.github.cc11001100.weavergirl.api.observability.HealthCheckResult;
 import com.github.cc11001100.weavergirl.api.observability.MetricCollector;
+import com.github.cc11001100.weavergirl.api.observability.MetricPoint;
+import com.github.cc11001100.weavergirl.api.observability.MetricProcessor;
 import com.github.cc11001100.weavergirl.api.observability.MetricSource;
 import com.github.cc11001100.weavergirl.api.observability.SpanRecord;
 import com.github.cc11001100.weavergirl.api.observability.SpanSink;
@@ -26,7 +30,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Example: a plugin that plugs into all seven observability extension points.
+ * Example: a plugin that plugs into the observability extension points.
  *
  * <ul>
  *   <li>{@link SpanProcessor} governs spans before anyone sees them: it drops health checks and
@@ -35,17 +39,21 @@ import java.util.logging.Logger;
  *   <li>{@link SpanSink} receives every completed span. The sink only enqueues; a daemon thread
  *       ships batches to the backend so business threads are never blocked.
  *   <li>{@link MetricSource} is pulled at every Prometheus scrape, so it needs no thread of its own.
+ *   <li>{@link MetricProcessor} governs those samples before they are rendered: it drops a debug
+ *       series and strips a high-cardinality label.
  *   <li>{@link com.github.cc11001100.weavergirl.api.observability.ResourceAttributeProvider}
  *       contributes runtime metadata to every OTLP export.
  *   <li>{@link HealthCheck} reports whether this plugin's own machinery is healthy; the result
  *       appears in {@code /health}, {@code /health/checks} and the Prometheus health gauges.
+ *   <li>{@link InterceptorEventTransformer} redacts attributes on every interceptor event before
+ *       listeners, exporters and the event history see it.
  *   <li>{@link AlertChannel} plus an {@link AlertRule} route threshold crossings on the plugin's own
  *       metric to a chat webhook or pager, without the host application wiring anything up.
  *   <li>{@link SamplingStrategy} decides which invocations are worth tracing. The built-in load
  *       shedding still runs first, so this only narrows what the agent already chose to keep.
  * </ul>
  *
- * <p>All seven are registered through {@link PluginContext}, which means the engine withdraws them
+ * <p>All of them are registered through {@link PluginContext}, which means the engine withdraws them
  * automatically when the plugin is unloaded or hot-replaced. Registering through the static
  * helpers works too, but then {@link #destroy()} has to unregister them by hand.
  *
@@ -154,6 +162,45 @@ public class CustomObservabilityPlugin implements WeaverPlugin {
           }
         });
 
+    context.registerMetricProcessor(
+        new MetricProcessor() {
+          @Override
+          public String name() {
+            return "custom-observability-hygiene";
+          }
+
+          @Override
+          public MetricPoint process(MetricPoint point) {
+            // Runs on the scrape thread, once per sample, before the sample is rendered.
+            if ("custom_observability_debug_dump".equals(point.name())) {
+              return null; // never export the debug series
+            }
+            if (point.labels().containsKey("backend_host")) {
+              Map<String, String> labels = new LinkedHashMap<String, String>(point.labels());
+              labels.remove("backend_host"); // host names are high cardinality
+              return point.toBuilder().labels(labels).build();
+            }
+            return point;
+          }
+        });
+
+    context.registerEventTransformer(
+        new InterceptorEventTransformer() {
+          @Override
+          public String name() {
+            return "custom-observability-redactor";
+          }
+
+          @Override
+          public InterceptorEvent transform(InterceptorEvent event) {
+            // Runs on the publishing thread, before listeners, exporters and history.
+            if (event.getAttributes().containsKey("credential")) {
+              return event.toBuilder().attribute("credential", "***").build();
+            }
+            return event;
+          }
+        });
+
     context.registerHealthCheck(
         new HealthCheck() {
           @Override
@@ -252,9 +299,9 @@ public class CustomObservabilityPlugin implements WeaverPlugin {
 
   @Override
   public void destroy() {
-    // The context withdraws the processor, sink, metric source, resource provider, health check,
-    // alert channel/rule and sampling strategy on unload. This method only owns the buffer thread
-    // and any connection it opened.
+    // The context withdraws the span processor, sink, metric source, metric processor, resource
+    // provider, event transformer, health check, alert channel/rule and sampling strategy on
+    // unload. This method only owns the buffer thread and any connection it opened.
     running = false;
     if (flusher != null) {
       flusher.interrupt();

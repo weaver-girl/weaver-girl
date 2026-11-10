@@ -301,13 +301,60 @@ weavergirl_extension_avg_duration_ms{kind="span-sink",extension="my-apm"} 0.412
 | `weavergirl_extension_error_rate` | gauge | `errors / invocations`，0~1 |
 | `weavergirl_extension_avg_duration_ms` | gauge | 平均单次耗时（毫秒），含失败样本 |
 
-`kind` 取值：`span-processor`、`span-sink`、`metric-source`、`health-check`、`tag-enricher`。
+`kind` 取值：`span-processor`、`span-sink`、`metric-source`、`health-check`、`tag-enricher`、
+`metric-processor`、`event-transformer`。
 `health-check` 的 `extension` 是插件限定的组件名（如 `orders-plugin/db-pool`，见 4.2.5/9.6）。
 从未被调用过的扩展点不输出序列；插件卸载时 `DefaultPluginContext.withdrawServices()` 会清掉它
 留下的计数器，避免热重载后新旧实例共用一条曲线。
 
 告警表达式：`weavergirl_extension_error_rate > 0.1`（某个扩展点开始大面积抛异常）；
 `weavergirl_extension_avg_duration_ms{kind="span-sink"} > 5`（sink 开始拖慢业务线程）。
+
+### 4.2.8 追踪管线自监控（TracingMetrics）
+
+上面几节描述的是“扩展点做了什么”，这一节描述**追踪管线本身**。没有这组序列时，处理器丢弃
+span、应用停止产生 span、没有消费者接住 span，三种情况在监控上看是完全一样的。
+
+| 指标 | 类型 | 含义 |
+| --- | --- | --- |
+| `weavergirl_spans_started_total` | counter | `Tracer.startSpan` 创建的 span 数（子 span 计一次） |
+| `weavergirl_spans_ended_total` | counter | 完成 `Tracer.endSpan` 的 span 数 |
+| `weavergirl_spans_published_total` | counter | 通过治理链并交付给完成监听器的 span 数 |
+| `weavergirl_spans_dropped_total` | counter | 被治理链丢弃的 span 数 |
+| `weavergirl_spans_drop_ratio` | gauge | `dropped / ended`，抓取时计算 |
+
+```text
+weavergirl_spans_started_total 18234
+weavergirl_spans_ended_total 18230
+weavergirl_spans_published_total 18110
+weavergirl_spans_dropped_total 120
+weavergirl_spans_drop_ratio 0.0066
+```
+
+- 进程内还没有 span 时不输出任何一条，避免空进程显示成“0 span”。
+- `started - ended` 持续增长说明有 span 没有配对 `endSpan`（线程池里 `clearCurrentSpan` 后忘记
+  结束，或异常路径漏掉 finally）。
+- `ended - published` 持续增长而 `dropped` 不涨，说明没有注册任何完成监听器/导出器——span 被
+  处理但没人接。
+- 按处理器的细分丢弃数见 4.2.6 的 `weavergirl_span_processor_dropped_total`。
+
+### 4.2.9 指标与事件治理指标（MetricProcessor / InterceptorEventTransformer）
+
+指标样本和拦截事件也可以被插件治理（丢弃/改名/脱敏，见 9.13、9.14）。治理本身如果写错，
+表现是“指标没了”“事件不来了”，所以每次决定都计数：
+
+| 指标 | 类型 | 标签 | 含义 |
+| --- | --- | --- | --- |
+| `weavergirl_metric_processor_processed_total` | counter | `processor` | 放行（含改写）的样本数 |
+| `weavergirl_metric_processor_dropped_total` | counter | `processor` | 返回 `null` 丢弃的样本数 |
+| `weavergirl_metric_processor_errors_total` | counter | `processor` | 抛异常、样本原样保留的次数 |
+| `weavergirl_event_transformer_processed_total` | counter | `transformer` | 放行（含改写）的事件数 |
+| `weavergirl_event_transformer_dropped_total` | counter | `transformer` | 返回 `null` 丢弃的事件数 |
+| `weavergirl_event_transformer_errors_total` | counter | `transformer` | 抛异常、事件原样投递的次数 |
+
+指标处理器统计在**本次抓取采集之后**渲染，所以当次抓取的治理结果已经包含在内。事件转换器
+在业务线程上执行，统计即时更新。告警建议：`*_dropped_total` 涨到与源头产量同量级，说明规则
+把数据全吃掉了。
 
 ### 4.3 JVM 指标
 
@@ -521,6 +568,7 @@ curl -s http://localhost:9400/metrics | grep -E 'weavergirl_(agent|jvm|events)'
 | `SpanProcessor` | `context.registerSpanProcessor(processor)` | 每个 span 结束（`Tracer.endSpan`）时、送达任何消费者之前 | 丢弃噪声 span、脱敏敏感属性、补充应用元数据 |
 | `SpanSink` | `context.registerSpanSink(sink)` | 处理器链之后，同步回调 | 自有 APM/日志后端 |
 | `MetricSource` | `context.registerMetricSource(source)` | Prometheus 每次抓取时 | 队列深度、缓存命中率、连接池状态 |
+| `MetricProcessor` | `context.registerMetricProcessor(processor)` | 抓取时、每个样本交给采集器之前 | 丢噪声指标、改指标名、去高基数标签 |
 | `ResourceAttributeProvider` | `context.registerResourceAttributes(provider)` | OTLP 每次导出时 | 集群/区域/租户等运行时元数据 |
 | `HealthCheck` | `context.registerHealthCheck(check)` | 探针请求、`/metrics` 抓取时 | 数据库/缓存/下游依赖健康 |
 | `HealthCheckExtension` | `context.registerHealthCheckExtension(extension)` | 同上，与 `HealthCheck` 同批评估 | 可观测插件用它为自己的组件上报健康 |
@@ -529,18 +577,20 @@ curl -s http://localhost:9400/metrics | grep -E 'weavergirl_(agent|jvm|events)'
 | `AlertRule` | `context.registerAlertRule(rule)` | 指标值进入 `AlertEngine.evaluate` 时 | 插件为自己产生的指标定义阈值 |
 | `SamplingStrategy` | `context.registerSamplingStrategy(strategy)` | 每次拦截调用（内置限流采样之后） | 按 URL、错误率、业务标记决定哪些调用值得追踪 |
 | `InterceptorEventListener` | `context.registerEventListener(listener)` | `InterceptorEventPublisher.publish` 的调用线程上 | 订阅拦截事件；同一实例只投递一次 |
+| `InterceptorEventTransformer` | `context.registerEventTransformer(transformer)` | `publish` 时、任何消费者之前 | 脱敏/改写/丢弃事件，作用于所有导出器 |
 | `DataExporter` | `context.registerDataExporter(exporter)` | 同上，注册后立即收到事件 | 把事件送到自有后端；卸载时按实例摘除 |
 
 ```text
 Tracer.endSpan ──► TagEnrichers ──► SpanProcessors ──► SpanSinks ──► 你的 SpanSink（同步）
                                                     └────► 其它 SpanCompletionListener（内置 OTLP 导出器）
                                      └─ 返回 null 时整条链路都不再看到这个 span
-GET /metrics   ──► MetricSources ──► 你的 MetricSource.collect(...)
+GET /metrics   ──► MetricSources ──► MetricProcessors ──► 渲染（你的 MetricProcessor 可丢弃/改写）
 GET /metrics   ──► HealthChecks  ──► 你的 HealthCheck.check()
 OTLP 导出批次  ──► ResourceAttributes ──► 你的 provider（覆盖默认值，可被显式配置覆盖）
 AlertEngine    ──► AlertChannels ──► 你的 AlertChannel.onAlert(...)
 拦截调用       ──► 内置计数采样（限流）──► 你的 SamplingStrategy.shouldSample()
-publish(event) ──► 当前 span 的 traceId/spanId ──► 你的 EventListener 与 DataExporter
+publish(event) ──► 当前 span 的 traceId/spanId ──► EventTransformers ──► EventListener 与 DataExporter
+                                              └─ 返回 null 时监听器、导出器和事件历史都收不到
 ```
 
 `SpanProcessor` 是**唯一的统一治理点**：它位于所有消费者之前，所以一次过滤同时作用于内置
@@ -812,3 +862,69 @@ context.registerHealthCheckExtension(new DbPoolHealth()); // 组件名: "orders-
   同名以先注册者为准。
 - 抛异常或返回 `null` 只把自己标成 `DOWN`，不影响其它检查。
 - 插件卸载时随 `withdrawServices()` 自动摘除，并清掉它留下的性能计数。
+
+### 9.13 MetricProcessor
+
+`MetricSource` 决定“报什么”，`MetricProcessor` 决定“报出去的能不能留”。抓取时采集器把
+`MetricSource` 的每个样本（gauge/counter/histogram 的每个标签组）包装成 `MetricPoint` 依次交给
+处理器：
+
+```java
+context.registerMetricProcessor(new MetricProcessor() {
+  @Override public String name() { return "cardinality"; }
+
+  @Override public int priority() { return -10; } // 越小越先，默认 0
+
+  @Override public MetricPoint process(MetricPoint point) {
+    if (point.name().startsWith("http_client_requests")) {
+      // 高基数标签直接去掉；后端按方法聚合即可
+      Map<String, String> labels = new LinkedHashMap<>(point.labels());
+      labels.remove("path");
+      return point.toBuilder().labels(labels).build();
+    }
+    if ("debug_pool_snapshot".equals(point.name())) {
+      return null; // 这个指标不导出
+    }
+    return point; // 原样放行
+  }
+});
+```
+
+行为约定：
+
+- 在采集器的渲染路径上执行，不碰业务线程；只影响本次抓取，不改变 `MetricSource` 自身状态。
+- 按 `priority()` 升序执行，同优先级保持注册顺序；后一个处理器看到前一个改写后的结果。
+- 返回 `null` 丢弃该样本并结束链；返回新 `MetricPoint` 可改名字、help、标签、值甚至类型。
+- 处理器的输出仍会做指标名校验和 `weavergirl_` 命名空间保护：改回 `weavergirl_*` 的名字仍会被
+  丢弃，非法字符仍会被替换。
+- 单个处理器抛异常只被跳过，样本原样保留，并计入
+  `weavergirl_extension_errors_total{kind="metric-processor"}` 与
+  `weavergirl_metric_processor_errors_total`。
+
+### 9.14 InterceptorEventTransformer
+
+事件转换器是事件侧的治理点，位置在 `InterceptorEventPublisher.publish` 盖完当前 span 的
+traceId/spanId 之后、任何监听器/导出器/事件历史之前：
+
+```java
+context.registerEventTransformer(new InterceptorEventTransformer() {
+  @Override public String name() { return "redactor"; }
+
+  @Override public InterceptorEvent transform(InterceptorEvent event) {
+    if (event.getAttributes().get("sql") != null) {
+      return event.toBuilder().attribute("sql", "***").build();
+    }
+    if ("heartbeat".equals(event.getType())) {
+      return null; // 心跳事件对所有导出器隐藏
+    }
+    return event;
+  }
+});
+```
+
+- 按 `priority()` 升序执行，同优先级保持注册顺序；`InterceptorEvent.toBuilder()` 保留时间戳与
+  trace 关联，改一个字段不需要手工复制整个事件。
+- 返回 `null` 后监听器、`DataExporter` 和 `getHistory()` 都收不到该事件——这是“对所有消费者
+  生效”的治理，而不是只过滤某一个导出器。
+- 抛异常只跳过该转换器，事件原样继续投递，并计入 `kind="event-transformer"` 与
+  `weavergirl_event_transformer_errors_total`。

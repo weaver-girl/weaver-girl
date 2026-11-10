@@ -1,5 +1,7 @@
 package com.github.cc11001100.weavergirl.runtime.metrics;
 
+import com.github.cc11001100.weavergirl.api.event.EventTransformerStats;
+import com.github.cc11001100.weavergirl.api.event.EventTransformers;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventListener;
 import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
@@ -10,6 +12,9 @@ import com.github.cc11001100.weavergirl.api.observability.HealthCheckResult;
 import com.github.cc11001100.weavergirl.api.observability.HealthChecks;
 import com.github.cc11001100.weavergirl.api.observability.HealthReport;
 import com.github.cc11001100.weavergirl.api.observability.MetricCollector;
+import com.github.cc11001100.weavergirl.api.observability.MetricPoint;
+import com.github.cc11001100.weavergirl.api.observability.MetricProcessorStats;
+import com.github.cc11001100.weavergirl.api.observability.MetricProcessors;
 import com.github.cc11001100.weavergirl.api.observability.MetricSource;
 import com.github.cc11001100.weavergirl.api.observability.MetricSources;
 import com.github.cc11001100.weavergirl.api.observability.SpanSinkStats;
@@ -25,6 +30,7 @@ import com.github.cc11001100.weavergirl.api.status.AgentStatusView;
 import com.github.cc11001100.weavergirl.api.status.InterceptorMetricsView;
 import com.github.cc11001100.weavergirl.api.tracing.SpanProcessorStats;
 import com.github.cc11001100.weavergirl.api.tracing.SpanProcessors;
+import com.github.cc11001100.weavergirl.api.tracing.TracingMetrics;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -344,6 +350,7 @@ public class PrometheusExporter implements InterceptorEventListener {
 
     appendInterceptorMetrics(sb);
     appendAgentMetrics(sb);
+    appendTracingMetrics(sb);
     appendHealthCheckMetrics(sb);
     appendPluginHealthMetrics(sb);
     appendPluginPerformanceMetrics(sb);
@@ -354,7 +361,10 @@ public class PrometheusExporter implements InterceptorEventListener {
     appendSpanSinkMetrics(sb);
     appendJvmMetrics(sb);
     appendRegistryMetrics(sb);
+    // After collection, so this scrape's governance decisions are already counted.
     appendMetricSources(sb);
+    appendMetricProcessorMetrics(sb);
+    appendEventTransformerMetrics(sb);
 
     return sb.toString();
   }
@@ -694,36 +704,30 @@ public class PrometheusExporter implements InterceptorEventListener {
 
     @Override
     public void gauge(String name, String help, double value) {
-      record(name, help, "gauge", Collections.<String, String>emptyMap(), value);
+      govern(MetricPoint.gauge(name, help, null, value));
     }
 
     @Override
     public void gauge(
         String name, String help, Map<String, String> labels, double value) {
-      record(name, help, "gauge", labels, value);
+      govern(MetricPoint.gauge(name, help, labels, value));
     }
 
     @Override
     public void counter(String name, String help, double value) {
-      record(name, help, "counter", Collections.<String, String>emptyMap(), value);
+      govern(MetricPoint.counter(name, help, null, value));
     }
 
     @Override
     public void counter(
         String name, String help, Map<String, String> labels, double value) {
-      record(name, help, "counter", labels, value);
+      govern(MetricPoint.counter(name, help, labels, value));
     }
 
     @Override
     public void histogram(
         String name, String help, double[] upperBounds, long[] cumulativeCounts, double sum) {
-      histogram(
-          name,
-          help,
-          Collections.<String, String>emptyMap(),
-          upperBounds,
-          cumulativeCounts,
-          sum);
+      govern(MetricPoint.histogram(name, help, null, upperBounds, cumulativeCounts, sum));
     }
 
     @Override
@@ -734,6 +738,38 @@ public class PrometheusExporter implements InterceptorEventListener {
         double[] upperBounds,
         long[] cumulativeCounts,
         double sum) {
+      govern(MetricPoint.histogram(name, help, labels, upperBounds, cumulativeCounts, sum));
+    }
+
+    /**
+     * Run the {@link MetricProcessors} chain over one sample, then record whatever it returned.
+     *
+     * <p>Governance is before name sanitization so a processor sees the name its source reported and
+     * can rename a series; whatever it returns is still sanitized and namespace-checked here.
+     */
+    private void govern(MetricPoint point) {
+      MetricPoint governed = MetricProcessors.apply(point);
+      if (governed == null) {
+        return;
+      }
+      if (governed.isHistogram()) {
+        recordHistogram(governed);
+      } else {
+        record(
+            governed.name(),
+            governed.help(),
+            governed.type() == MetricPoint.Type.COUNTER ? "counter" : "gauge",
+            governed.labels(),
+            governed.value());
+      }
+    }
+
+    private void recordHistogram(MetricPoint point) {
+      String name = point.name();
+      String help = point.help();
+      double[] upperBounds = point.upperBounds();
+      long[] cumulativeCounts = point.cumulativeCounts();
+      double sum = point.sum();
       String metricName = sanitizeMetricName(name);
       if (metricName == null || metricName.startsWith("weavergirl_")) {
         return;
@@ -751,7 +787,7 @@ public class PrometheusExporter implements InterceptorEventListener {
       } else if (family.help.isEmpty() && help != null && !help.isEmpty()) {
         family.help = help;
       }
-      String labelBlock = renderLabelBlock(withoutLe(labels));
+      String labelBlock = renderLabelBlock(withoutLe(point.labels()));
       if (!family.histograms.containsKey(labelBlock)) {
         family.histograms.put(labelBlock, new HistogramSample(upperBounds, cumulativeCounts, sum));
       }
@@ -955,6 +991,44 @@ public class PrometheusExporter implements InterceptorEventListener {
     } catch (RuntimeException e) {
       // A misbehaving status view must not take the whole scrape down.
     }
+  }
+
+  /**
+   * The tracing pipeline's own counters from {@link TracingMetrics}.
+   *
+   * <p>Until these existed, a drop inside the {@code SpanProcessor} chain, a sampling decision, or
+   * an application that simply stopped tracing were indistinguishable — nothing counted spans. The
+   * drop ratio is computed at scrape time, so a rising {@code weavergirl_spans_drop_ratio} means
+   * governance is discarding a growing share of completed spans.
+   */
+  private void appendTracingMetrics(StringBuilder sb) {
+    long started = TracingMetrics.getStarted();
+    long ended = TracingMetrics.getEnded();
+    long published = TracingMetrics.getPublished();
+    long dropped = TracingMetrics.getDropped();
+    if (started == 0 && ended == 0) {
+      return;
+    }
+    sb.append("# HELP weavergirl_spans_started_total Spans started by the tracer\n");
+    sb.append("# TYPE weavergirl_spans_started_total counter\n");
+    sb.append("weavergirl_spans_started_total ").append(started).append("\n");
+    sb.append("# HELP weavergirl_spans_ended_total Spans completed by the tracer\n");
+    sb.append("# TYPE weavergirl_spans_ended_total counter\n");
+    sb.append("weavergirl_spans_ended_total ").append(ended).append("\n");
+    sb.append("# HELP weavergirl_spans_published_total Completed spans delivered to consumers\n");
+    sb.append("# TYPE weavergirl_spans_published_total counter\n");
+    sb.append("weavergirl_spans_published_total ").append(published).append("\n");
+    sb.append("# HELP weavergirl_spans_dropped_total Completed spans dropped by governance\n");
+    sb.append("# TYPE weavergirl_spans_dropped_total counter\n");
+    sb.append("weavergirl_spans_dropped_total ").append(dropped).append("\n");
+    if (ended > 0) {
+      sb.append("# HELP weavergirl_spans_drop_ratio Share of completed spans governance dropped\n");
+      sb.append("# TYPE weavergirl_spans_drop_ratio gauge\n");
+      sb.append("weavergirl_spans_drop_ratio ")
+          .append(String.format("%.4f", (double) dropped / ended))
+          .append("\n");
+    }
+    sb.append("\n");
   }
 
   /**
@@ -1321,6 +1395,104 @@ public class PrometheusExporter implements InterceptorEventListener {
     sb.append("# TYPE weavergirl_span_processor_errors_total counter\n");
     for (Map.Entry<String, SpanProcessorStats> entry : stats.entrySet()) {
       sb.append("weavergirl_span_processor_errors_total{processor=\"")
+          .append(escape(entry.getKey()))
+          .append("\"} ")
+          .append(entry.getValue().getFailures())
+          .append("\n");
+    }
+    sb.append("\n");
+  }
+
+  /**
+   * Per-sample decisions of plugin-contributed {@link
+   * com.github.cc11001100.weavergirl.api.observability.MetricProcessor}s. A processor that drops
+   * every sample looks exactly like a source that stopped reporting unless the drop count is
+   * observable, which is what these series exist for.
+   */
+  private void appendMetricProcessorMetrics(StringBuilder sb) {
+    Map<String, MetricProcessorStats> stats;
+    try {
+      stats = MetricProcessors.getStats();
+    } catch (RuntimeException e) {
+      return;
+    }
+    if (stats == null || stats.isEmpty()) {
+      return;
+    }
+
+    sb.append("# HELP weavergirl_metric_processor_processed_total Metric samples a processor kept\n");
+    sb.append("# TYPE weavergirl_metric_processor_processed_total counter\n");
+    for (Map.Entry<String, MetricProcessorStats> entry : stats.entrySet()) {
+      sb.append("weavergirl_metric_processor_processed_total{processor=\"")
+          .append(escape(entry.getKey()))
+          .append("\"} ")
+          .append(entry.getValue().getProcessed())
+          .append("\n");
+    }
+
+    sb.append("# HELP weavergirl_metric_processor_dropped_total Metric samples a processor dropped\n");
+    sb.append("# TYPE weavergirl_metric_processor_dropped_total counter\n");
+    for (Map.Entry<String, MetricProcessorStats> entry : stats.entrySet()) {
+      sb.append("weavergirl_metric_processor_dropped_total{processor=\"")
+          .append(escape(entry.getKey()))
+          .append("\"} ")
+          .append(entry.getValue().getDropped())
+          .append("\n");
+    }
+
+    sb.append("# HELP weavergirl_metric_processor_errors_total Metric processor invocations that threw\n");
+    sb.append("# TYPE weavergirl_metric_processor_errors_total counter\n");
+    for (Map.Entry<String, MetricProcessorStats> entry : stats.entrySet()) {
+      sb.append("weavergirl_metric_processor_errors_total{processor=\"")
+          .append(escape(entry.getKey()))
+          .append("\"} ")
+          .append(entry.getValue().getFailures())
+          .append("\n");
+    }
+    sb.append("\n");
+  }
+
+  /**
+   * Per-event decisions of plugin-contributed {@link
+   * com.github.cc11001100.weavergirl.api.event.InterceptorEventTransformer}s. A transformer that
+   * drops every event looks exactly like a plugin that stopped publishing unless the drop count is
+   * observable.
+   */
+  private void appendEventTransformerMetrics(StringBuilder sb) {
+    Map<String, EventTransformerStats> stats;
+    try {
+      stats = EventTransformers.getStats();
+    } catch (RuntimeException e) {
+      return;
+    }
+    if (stats == null || stats.isEmpty()) {
+      return;
+    }
+
+    sb.append("# HELP weavergirl_event_transformer_processed_total Events a transformer kept\n");
+    sb.append("# TYPE weavergirl_event_transformer_processed_total counter\n");
+    for (Map.Entry<String, EventTransformerStats> entry : stats.entrySet()) {
+      sb.append("weavergirl_event_transformer_processed_total{transformer=\"")
+          .append(escape(entry.getKey()))
+          .append("\"} ")
+          .append(entry.getValue().getProcessed())
+          .append("\n");
+    }
+
+    sb.append("# HELP weavergirl_event_transformer_dropped_total Events a transformer dropped\n");
+    sb.append("# TYPE weavergirl_event_transformer_dropped_total counter\n");
+    for (Map.Entry<String, EventTransformerStats> entry : stats.entrySet()) {
+      sb.append("weavergirl_event_transformer_dropped_total{transformer=\"")
+          .append(escape(entry.getKey()))
+          .append("\"} ")
+          .append(entry.getValue().getDropped())
+          .append("\n");
+    }
+
+    sb.append("# HELP weavergirl_event_transformer_errors_total Event transformer invocations that threw\n");
+    sb.append("# TYPE weavergirl_event_transformer_errors_total counter\n");
+    for (Map.Entry<String, EventTransformerStats> entry : stats.entrySet()) {
+      sb.append("weavergirl_event_transformer_errors_total{transformer=\"")
           .append(escape(entry.getKey()))
           .append("\"} ")
           .append(entry.getValue().getFailures())

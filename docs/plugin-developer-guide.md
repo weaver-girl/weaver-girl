@@ -269,6 +269,8 @@ These services are static and live in `weaver-girl-api`, so a plugin can use the
 | Filter, redact or enrich spans before anything consumes them | `PluginContext.registerSpanProcessor(SpanProcessor)` |
 | Receive every completed span (own APM backend) | `PluginContext.registerSpanSink(SpanSink)` |
 | Produce Prometheus metrics at scrape time | `PluginContext.registerMetricSource(MetricSource)` |
+| Drop, rename or relabel metric samples before export | `PluginContext.registerMetricProcessor(MetricProcessor)` |
+| Redact, rewrite or drop interceptor events for every consumer | `PluginContext.registerEventTransformer(InterceptorEventTransformer)` |
 | Expose a latency distribution as a Prometheus histogram | `MetricCollector.histogram(name, help, bounds, cumulativeCounts, sum)` inside your source |
 | Add runtime metadata to OTLP resource attributes | `PluginContext.registerResourceAttributes(provider)` |
 | Report whether a component you own is healthy | `PluginContext.registerHealthCheck(HealthCheck)` |

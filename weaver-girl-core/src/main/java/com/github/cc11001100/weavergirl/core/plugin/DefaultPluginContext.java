@@ -4,14 +4,19 @@ import com.github.cc11001100.weavergirl.api.ValidationUtils;
 import com.github.cc11001100.weavergirl.api.alert.AlertChannel;
 import com.github.cc11001100.weavergirl.api.alert.AlertEngine;
 import com.github.cc11001100.weavergirl.api.alert.AlertRule;
+import com.github.cc11001100.weavergirl.api.event.EventTransformers;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventListener;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventTransformer;
 import com.github.cc11001100.weavergirl.api.exporter.DataExporter;
 import com.github.cc11001100.weavergirl.api.exporter.ExporterRegistry;
+import com.github.cc11001100.weavergirl.api.observability.ConfigurableExtension;
 import com.github.cc11001100.weavergirl.api.observability.ExtensionPerformanceTracker;
 import com.github.cc11001100.weavergirl.api.observability.HealthCheck;
 import com.github.cc11001100.weavergirl.api.observability.HealthCheckExtension;
 import com.github.cc11001100.weavergirl.api.observability.HealthChecks;
+import com.github.cc11001100.weavergirl.api.observability.MetricProcessor;
+import com.github.cc11001100.weavergirl.api.observability.MetricProcessors;
 import com.github.cc11001100.weavergirl.api.observability.MetricSource;
 import com.github.cc11001100.weavergirl.api.observability.MetricSources;
 import com.github.cc11001100.weavergirl.api.observability.ResourceAttributeProvider;
@@ -37,6 +42,8 @@ import org.slf4j.LoggerFactory;
 
 /** Default implementation of PluginContext. */
 public class DefaultPluginContext implements PluginContext {
+
+  private static final Logger log = LoggerFactory.getLogger(DefaultPluginContext.class);
 
   private final InterceptorRegistry registry;
   private final Map<String, String> config;
@@ -67,6 +74,8 @@ public class DefaultPluginContext implements PluginContext {
 
   private final List<InterceptorEventListener> eventListeners = new CopyOnWriteArrayList<>();
   private final List<DataExporter> dataExporters = new CopyOnWriteArrayList<>();
+  private final List<InterceptorEventTransformer> eventTransformers = new CopyOnWriteArrayList<>();
+  private final List<MetricProcessor> metricProcessors = new CopyOnWriteArrayList<>();
 
   public DefaultPluginContext(
       InterceptorRegistry registry, Map<String, String> config, String pluginName) {
@@ -83,24 +92,36 @@ public class DefaultPluginContext implements PluginContext {
 
   @Override
   public void registerSpanSink(SpanSink sink) {
+    if (!isExtensionEnabled(sink)) {
+      return;
+    }
     SpanSinks.register(sink);
     spanSinks.add(sink);
   }
 
   @Override
   public void registerSpanProcessor(SpanProcessor processor) {
+    if (!isExtensionEnabled(processor)) {
+      return;
+    }
     SpanProcessors.register(processor);
     spanProcessors.add(processor);
   }
 
   @Override
   public void registerHealthCheck(HealthCheck check) {
+    if (!isExtensionEnabled(check)) {
+      return;
+    }
     HealthChecks.register(check);
     healthChecks.add(check);
   }
 
   @Override
   public void registerHealthCheckExtension(HealthCheckExtension extension) {
+    if (!isExtensionEnabled(extension)) {
+      return;
+    }
     HealthChecks.register(pluginName, extension);
     if (extension != null && !containsInstance(healthCheckExtensions, extension)) {
       healthCheckExtensions.add(extension);
@@ -109,6 +130,9 @@ public class DefaultPluginContext implements PluginContext {
 
   @Override
   public void registerTagEnricher(TagEnricher enricher) {
+    if (!isExtensionEnabled(enricher)) {
+      return;
+    }
     TagEnrichers.register(enricher);
     if (enricher != null && !containsInstance(tagEnrichers, enricher)) {
       tagEnrichers.add(enricher);
@@ -116,19 +140,50 @@ public class DefaultPluginContext implements PluginContext {
   }
 
   @Override
+  public void registerMetricProcessor(MetricProcessor processor) {
+    if (!isExtensionEnabled(processor)) {
+      return;
+    }
+    MetricProcessors.register(processor);
+    if (processor != null && !containsInstance(metricProcessors, processor)) {
+      metricProcessors.add(processor);
+    }
+  }
+
+  @Override
+  public void registerEventTransformer(InterceptorEventTransformer transformer) {
+    if (!isExtensionEnabled(transformer)) {
+      return;
+    }
+    EventTransformers.register(transformer);
+    if (transformer != null && !containsInstance(eventTransformers, transformer)) {
+      eventTransformers.add(transformer);
+    }
+  }
+
+  @Override
   public void registerAlertChannel(AlertChannel channel) {
+    if (!isExtensionEnabled(channel)) {
+      return;
+    }
     AlertEngine.addChannel(channel);
     alertChannels.add(channel);
   }
 
   @Override
   public void registerAlertRule(AlertRule rule) {
+    if (!isExtensionEnabled(rule)) {
+      return;
+    }
     AlertEngine.addRule(rule);
     alertRules.add(rule);
   }
 
   @Override
   public void registerSamplingStrategy(SamplingStrategy strategy) {
+    if (!isExtensionEnabled(strategy)) {
+      return;
+    }
     // Qualified on the interface: a plain super call to a default method fails to resolve under the
     // JDK 21 compiler.
     PluginContext.super.registerSamplingStrategy(strategy);
@@ -137,6 +192,9 @@ public class DefaultPluginContext implements PluginContext {
 
   @Override
   public void registerEventListener(InterceptorEventListener listener) {
+    if (!isExtensionEnabled(listener)) {
+      return;
+    }
     if (listener == null || containsInstance(eventListeners, listener)) {
       return;
     }
@@ -151,6 +209,9 @@ public class DefaultPluginContext implements PluginContext {
 
   @Override
   public void registerDataExporter(DataExporter exporter) {
+    if (!isExtensionEnabled(exporter)) {
+      return;
+    }
     PluginContext.super.registerDataExporter(exporter);
     if (exporter != null && exporter.name() != null && !containsInstance(dataExporters, exporter)) {
       dataExporters.add(exporter);
@@ -159,14 +220,48 @@ public class DefaultPluginContext implements PluginContext {
 
   @Override
   public void registerMetricSource(MetricSource source) {
+    if (!isExtensionEnabled(source)) {
+      return;
+    }
     MetricSources.register(source);
     metricSources.add(source);
   }
 
   @Override
   public void registerResourceAttributes(ResourceAttributeProvider provider) {
+    if (!isExtensionEnabled(provider)) {
+      return;
+    }
     ResourceAttributes.register(provider);
     resourceAttributeProviders.add(provider);
+  }
+
+  /**
+   * Whether a plugin-contributed extension wants to be registered.
+   *
+   * <p>{@link ConfigurableExtension} lets an operator switch an extension off through configuration
+   * without touching the plugin: {@code isEnabled} is asked once, here, at registration time. An
+   * extension that does not implement the interface is always registered, and a predicate that
+   * throws counts as disabled — a broken switch must not take plugin initialization down with it.
+   *
+   * @param extension the extension about to be registered, possibly null
+   * @return true when the extension should be registered
+   */
+  private boolean isExtensionEnabled(Object extension) {
+    if (!(extension instanceof ConfigurableExtension)) {
+      return true;
+    }
+    ConfigurableExtension configurable = (ConfigurableExtension) extension;
+    try {
+      return configurable.isEnabled(this);
+    } catch (RuntimeException e) {
+      log.warn(
+          "ConfigurableExtension "
+              + extension.getClass().getName()
+              + " isEnabled() threw; treating it as disabled",
+          e);
+      return false;
+    }
   }
 
   /**
@@ -235,6 +330,36 @@ public class DefaultPluginContext implements PluginContext {
       ExporterRegistry.unregister(exporter);
     }
     dataExporters.clear();
+    for (InterceptorEventTransformer transformer : eventTransformers) {
+      EventTransformers.unregister(transformer);
+      ExtensionPerformanceTracker.remove(
+          ExtensionPerformanceTracker.KIND_EVENT_TRANSFORMER, transformerName(transformer));
+    }
+    eventTransformers.clear();
+    for (MetricProcessor processor : metricProcessors) {
+      MetricProcessors.unregister(processor);
+      ExtensionPerformanceTracker.remove(
+          ExtensionPerformanceTracker.KIND_METRIC_PROCESSOR, processorName(processor));
+    }
+    metricProcessors.clear();
+  }
+
+  private static String transformerName(InterceptorEventTransformer transformer) {
+    try {
+      String name = transformer.name();
+      return name == null || name.trim().isEmpty() ? "unknown" : name.trim();
+    } catch (RuntimeException e) {
+      return "unknown";
+    }
+  }
+
+  private static String processorName(MetricProcessor processor) {
+    try {
+      String name = processor.name();
+      return name == null || name.trim().isEmpty() ? "unknown" : name.trim();
+    } catch (RuntimeException e) {
+      return "unknown";
+    }
   }
 
   private static String enricherName(TagEnricher enricher) {

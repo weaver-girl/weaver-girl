@@ -129,6 +129,31 @@ public class InterceptorEvent {
     return new Builder();
   }
 
+  /**
+   * A builder initialised from this event, for a copy with a few fields changed.
+   *
+   * <p>This is how an {@link InterceptorEventTransformer} redacts an attribute without rebuilding
+   * the event by hand and losing the timestamp or the trace correlation:
+   *
+   * <pre>
+   * return event.toBuilder().attribute("sql", "***").build();
+   * </pre>
+   */
+  public Builder toBuilder() {
+    Builder builder =
+        new Builder()
+            .type(type)
+            .plugin(plugin)
+            .className(className)
+            .methodName(methodName)
+            .timestamp(timestamp)
+            .durationMs(durationMs);
+    for (java.util.Map.Entry<String, String> entry : attributes.entrySet()) {
+      builder.attribute(entry.getKey(), entry.getValue());
+    }
+    return builder;
+  }
+
   /** Fluent builder for constructing {@link InterceptorEvent} instances. */
   public static class Builder {
     private String type;

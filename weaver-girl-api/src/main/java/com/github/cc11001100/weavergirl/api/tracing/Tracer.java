@@ -124,6 +124,7 @@ public final class Tracer {
             .spanId(generateSpanId())
             .operationName(operationName)
             .build();
+    TracingMetrics.recordSpanStarted();
     CURRENT_SPAN.set(span);
     return span;
   }
@@ -155,6 +156,7 @@ public final class Tracer {
             .baggage(parent.getBaggage())
             .operationName(operationName)
             .build();
+    TracingMetrics.recordSpanStarted();
     CURRENT_SPAN.set(child);
     return child;
   }
@@ -209,9 +211,12 @@ public final class Tracer {
 
     // Governance runs first: one processor governs exporters, sinks and every other listener.
     SpanContext published = SpanProcessors.apply(enriched);
+    TracingMetrics.recordSpanEnded();
     if (published == null) {
+      TracingMetrics.recordSpanDropped();
       return null;
     }
+    TracingMetrics.recordSpanPublished();
 
     if (completionListeners.size() > 0) {
       completionListeners.onSpanComplete(published, durationMs);

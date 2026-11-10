@@ -9,12 +9,16 @@
 | SpanProcessor | SpanProcessor | registerSpanProcessor | span结束，消费者之前 | 过滤/脱敏/补属性 |
 | SpanSink | SpanSink | registerSpanSink | 处理器链之后 | 自定义APM后端 |
 | MetricSource | MetricSource | registerMetricSource | Prometheus抓取时 | 队列/缓存/连接池指标 |
+| MetricProcessor | MetricProcessor | registerMetricProcessor | 抓取时（每个样本） | 丢噪声指标、改名、去高基数标签 |
 | ResourceAttributeProvider | ResourceAttributeProvider | registerResourceAttributes | OTLP导出时 | 集群/区域/租户元数据 |
 | HealthCheck | HealthCheck | registerHealthCheck | 探针/抓取时 | 数据库/缓存/下游健康 |
+| HealthCheckExtension | HealthCheckExtension | registerHealthCheckExtension | 探针/抓取时 | 可观测插件组件健康 |
+| TagEnricher | TagEnricher | registerTagEnricher | span结束、处理器链之前 | 自动补充标签 |
 | AlertChannel | AlertChannel | registerAlertChannel | 规则命中时 | 钉钉/Slack/工单 |
 | AlertRule | AlertRule | registerAlertRule | 指标评估时 | 插件指标告警规则 |
 | SamplingStrategy | SamplingStrategy | registerSamplingStrategy | 拦截调用时 | 自定义采样策略 |
 | InterceptorEventListener | InterceptorEventListener | registerEventListener | 事件发布时 | 订阅拦截事件 |
+| InterceptorEventTransformer | InterceptorEventTransformer | registerEventTransformer | 事件发布时、消费者之前 | 脱敏/改写/丢弃事件 |
 | DataExporter | DataExporter | registerDataExporter | 事件发布时 | 事件导出到后端 |
 
 ### 自动清理机制
@@ -33,13 +37,14 @@
 3. **示例完整** - CustomObservabilityPlugin 展示了所有扩展点的使用
 4. **文档清晰** - observability.md 第9节详细说明了扩展点
 
-### 待改进点
+### 待改进点（截至当前版本）
 
-1. **缺少扩展点优先级机制** - 某些扩展点需要执行顺序
-2. **缺少扩展点依赖管理** - 扩展点之间可能有依赖关系
-3. **缺少扩展点健康检查** - 扩展点本身可能失效
-4. **缺少统一的事件总线** - 事件和指标是分开的两套体系
-5. **文档分散** - 扩展点设计理念、最佳实践不够集中
+1. **扩展点依赖管理** - 扩展点之间可能有依赖关系，注册顺序目前靠约定
+2. **统一事件总线** - 事件和指标仍是两套分发路径
+3. **SpanExportFilter** - 已由 `SpanProcessor` 返回 `null` 覆盖，是否单列仍待评估
+
+已解决（保留在此作为历史记录）：优先级机制、扩展点健康检查、扩展点性能指标、
+扩展点配置化、TagEnricher、事件与指标的治理管道、追踪管线自监控、文档集中化。
 
 ## 完善方案
 
@@ -313,27 +318,37 @@ weavergirl_extension_avg_duration_ms{extension="my-sink",type="SpanSink"} 1.5
 
 ## 新增扩展点建议
 
-### 1. EventTransformer
+### 1. EventTransformer - ✅ 已实现
 
-**用途**：转换拦截事件，统一事件格式
+**用途**：在事件到达监听器/导出器/事件历史之前转换或丢弃
 
 ```java
-public interface EventTransformer {
+public interface InterceptorEventTransformer {
     String name();
-    InterceptorEvent transform(InterceptorEvent event);
+    default int priority() { return 0; }
+    InterceptorEvent transform(InterceptorEvent event); // null 丢弃
 }
 ```
 
-### 2. MetricProcessor
+实现：`EventTransformers` 注册表 + `InterceptorEventPublisher.publish` 接入 +
+`PluginContext.registerEventTransformer` + `weavergirl_event_transformer_*` 指标（见
+`observability.md` 9.14）。
 
-**用途**：在指标记录前进行转换或过滤
+### 2. MetricProcessor - ✅ 已实现
+
+**用途**：在指标样本被渲染前进行过滤、改名、去标签
 
 ```java
 public interface MetricProcessor {
     String name();
-    MetricRecord process(MetricRecord record);
+    default int priority() { return 0; }
+    MetricPoint process(MetricPoint point); // null 丢弃
 }
 ```
+
+实现：`MetricPoint` / `MetricProcessorStats` / `MetricProcessors` +
+`PluginContext.registerMetricProcessor` + Prometheus `RecordingCollector` 接入 +
+`weavergirl_metric_processor_*` 指标（见 `observability.md` 9.13）。
 
 ### 3. TagEnricher
 
@@ -378,18 +393,19 @@ public interface SpanExportFilter {
    - 自动健康评估
    - Prometheus 指标导出
 
-### 中优先级（待实施）
+4. **扩展点健康检查** - ✅ 已完成（`HealthCheckExtension` + `HealthChecks` 注册表）
+5. **扩展点配置化** - ✅ 已完成（`ConfigurableExtension`）
+6. **TagEnricher** - ✅ 已完成（独立注册表 + `Tracer.endSpan` 接入）
+7. **扩展点性能指标** - ✅ 已完成（`ExtensionPerformanceTracker`，5 类扩展点）
+8. **追踪管线自监控** - ✅ 已完成（`TracingMetrics` + `weavergirl_spans_*`）
+9. **EventTransformer** - ✅ 已完成（见上）
+10. **MetricProcessor** - ✅ 已完成（见上）
 
-4. **扩展点健康检查** - 为关键扩展点添加健康检查
-5. **扩展点配置化** - 支持动态启用/禁用
-6. **TagEnricher** - 等待完善接口实现
+### 低优先级（待实施）
 
-### 低优先级（长期）
-
-7. **扩展点依赖管理** - 实现依赖检查
-8. **统一事件总线** - 重构事件分发
-9. **EventTransformer** - 事件转换
-10. **MetricProcessor** - 指标处理
+11. **扩展点依赖管理** - 实现依赖检查（`DependentExtension`）
+12. **统一事件总线** - 向量/日志两条管线合并为一个分发层
+13. **SpanExportFilter** - 目前可由 `SpanProcessor` 返回 `null` 覆盖，暂不单独引入
 
 ## 总结
 

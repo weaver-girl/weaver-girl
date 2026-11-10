@@ -21,6 +21,7 @@ weaver-girl 的可观测性系统采用插件化架构，所有导出能力（Tr
 | SpanProcessor | SpanProcessor | registerSpanProcessor | span结束，消费者之前 | 过滤/脱敏/补属性 |
 | SpanSink | SpanSink | registerSpanSink | 处理器链之后 | 自定义APM后端 |
 | MetricSource | MetricSource | registerMetricSource | Prometheus抓取时 | 队列/缓存/连接池指标 |
+| MetricProcessor | MetricProcessor | registerMetricProcessor | 抓取时、每个样本渲染之前 | 丢噪声指标、改指标名、去高基数标签 |
 | ResourceAttributeProvider | ResourceAttributeProvider | registerResourceAttributes | OTLP导出时 | 集群/区域/租户元数据 |
 | HealthCheck | HealthCheck | registerHealthCheck | 探针/抓取时 | 数据库/缓存/下游健康 |
 | HealthCheckExtension | HealthCheckExtension | registerHealthCheckExtension | 探针/抓取时 | 可观测插件的组件健康，组件名带插件前缀 |
@@ -28,6 +29,7 @@ weaver-girl 的可观测性系统采用插件化架构，所有导出能力（Tr
 | AlertRule | AlertRule | registerAlertRule | 指标评估时 | 插件指标告警规则 |
 | SamplingStrategy | SamplingStrategy | registerSamplingStrategy | 段截调用时 | 自定义采样策略 |
 | InterceptorEventListener | InterceptorEventListener | registerEventListener | 事件发布时 | 订阅拦截事件 |
+| InterceptorEventTransformer | InterceptorEventTransformer | registerEventTransformer | 事件发布时、消费者之前 | 脱敏/改写/丢弃事件 |
 | DataExporter | DataExporter | registerDataExporter | 事件发布时 | 事件导出到后端 |
 | TagEnricher | TagEnricher | registerTagEnricher | span结束、处理器链之前 | 自动补充标签 |
 
@@ -327,6 +329,99 @@ context.registerTagEnricher(new TenantTagEnricher());
 - 每次调用都要读取上下文，不要缓存结果
 - 直接调用 `TagEnrichers.register/unregister` 也能注册，但不会随插件卸载自动摘除
 
+### 6. MetricProcessor - 指标治理器
+
+**用途**：在指标被渲染给后端之前，对每个样本做过滤、改名、去标签或限值
+
+**适用场景**：
+- 去掉高基数标签（`path`、`user_id`、`trace_id`）
+- 把插件自己的指标名改成后端约定的名字
+- 丢弃调试用的临时指标
+- 给无界值加上限，避免异常值污染曲线
+
+**开发示例**：
+
+```java
+import com.github.cc11001100.weavergirl.api.observability.MetricPoint;
+import com.github.cc11001100.weavergirl.api.observability.MetricProcessor;
+
+public class CardinalityProcessor implements MetricProcessor {
+  @Override
+  public String name() {
+    return "cardinality";
+  }
+
+  @Override
+  public int priority() {
+    return -10; // 越小越先，默认 0
+  }
+
+  @Override
+  public MetricPoint process(MetricPoint point) {
+    if ("debug_pool_snapshot".equals(point.name())) {
+      return null; // 丢弃
+    }
+    if (point.labels().containsKey("path")) {
+      Map<String, String> labels = new LinkedHashMap<>(point.labels());
+      labels.remove("path");
+      return point.toBuilder().labels(labels).build();
+    }
+    return point;
+  }
+}
+
+context.registerMetricProcessor(new CardinalityProcessor());
+```
+
+**注意事项**：
+- 运行在抓取线程上，只影响本次抓取；不要修改 `MetricSource` 的状态
+- 按 `priority()` 升序执行，后一个处理器看到前一个改写后的结果
+- 返回 `null` 丢弃并结束链条；返回 `toBuilder()` 构造的新点可改名/改标签/改值
+- 返回值仍受指标名校验和 `weavergirl_` 命名空间保护
+- 抛异常只跳过自己，样本原样保留，并计入 `kind="metric-processor"` 的异常计数
+
+### 7. InterceptorEventTransformer - 事件治理器
+
+**用途**：在事件到达任何监听器、导出器和事件历史之前统一脱敏/改写/丢弃
+
+**适用场景**：
+- 脱敏 SQL、URL、认证头等敏感属性
+- 丢弃心跳/健康检查类噪声事件
+- 统一事件类型或插件名，对齐后端规范
+
+**开发示例**：
+
+```java
+import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import com.github.cc11001100.weavergirl.api.event.InterceptorEventTransformer;
+
+public class EventRedactor implements InterceptorEventTransformer {
+  @Override
+  public String name() {
+    return "redactor";
+  }
+
+  @Override
+  public InterceptorEvent transform(InterceptorEvent event) {
+    if ("heartbeat".equals(event.getType())) {
+      return null; // 对所有消费者隐藏
+    }
+    if (event.getAttributes().containsKey("sql")) {
+      return event.toBuilder().attribute("sql", "***").build();
+    }
+    return event;
+  }
+}
+
+context.registerEventTransformer(new EventRedactor());
+```
+
+**注意事项**：
+- 在 `InterceptorEventPublisher.publish` 的调用线程上执行，保持轻量
+- `toBuilder()` 保留原始时间戳和 traceId/spanId，不需要手工复制
+- 返回 `null` 后监听器、`DataExporter`、`getHistory()` 都收不到该事件
+- 抛异常只跳过自己，事件原样继续投递，并计入 `kind="event-transformer"` 的异常计数
+
 ## 测试扩展点
 
 ### 单元测试
@@ -538,6 +633,14 @@ public class MyProcessor implements SpanProcessor, ConfigurableExtension {
   }
 }
 ```
+
+`DefaultPluginContext` 在每次 `registerXxx` 时调用一次 `isEnabled(context)`：
+
+- 返回 `true` 才进入对应注册表，返回 `false` 则完全跳过——扩展不会占用任何运行时开销，卸载时也无需再撤销。
+- 未实现 `ConfigurableExtension` 的扩展永远注册。
+- 谓词抛异常按“禁用”处理并记录一条 WARN，不会让插件初始化失败。
+
+管辖范围覆盖所有经 `PluginContext` 注册的可观测扩展：SpanSink、SpanProcessor、HealthCheck、HealthCheckExtension、TagEnricher、MetricProcessor、InterceptorEventTransformer、AlertChannel、AlertRule、SamplingStrategy、InterceptorEventListener、DataExporter、MetricSource、ResourceAttributeProvider。若绕过 `PluginContext` 直接调用静态注册方法，则不会经过该开关。
 
 ## 参考
 
