@@ -1,6 +1,6 @@
 # Repository Layout Decision
 
-Status: accepted, 2026-11-12. Migration in progress.
+Status: accepted and implemented, 2026-11-12.
 
 ## Context
 
@@ -54,18 +54,21 @@ Maven Central, because its value is that it depends on *released* artifacts and 
 experience rather than the build. One repository with one folder per scenario (servlet + JDBC,
 Dubbo, Spring Boot, Kafka) is preferable to a repository per plugin.
 
-## Migration
+## Migration (done 2026-11-12)
 
-1. Create `weaver-girl.github.io` and push the extracted history (the local split preserves all 13
-   website commits). Enable Pages with "GitHub Actions" as the source.
-2. Verify the root URL and every route (`/quick-start`, `/cases`, `/plugins`, `/architecture`,
-   `/docs`) before touching this repository.
-3. Delete `website/` and `.github/workflows/pages.yml` from this repository, and point the README at
-   the new URL. Keep a redirect at the old `/weaver-girl/` path for one release if links have been
-   shared externally.
-4. Delete the two placeholder repositories, or repurpose the frontend one by renaming it; do not
-   keep both.
-5. Create `weaver-girl-plugin-template` from the local template and mark it as a template repository.
+1. Created `weaver-girl/weaver-girl.github.io` (public) and pushed the extracted history, all 13
+   website commits preserved. Pages builds with GitHub Actions and serves the domain root.
+2. Verified the root URL and every route (`/quick-start`, `/cases`, `/plugins`, `/architecture`,
+   `/docs`), including the hashed JS asset.
+3. Removed `website/` from this repository. `.github/workflows/pages.yml` now only publishes a
+   redirect from the old `/weaver-girl/` project-site path to `https://weaver-girl.github.io/`,
+   preserving the route; `site-redirect/index.html` is the redirect page. Remove both after one
+   release.
+4. Created `weaver-girl/weaver-girl-plugin-template` (public) and marked it as a GitHub template
+   repository.
+5. The two September placeholders (`weaver-girl-website-frontend`, `weaver-girl-website-backend`)
+   were archived. Deleting them needs the `delete_repo` token scope:
+   `gh auth refresh -h github.com -s delete_repo`, then `gh repo delete <name> --yes`.
 
 ## Consequences
 

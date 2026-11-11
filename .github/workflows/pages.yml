@@ -1,10 +1,14 @@
-name: GitHub Pages
+name: GitHub Pages (redirect)
+
+# The site itself lives in weaver-girl/weaver-girl.github.io and is deployed at
+# https://weaver-girl.github.io/. This workflow only keeps the old project-site
+# URL (/weaver-girl/) working as a redirect, preserving the route.
 
 on:
   push:
     branches: [main]
     paths:
-      - "website/frontend/**"
+      - "site-redirect/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -19,38 +23,23 @@ concurrency:
 
 jobs:
   build:
-    name: Build site
+    name: Build redirect
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: website/frontend/package-lock.json
-
-      - name: Install and build
-        working-directory: website/frontend
+      - name: Add redirect at every route
         run: |
-          npm ci
-          npm run build
-
-      # react-router's BrowserRouter only handles in-app navigation. A hard
-      # refresh on a sub-route asks Pages for a file that does not exist, so
-      # mirror index.html at every route the app declares.
-      - name: Add SPA fallbacks
-        working-directory: website/frontend
-        run: |
-          for route in quick-start cases plugins architecture docs; do
+          mkdir -p dist
+          for route in "" quick-start cases plugins architecture docs; do
             mkdir -p "dist/$route"
-            cp dist/index.html "dist/$route/index.html"
+            cp site-redirect/index.html "dist/$route/index.html"
           done
-          cp dist/index.html dist/404.html
+          cp site-redirect/index.html dist/404.html
 
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: website/frontend/dist
+          path: dist
 
   deploy:
     name: Deploy
