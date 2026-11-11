@@ -49,6 +49,17 @@ jobs:
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2-
 
+      - name: Check publishing credentials
+        if: github.event_name == 'push'
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
+        run: |
+          missing=0
+          [ -n "$CENTRAL_USERNAME" ] || { echo "::error::CENTRAL_USERNAME is not configured"; missing=1; }
+          [ -n "$CENTRAL_TOKEN" ] || { echo "::error::CENTRAL_TOKEN is not configured"; missing=1; }
+          [ "$missing" -eq 0 ] || { echo "Configure the Central Portal token first; see RELEASE_PROCEDURE.md."; exit 1; }
+
       - name: Resolve the release version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -121,6 +132,14 @@ jobs:
           echo "=== Checksums ==="
           cat "$AGENT_JAR.sha256" "$DIST_ZIP.sha256"
 
+      - name: Sign the distribution archive
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
+            --armor --detach-sign "$DIST_ZIP"
+          gpg --verify "$DIST_ZIP.asc" "$DIST_ZIP"
+
       - name: Upload release assets as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -129,8 +148,10 @@ jobs:
           path: |
             ${{ env.AGENT_JAR }}
             ${{ env.AGENT_JAR }}.sha256
+            ${{ env.AGENT_JAR }}.asc
             ${{ env.DIST_ZIP }}
             ${{ env.DIST_ZIP }}.sha256
+            ${{ env.DIST_ZIP }}.asc
 
       - name: Create GitHub Release
         if: github.event_name == 'push'
@@ -183,7 +204,9 @@ jobs:
           files: |
             ${{ env.AGENT_JAR }}
             ${{ env.AGENT_JAR }}.sha256
+            ${{ env.AGENT_JAR }}.asc
             ${{ env.DIST_ZIP }}
             ${{ env.DIST_ZIP }}.sha256
+            ${{ env.DIST_ZIP }}.asc
           draft: false
           prerelease: false
