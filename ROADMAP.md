@@ -20,12 +20,14 @@ What remains is launch hygiene, not engineering:
 - [x] Release notes link to the correct repository and use the released version
 - [x] Plugin template repository, marked as a GitHub template
 - [x] Code of Conduct, security policy, issue forms and PR template
-- [x] Versioning and compatibility policy published
+- [x] Versioning and compatibility policy published, coordinates moved to `io.github.cc11001100`
 - [x] Website on the organization root (`https://weaver-girl.github.io/`)
+- [x] Repository description, homepage, topics and private vulnerability reporting configured
+- [x] Discussions enabled
+- [ ] Central namespace `io.github.cc11001100` verified on central.sonatype.com
 - [ ] Central Publishing credentials and GPG key configured as repository secrets
 - [ ] `v1.0.0` tag pushed and the staging deployment published
-- [ ] Repository description, homepage and topics filled in
-- [ ] Discussions enabled, first “good first issue” labels applied
+- [ ] Seed “good first issue” issues and apply labels
 - [ ] Launch post, demo recording and a short “what it is / is not” explainer
 - [ ] `weaver-girl-examples` repository created from released artifacts (after 1.0.0)
 
