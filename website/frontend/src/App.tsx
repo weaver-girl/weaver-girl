@@ -76,7 +76,7 @@ export default function App() {
         <span>
           源码与文档维护于{" "}
           <a href={REPO_URL} target="_blank" rel="noreferrer">
-            cc11001100/weaver-girl
+            weaver-girl/weaver-girl
           </a>
         </span>
       </footer>

@@ -3,14 +3,7 @@ import { Link } from "react-router-dom";
 import { CodeBlock } from "../components/CodeBlock";
 import { Reveal } from "../components/Reveal";
 import { TraceStage } from "../components/TraceStage";
-import { features, quickStart } from "../data/content";
-
-const STATS = [
-  { value: "16", unit: "个", label: "内置插件，挂上即拦截" },
-  { value: "3", unit: "种", label: "写法：API、注解、YAML" },
-  { value: "8+", unit: "", label: "Java 8 字节码，JDK 8 到 21" },
-  { value: "0", unit: "行", label: "配置，即可启动" },
-];
+import { benchmarks, features, quickStart, scenarios, stats } from "../data/content";
 
 /** Small line icons, one per feature card, drawn on a 24 grid. */
 const ICONS: ReactNode[] = [
@@ -59,28 +52,28 @@ export function HomePage() {
             <span className="grad">织进每一个方法</span>
           </h1>
           <p className="lede">
-            挂上一个 agent，不用改一行业务代码。方法调用被拦截，调用链自动串起，指标直接导出。
-            为 APM 与 IAST 准备的 Hook 底座。
+            挂上一个 agent，不用改一行业务代码。126 个插件自动发现并拦截方法、字段与异常，调用链、指标、拓扑、
+            告警与污点分析即刻可用。为 APM、IAST 与业务韧性准备的 Hook 底座。
           </p>
           <div className="cta-row">
             <Link to="/quick-start" className="btn btn-primary">
               30 秒上手
             </Link>
             <Link to="/plugins" className="btn btn-ghost">
-              看看能拦截什么
+              看看 126 个插件
             </Link>
           </div>
           <ul className="hero-points">
             <li>基于 ByteBuddy，热路径零分配</li>
             <li>JDK 8 到 21，一份字节码通吃</li>
-            <li>Prometheus、OTel、W3C Trace Context</li>
+            <li>Prometheus、OTLP、W3C Trace Context</li>
           </ul>
         </div>
         <TraceStage />
       </section>
 
       <section className="stats">
-        {STATS.map((stat) => (
+        {stats.map((stat) => (
           <div key={stat.label} className="stat">
             <b>
               {stat.value}
@@ -89,6 +82,32 @@ export function HomePage() {
             <span>{stat.label}</span>
           </div>
         ))}
+      </section>
+
+      <section className="section wrap">
+        <Reveal>
+          <div className="section-intro">
+            <p className="eyebrow">能做什么</p>
+            <h2>不止是拦截，是一整条产品线。</h2>
+            <p>同一个 agent 底座，四种常见的落地方式；仓库里都有可运行的演示。</p>
+          </div>
+        </Reveal>
+        <div className="scenario-grid">
+          {scenarios.map((scenario) => (
+            <Reveal key={scenario.key}>
+              <article className="scenario-card">
+                <span className="scenario-tag">{scenario.tag}</span>
+                <h3>{scenario.title}</h3>
+                <p>{scenario.description}</p>
+                <ul>
+                  {scenario.outcomes.map((outcome) => (
+                    <li key={outcome}>{outcome}</li>
+                  ))}
+                </ul>
+              </article>
+            </Reveal>
+          ))}
+        </div>
       </section>
 
       <section className="section wrap">
@@ -112,14 +131,23 @@ export function HomePage() {
         </div>
       </section>
 
+      <section className="bench-strip">
+        {benchmarks.map((item) => (
+          <div key={item.label}>
+            <b>{item.value}</b>
+            <span>{item.label}</span>
+          </div>
+        ))}
+      </section>
+
       <section className="band">
         <div className="band-inner">
           <div>
             <p className="eyebrow">为什么用它</p>
             <h2>挂上，就够了。</h2>
             <p>
-              16 个内置插件在启动时自动发现并开始拦截。没有配置文件要写，YAML
-              改了也不用重启，出问题的拦截器会被熔断器自动摘除。
+              126 个内置插件在启动时从 <code className="inline">plugins/</code> 自动发现，目标库不在场就跳过。
+              没有配置文件要写，YAML 改了也不用重启，出问题的拦截器会被熔断器自动摘除。
             </p>
             <Link to="/architecture" className="chev">
               了解它如何工作 ›
@@ -132,7 +160,7 @@ export function HomePage() {
             </li>
             <li>
               <b>02</b>
-              <span>SPI 发现插件并登记拦截器</span>
+              <span>插件加载器发现并登记能力</span>
             </li>
             <li>
               <b>03</b>
@@ -151,7 +179,7 @@ export function HomePage() {
           <div className="section-intro">
             <p className="eyebrow">开始</p>
             <h2>两行命令，跑起来。</h2>
-            <p>构建 agent，挂到任何 Java 进程。插件自动生效。</p>
+            <p>构建 agent，挂到任何 Java 进程；插件与 plugins/ 目录随构建一起产出。</p>
           </div>
           <CodeBlock code={quickStart} file="terminal" />
           <p className="prose" style={{ textAlign: "center" }}>

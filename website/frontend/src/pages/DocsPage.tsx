@@ -9,6 +9,7 @@ export function DocsPage() {
         title="文档都在仓库里"
         lede="完整文档随源码一起维护在 docs 目录，保证和代码同一个版本。这里是入口。"
       />
+      <div className="page-body">
       <div className="doc-grid" style={{ marginTop: 36 }}>
         {docLinks.map((doc, i) => (
           <a key={doc.href} className="doc-card" href={doc.href} target="_blank" rel="noreferrer">
@@ -17,6 +18,7 @@ export function DocsPage() {
             <p>{doc.description}</p>
           </a>
         ))}
+      </div>
       </div>
     </>
   );

@@ -5,17 +5,24 @@ A modular Java bytecode instrumentation framework built on ByteBuddy, inspired b
 ## Quick Start (30 seconds)
 
 ```bash
-# 1. Build the agent
+# 1. Build the agent (also produces target/plugins/ next to the agent jar)
 mvn clean package -DskipTests
 
-# 2. Attach to any Java application
+# 2. Attach to any Java application. Run from the repository or use the release
+#    distribution (agent jar + plugins/ directory unpacked side by side).
 java -javaagent:weaver-girl-agent/target/weaver-girl-agent-1.0.0-SNAPSHOT.jar -jar your-app.jar
 
-# That's it — 12 built-in plugins auto-discover and intercept:
-# Servlet, Spring, JDBC, Redis, Kafka, gRPC, MongoDB, HttpClient, and more
+# That's it — 126 built-in instrumentation plugins auto-discover and intercept:
+# Servlet, Spring, JDBC, Redis, Kafka, gRPC, MongoDB, HttpClient, Dubbo, MyBatis,
+# RocketMQ, Druid, Feign, and more
 ```
 
 The agent starts immediately with all built-in plugins active. No config file required.
+
+> **Packaging:** the agent jar contains no built-in plugin classes. It loads one jar per
+> capability from the `plugins/` directory next to it, so a jar-only copy instruments nothing.
+> Releases ship `weaver-girl-agent-<version>-dist.zip`, which contains both. If you embed the
+> agent in an image, copy `plugins/` alongside the jar (see the `Dockerfile`).
 
 ## With Configuration
 
@@ -55,7 +62,7 @@ interceptors:
 
 ## Features
 
-- **16 Built-in Plugins**: Servlet, Spring, JDBC, Redis, Kafka, gRPC, MongoDB, HttpClient, HikariCP, MethodTiming, TraceCorrelation, ExceptionMonitor, Logging, OkHttp, RabbitMQ, Elasticsearch
+- **126 Built-in Plugins**: Servlet, Spring, JDBC, Redis, Kafka, gRPC, MongoDB, HttpClient, HikariCP, MethodTiming, TraceCorrelation, ExceptionMonitor, Logging, OkHttp, RabbitMQ, Elasticsearch, Dubbo, MyBatis, RocketMQ, Druid, Feign, Caffeine, Netty, Tomcat/Jetty/Undertow, Quartz/XXL-Job, and more — one jar per capability, loaded only when enabled
 - **Three Hook Modes**: Programmatic API, Annotation-driven, YAML configuration
 - **Plugin System**: SPI-based plugin discovery with dependency resolution, ClassLoader isolation, conditional enable/disable, state management, and hot loading. A third-party product (an APM agent, an IAST scanner) extends the platform through a plugin that codes only against `weaver-girl-api`: method, field and catch interception, plus the shared tracing, metrics, exporter, topology, alerting and taint services. See the [Plugin Developer Guide](docs/plugin-developer-guide.md).
 - **ByteBuddy Advice**: Zero-allocation inlined method interception with skip & return-value override
@@ -84,7 +91,7 @@ interceptors:
 - **Config Validation**: Schema-based config validation with error/warning reporting
 - **Plugin Health**: Runtime health monitoring for all loaded plugins
 - **State Persistence**: Agent state snapshot/restore across JVM restarts
-- **Quality Gates**: JaCoCo (80%+ coverage), SpotBugs, CheckStyle enforced in build
+- **Quality Gates**: JaCoCo (≥80% instructions / ≥70% branches on the engine and runtime modules), SpotBugs (High), Checkstyle enforced in build
 
 ## Programmatic API
 
@@ -119,6 +126,10 @@ public class MyInterceptor {
 ```
 
 ## Built-in Plugins
+
+126 instrumentation plugins ship as individual jars in `weaver-girl-plugins/` (plus 14 runtime
+capability jars in `weaver-girl-runtime-plugins/`). The table below covers the most common ones;
+the full list is the module directory itself.
 
 | Plugin | Target | Key Config |
 |--------|--------|------------|
@@ -251,7 +262,8 @@ docker-compose up
 | `weaver-girl-api` | Plugin SDK — interfaces and value objects |
 | `weaver-girl-core` | Engine — ByteBuddy transformer, registry, config |
 | `weaver-girl-annotation` | Declarative annotations for interceptors |
-| `weaver-girl-plugin-<name>` | One built-in instrumentation plugin per module (17 modules) |
+| `weaver-girl-plugin-<name>` | One built-in instrumentation plugin per module (126 modules) |
+| `weaver-girl-runtime-<name>` | One optional runtime capability per module (14 modules: metrics, health, OTLP, JMX, …) |
 | `weaver-girl-bridge-micrometer` | Optional Micrometer metrics bridge |
 | `weaver-girl-bridge-aopalliance` | Optional AOP Alliance interceptor adapter |
 | `weaver-girl-agent` | Agent entry point (premain/agentmain) |
@@ -265,7 +277,7 @@ docker-compose up
 
 ## Website
 
-The project site (TypeScript + React + Ant Design) lives in [`website/frontend`](website/frontend) and is published to GitHub Pages by [`.github/workflows/pages.yml`](.github/workflows/pages.yml) on every push to `main` that touches it.
+The project site (TypeScript + React + Ant Design) lives in [`website/frontend`](website/frontend) and is live at **https://weaver-girl.github.io/weaver-girl/**. It is published by [`.github/workflows/pages.yml`](.github/workflows/pages.yml) on every push to `main` that touches it.
 
 ```bash
 cd website/frontend && npm ci && npm run dev   # local preview
