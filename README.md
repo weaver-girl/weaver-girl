@@ -277,7 +277,7 @@ docker-compose up
 
 ## Website
 
-The project site (TypeScript + React + Ant Design) lives in [`website/frontend`](website/frontend) and is live at **https://weaver-girl.github.io/weaver-girl/**. It is published by [`.github/workflows/pages.yml`](.github/workflows/pages.yml) on every push to `main` that touches it.
+The project site (TypeScript + React + Ant Design) lives in [`website/frontend`](website/frontend) and is live at **https://weaver-girl.github.io/weaver-girl/**. It is published by [`.github/workflows/pages.yml`](.github/workflows/pages.yml) on every push to `main` that touches it. The [cases page](https://weaver-girl.github.io/weaver-girl/cases/) walks through the three runnable demos above with their real before/after output.
 
 ```bash
 cd website/frontend && npm ci && npm run dev   # local preview

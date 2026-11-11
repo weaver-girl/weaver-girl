@@ -42,7 +42,7 @@ jobs:
       - name: Add SPA fallbacks
         working-directory: website/frontend
         run: |
-          for route in quick-start plugins architecture docs; do
+          for route in quick-start cases plugins architecture docs; do
             mkdir -p "dist/$route"
             cp dist/index.html "dist/$route/index.html"
           done

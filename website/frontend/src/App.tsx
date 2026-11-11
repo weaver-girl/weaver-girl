@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { REPO_URL } from "./data/content";
 import { ArchitecturePage } from "./pages/ArchitecturePage";
+import { CasesPage } from "./pages/CasesPage";
 import { DocsPage } from "./pages/DocsPage";
 import { HomePage } from "./pages/HomePage";
 import { PluginsPage } from "./pages/PluginsPage";
@@ -10,6 +11,7 @@ import { QuickStartPage } from "./pages/QuickStartPage";
 const NAV = [
   { key: "/", label: "首页" },
   { key: "/quick-start", label: "快速开始" },
+  { key: "/cases", label: "案例" },
   { key: "/plugins", label: "插件" },
   { key: "/architecture", label: "架构" },
   { key: "/docs", label: "文档" },
@@ -19,7 +21,10 @@ export default function App() {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const current = NAV.some((item) => item.key === pathname) ? pathname : "/";
+  // Pages serves /cases/ from cases/index.html; normalize the trailing slash so the nav
+  // still highlights the current section on a direct visit.
+  const normalized = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+  const current = NAV.some((item) => item.key === normalized) ? normalized : "/";
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 4);
@@ -64,6 +69,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/quick-start" element={<QuickStartPage />} />
+          <Route path="/cases" element={<CasesPage />} />
           <Route path="/plugins" element={<PluginsPage />} />
           <Route path="/architecture" element={<ArchitecturePage />} />
           <Route path="/docs" element={<DocsPage />} />

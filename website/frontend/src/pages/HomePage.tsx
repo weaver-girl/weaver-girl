@@ -1,9 +1,10 @@
+import { Tag } from "antd";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { CodeBlock } from "../components/CodeBlock";
 import { Reveal } from "../components/Reveal";
 import { TraceStage } from "../components/TraceStage";
-import { benchmarks, features, quickStart, scenarios, stats } from "../data/content";
+import { benchmarks, caseStudies, features, quickStart, scenarios, stats } from "../data/content";
 
 /** Small line icons, one per feature card, drawn on a 24 grid. */
 const ICONS: ReactNode[] = [
@@ -59,8 +60,8 @@ export function HomePage() {
             <Link to="/quick-start" className="btn btn-primary">
               30 秒上手
             </Link>
-            <Link to="/plugins" className="btn btn-ghost">
-              看看 126 个插件
+            <Link to="/cases" className="btn btn-ghost">
+              看真实案例
             </Link>
           </div>
           <ul className="hero-points">
@@ -105,6 +106,34 @@ export function HomePage() {
                   ))}
                 </ul>
               </article>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      <section className="section wrap">
+        <Reveal>
+          <div className="section-intro">
+            <p className="eyebrow">真实案例</p>
+            <h2>同一个程序，两种结果。</h2>
+            <p>业务代码一行不改，插件放进 plugins/ 就生效。下面三个输出都来自仓库里的可运行演示。</p>
+          </div>
+        </Reveal>
+        <div className="case-teaser-grid">
+          {caseStudies.map((study) => (
+            <Reveal key={study.key}>
+              <Link to="/cases" className="case-teaser-card">
+                <Tag color={study.tagColor} className="case-tag">
+                  {study.tag}
+                </Tag>
+                <h3>{study.title}</h3>
+                <p>{study.subtitle}</p>
+                <div className="case-teaser-metric">
+                  <b>{study.metrics[0].value}</b>
+                  <span>{study.metrics[0].label}</span>
+                </div>
+                <span className="chev">查看实测输出 ›</span>
+              </Link>
             </Reveal>
           ))}
         </div>

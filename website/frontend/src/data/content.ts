@@ -173,6 +173,199 @@ export const scenarios: Scenario[] = [
   },
 ];
 
+export interface CaseMetric {
+  value: string;
+  label: string;
+}
+
+export interface CaseStudy {
+  key: string;
+  tag: string;
+  tagColor: "blue" | "volcano" | "purple";
+  title: string;
+  subtitle: string;
+  scene: string;
+  problem: string;
+  approach: string;
+  beforeLabel: string;
+  before: string;
+  afterLabel: string;
+  after: string;
+  metrics: CaseMetric[];
+  value: string[];
+  run: string;
+  demo: string;
+  sources: { label: string; href: string }[];
+}
+
+/**
+ * Runnable case studies. Every program below is sample code in this repository and never imports
+ * its plugin; the two outputs are copied from the scripts' real runs, not written by hand.
+ */
+export const caseStudies: CaseStudy[] = [
+  {
+    key: "redaction",
+    tag: "数据安全",
+    tagColor: "blue",
+    title: "客服工单里的卡号，在离开系统前被掩码",
+    subtitle: "同一个工单程序，业务代码一行不改；差别只是 plugins/ 目录里多了一个 jar。",
+    scene:
+      "客服每天把工单内容复述到聊天窗口或工单备注里。工单系统保存的是客户原文，卡号和手机号会随文本一起离开系统。",
+    problem:
+      "合规要求敏感信息不得明文外发，但脱敏点分散在导出、复制、对接等多个出口，靠人工检查必然有漏网之鱼。",
+    approach:
+      "redaction 插件按类名织入 TicketStore.render，在方法返回前用 @Advice.Return(readOnly = false) 改写返回值。工单存储保持原文，只有交出去的那一份被掩码。",
+    beforeLabel: "没有插件",
+    before: `what the agent would paste into chat:
+  ticket 1: my card 4111111111111234 was charged twice, please refund
+  ticket 2: call me back on 13812345678 about order 9001
+
+secrets the plugin caught (0)
+plugin not active: the raw card number and phone number left the process`,
+    afterLabel: "挂上插件",
+    after: `what the agent would paste into chat:
+  ticket 1: my card 411111******1234 was charged twice, please refund
+  ticket 2: call me back on 138****5678 about order 9001
+
+secrets the plugin caught (2)
+secrets masked, from the metric registry: 2
+plugin active: the pasted text was redacted without the desk knowing`,
+    metrics: [
+      { value: "2", label: "卡号与手机号被掩码" },
+      { value: "0", label: "业务代码改动行数" },
+      { value: "2", label: "脱敏指标计数" },
+    ],
+    value: [
+      "合规出口收敛到一处，以后新增的出口自动继承掩码",
+      "原文留在工单里，审计和客服仍可追溯",
+      "每次脱敏都进 MetricRegistry，可直接做报表和告警",
+    ],
+    run: "SKIP_BUILD=1 scripts/run-scenario-demos.sh",
+    demo: "com.example.support.RedactionDemo",
+    sources: [
+      {
+        label: "RedactionDemo.java",
+        href: `${REPO_URL}/blob/main/weaver-girl-sample/src/main/java/com/example/support/RedactionDemo.java`,
+      },
+      {
+        label: "RedactionPlugin.java",
+        href: `${REPO_URL}/blob/main/weaver-girl-sample/src/main/java/com/github/cc11001100/weavergirl/sample/redaction/RedactionPlugin.java`,
+      },
+    ],
+  },
+  {
+    key: "resilience",
+    tag: "业务韧性",
+    tagColor: "volcano",
+    title: "故障支付通道被熔断，请求不再继续打过去",
+    subtitle: "网关自己没有重试、没有降级；插件在它和下游之间补上这一层。",
+    scene:
+      "支付网关调用下游通道。通道在一段时间内连续超时，而这套网关是早期代码，没有熔断和降级逻辑。",
+    problem:
+      "六笔请求全部打到故障通道，四笔失败直接抛给用户；故障期间下游被持续打满，恢复也更慢。",
+    approach:
+      "resilience 插件拦截 PaymentGateway.charge：连续三次失败后打开熔断，第四笔直接返回 queued: 降级结果，不再占用下游；通道恢复后自动闭合。",
+    beforeLabel: "没有插件",
+    before: `charges:
+  charge 1 -> failed: provider timed out on call 1
+  charge 2 -> failed: provider timed out on call 2
+  charge 3 -> failed: provider timed out on call 3
+  charge 4 -> failed: provider timed out on call 4
+  charge 5 -> approved:500
+  charge 6 -> approved:600
+
+served by the provider: 2, failed: 4, shed by the plugin: 0
+the provider was actually called 6 time(s)`,
+    afterLabel: "挂上插件",
+    after: `charges:
+  charge 1 -> failed: provider timed out on call 1
+  charge 2 -> failed: provider timed out on call 2
+  charge 3 -> failed: provider timed out on call 3
+  charge 4 -> queued:400 (answered without the provider)
+  charge 5 -> failed: provider timed out on call 4
+  charge 6 -> approved:600
+
+served by the provider: 1, failed: 4, shed by the plugin: 1
+the provider was actually called 5 time(s)
+charges shed, from the metric registry: 1`,
+    metrics: [
+      { value: "5", label: "下游实际调用次数（原 6）" },
+      { value: "1", label: "被熔断降级的请求" },
+      { value: "3", label: "连续失败后打开熔断" },
+    ],
+    value: [
+      "故障期间不再放大无效流量，下游恢复更快",
+      "调用方拿到明确的降级结果，而不是一串超时异常",
+      "熔断与降级量进入指标，可以接告警和看板",
+    ],
+    run: "SKIP_BUILD=1 scripts/run-scenario-demos.sh",
+    demo: "com.example.gateway.ResilienceDemo",
+    sources: [
+      {
+        label: "ResilienceDemo.java",
+        href: `${REPO_URL}/blob/main/weaver-girl-sample/src/main/java/com/example/gateway/ResilienceDemo.java`,
+      },
+      {
+        label: "ResiliencePlugin.java",
+        href: `${REPO_URL}/blob/main/weaver-girl-sample/src/main/java/com/github/cc11001100/weavergirl/sample/resilience/ResiliencePlugin.java`,
+      },
+    ],
+  },
+  {
+    key: "audit",
+    tag: "业务审计",
+    tagColor: "purple",
+    title: "支付审计线旁路生成，核心链路零改动",
+    subtitle: "财务要逐笔审计，支付服务不用排期改代码，插件自己把数据取走。",
+    scene:
+      "支付服务处理扣款和退款。财务与风控需要逐笔审计线，但服务里原本没有任何埋点。",
+    problem:
+      "在核心支付链路里加审计代码需要排期、回归和发布；任何一处遗漏，都会让对账缺数据。",
+    approach:
+      "audit 插件按类名监听 PaymentService，在拦截事件里脱敏卡号、把扣款金额累加到 MetricRegistry，并通过自己的 DataExporter 输出审计行；被拒绝的扣款不计入。",
+    beforeLabel: "没有插件",
+    before: `service rejected a bad charge: amount must be positive, got -1
+
+  Payment{id=1, card=4111111111111234, amount=2599, status=REFUNDED}
+  Payment{id=2, card=5500000000009876, amount=750, status=CHARGED}
+
+audit events the plugin published (0)
+cents charged, from the metric registry: 0
+plugin not active: run this under the agent with the plugin jar in plugins/`,
+    afterLabel: "挂上插件",
+    after: `[payment-audit] charge card=4111********1234 cents=2599 in 4ms
+[payment-audit] charge card=5500********9876 cents=750 in 0ms
+[payment-audit] refund payment=1 in 0ms
+service rejected a bad charge: amount must be positive, got -1
+
+audit events the plugin published (3)
+cents charged, from the metric registry: 3349
+plugin active: the audit trail was produced without the service calling it`,
+    metrics: [
+      { value: "3", label: "审计事件（2 扣款 + 1 退款）" },
+      { value: "3349", label: "扣款金额合计（分）" },
+      { value: "0", label: "支付服务改动行数" },
+    ],
+    value: [
+      "审计线旁路生成，核心支付链路不用重新发布",
+      "敏感卡号在审计输出前已脱敏，财务可直接查看",
+      "被拒绝的扣款自动排除，金额汇总可直接对账",
+    ],
+    run: "SKIP_BUILD=1 scripts/run-audit-demo.sh",
+    demo: "com.example.payments.AuditDemo",
+    sources: [
+      {
+        label: "AuditDemo.java",
+        href: `${REPO_URL}/blob/main/weaver-girl-sample/src/main/java/com/example/payments/AuditDemo.java`,
+      },
+      {
+        label: "AuditPlugin.java",
+        href: `${REPO_URL}/blob/main/weaver-girl-sample/src/main/java/com/github/cc11001100/weavergirl/sample/audit/AuditPlugin.java`,
+      },
+    ],
+  },
+];
+
 export const stats = [
   { value: "126", unit: "个", label: "内置插桩插件" },
   { value: "14", unit: "个", label: "可选运行时能力" },
