@@ -1263,6 +1263,13 @@
                     <plugin>
                         <artifactId>maven-gpg-plugin</artifactId>
                         <version>3.2.8</version>
+                        <configuration>
+                            <!-- The plugin's own env lookup does not survive a headless
+                                 GitHub runner (gpg falls back to pinentry and fails). Resolve
+                                 the same secret through Maven's env interpolation instead;
+                                 the passphrase is never written to disk or to the POM. -->
+                            <passphrase>${env.MAVEN_GPG_PASSPHRASE}</passphrase>
+                        </configuration>
                         <executions>
                             <execution>
                                 <id>sign-artifacts</id>
