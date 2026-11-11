@@ -38,7 +38,7 @@
 
     <scm>
         <url>https://github.com/weaver-girl/weaver-girl</url>
-        <connection>scm:git:git://github.com/weaver-girl/weaver-girl.git</connection>
+        <connection>scm:git:https://github.com/weaver-girl/weaver-girl.git</connection>
         <developerConnection>scm:git:git@github.com:weaver-girl/weaver-girl.git</developerConnection>
     </scm>
 
