@@ -135,4 +135,6 @@ The group id is the `io.github.<user>` namespace that Maven Central provisions
 automatically for a GitHub sign-in, and is frozen at `1.0.0`; changing it after a
 public release would be a breaking change for every consumer. Java packages keep
 the historical `com.github.cc11001100.weavergirl` prefix: a group id and a Java
-package are independent namespaces.
+package are independent namespaces. Central does not auto-provision organization
+namespaces (`io.github.weaver-girl`), so the project namespace is tied to the
+maintainer's GitHub account even though the repository lives in the organization.
