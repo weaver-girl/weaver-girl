@@ -26,3 +26,7 @@ docs/superpowers/
 # Local goal evidence (logs). Scratch is wiped; this copy stays on disk.
 goal-evidence/
 .sisu-plexus.jar
+
+# Legacy site copy; the site lives in weaver-girl/weaver-girl.github.io
+/website/
+node_modules/
