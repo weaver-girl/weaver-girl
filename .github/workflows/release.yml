@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
 
+# softprops/action-gh-release creates the release and uploads assets with the
+# workflow token; without this the default read-only token fails at upload.
+permissions:
+  contents: write
+
 jobs:
   release:
     name: Build, Deploy & Release
