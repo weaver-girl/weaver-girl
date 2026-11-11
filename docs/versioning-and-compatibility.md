@@ -124,12 +124,15 @@ Security fixes may be backported to the previous minor, as described in
 ## Maven coordinates
 
 ```
-com.github.cc11001100:weaver-girl-api
-com.github.cc11001100:weaver-girl-annotation
-com.github.cc11001100:weaver-girl-core
-com.github.cc11001100:weaver-girl-testkit
-com.github.cc11001100:weaver-girl-<plugin|runtime|bridge|agent>
+io.github.cc11001100:weaver-girl-api
+io.github.cc11001100:weaver-girl-annotation
+io.github.cc11001100:weaver-girl-core
+io.github.cc11001100:weaver-girl-testkit
+io.github.cc11001100:weaver-girl-<plugin|runtime|bridge|agent>
 ```
 
-The group id is a GitHub-derived namespace and is frozen at `1.0.0`; changing it
-after a public release would be a breaking change for every consumer.
+The group id is the `io.github.<user>` namespace that Maven Central provisions
+automatically for a GitHub sign-in, and is frozen at `1.0.0`; changing it after a
+public release would be a breaking change for every consumer. Java packages keep
+the historical `com.github.cc11001100.weavergirl` prefix: a group id and a Java
+package are independent namespaces.

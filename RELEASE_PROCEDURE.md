@@ -7,6 +7,27 @@ pushing a `v*` tag.
 
 ## Prerequisites (one-time repo setup)
 
+### 1. Verify the Maven Central namespace
+
+The artifacts use the group id `io.github.cc11001100`. Maven Central only accepts a
+namespace whose ownership has been proven:
+
+- Sign in to <https://central.sonatype.com> **with GitHub as `cc11001100`**. The
+  `io.github.<username>` namespace is provisioned automatically for a GitHub sign-in.
+- If the account was created with a password instead, add `io.github.cc11001100` under
+  *View Namespaces* and complete the GitHub code-hosting verification (create the
+  temporary public repository named after the verification key under
+  `github.com/cc11001100`, then delete it).
+- Do not tag a release until the namespace shows as verified. The deploy step fails
+  otherwise, and a failed first deploy leaves the tag pointing at nothing.
+
+The namespace is tied to the `cc11001100` GitHub account, not to the `weaver-girl`
+organization. The organization owns the repository and the release workflow; the
+namespace proves identity through the maintainer's GitHub sign-in. This is a Central
+rule, not a project choice.
+
+### 2. Configure the signing and publishing secrets
+
 The release workflow needs these [repository secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets):
 
 | Secret | Purpose |
@@ -48,7 +69,7 @@ Export the GPG key with `gpg --armor --export-secret-keys <keyid>`.
    deployment, and click **Publish**. Until you do this the artifacts are not visible
    on Maven Central. (Auto-publish can be configured on the Portal if you prefer.)
 7. Verify on Central (may take ~15–30 min to propagate after publishing):
-   `https://central.sonatype.com/artifact/com.github.cc11001100/weaver-girl-core`
+   `https://central.sonatype.com/artifact/io.github.cc11001100/weaver-girl-core`
 
 ## Notes
 

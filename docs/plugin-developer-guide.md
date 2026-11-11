@@ -6,7 +6,7 @@
 
 ```xml
 <dependency>
-    <groupId>com.github.cc11001100</groupId>
+    <groupId>io.github.cc11001100</groupId>
     <artifactId>weaver-girl-api</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <scope>provided</scope>
@@ -469,7 +469,7 @@ test JVM, runs the plugin through the same lifecycle, and weaves only the classe
 
 ```xml
 <dependency>
-    <groupId>com.github.cc11001100</groupId>
+    <groupId>io.github.cc11001100</groupId>
     <artifactId>weaver-girl-testkit</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <scope>test</scope>

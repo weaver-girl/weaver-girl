@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.github.cc11001100</groupId>
+        <groupId>io.github.cc11001100</groupId>
         <artifactId>weaver-girl</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
@@ -30,24 +30,24 @@
     <dependencies>
         <!-- Internal -->
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-core</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-annotation-runtime</artifactId>
         </dependency>
         <!-- Optional bridges, bundled so both are available without extra jars. -->
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-bridge-micrometer</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-bridge-aopalliance</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-annotation</artifactId>
         </dependency>
         <!-- The agent's own optional capabilities, one jar each, shipped beside the agent and loaded
@@ -55,72 +55,72 @@
              that enables them is set. provided so they stay out of the shaded jar; copy-plugins below
              puts them in target/plugins. -->
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-runtime-json-events</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-runtime-prometheus</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-runtime-config-watch</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-runtime-annotation-scan</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-runtime-management-api</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-runtime-health</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-runtime-diagnostics</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-runtime-otlp</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-runtime-span-export</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-runtime-update-check</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-runtime-alert-file</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-runtime-dynamic-refresh</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-runtime-jmx</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-runtime-taint</artifactId>
             <scope>provided</scope>
         </dependency>
@@ -130,621 +130,621 @@
              them on the compile classpath for tests while excluding them from the shaded jar. Drop a
              dependency here to ship a distribution without that capability. -->
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-async</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-elasticsearch</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-exception</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-grpc</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-hikari</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-httpclient</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-jdbc</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-kafka</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-logging</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-mongo</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-okhttp</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-rabbitmq</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-redis</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-druid</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-dubbo</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-mybatis</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-rocketmq</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-redisson</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-feign</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-caffeine</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-servlet</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-tomcat</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-jetty</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-undertow</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-netty</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-pulsar</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-quartz</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-xxljob</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-thrift</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-jms</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-cassandra</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-graphql</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-clickhouse</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-hbase</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-reactor</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-rxjava</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-kotlin</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-vertx</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-jedis</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-lettuce</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-nats</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-hibernate</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-memcached</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-elasticjob</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-powerjob</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-grizzly</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-struts</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-javalin</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-opensearch</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-play</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-camel</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-jaxrs</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-couchbase</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-hystrix</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-c3p0</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-dbcp</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-pool</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-asynchttp</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-geode</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-influxdb</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-jfinal</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-kubernetes</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-jodd</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-vaadin</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-wicket</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-ghttp</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-restlet</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-sparkjava</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-grails</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-finatra</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-jaxws</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-vibur</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-dropwizard</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-jersey</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-resteasy</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-jsf</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-jsp</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-tapestry</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-struts2</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-cxf</artifactId>
             <scope>provided</scope>
         </dependency>        <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-liberty</artifactId>
             <scope>provided</scope>
         </dependency>        <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-activej</artifactId>
             <scope>provided</scope>
         </dependency>        <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-avaje</artifactId>
             <scope>provided</scope>
         </dependency>        <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-ratpack</artifactId>
             <scope>provided</scope>
         </dependency>        <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-twilio</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-gwt</artifactId>
             <scope>provided</scope>
         </dependency>        <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-quarkus</artifactId>
             <scope>provided</scope>
         </dependency>        <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-rediscala</artifactId>
             <scope>provided</scope>
         </dependency>        <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-jettyhttp</artifactId>
             <scope>provided</scope>
         </dependency>        <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-awssdk</artifactId>
             <scope>provided</scope>
         </dependency>        <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-azurecore</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-awssdk2</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-hibernatesearch</artifactId>
             <scope>provided</scope>
         </dependency>        <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-resttemplate</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-awslambda</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-googlehttp</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-springbatch</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-websocket</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-webflux</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-scheduling</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-springws</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-springrmi</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-scheduled</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-httpasync</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-withspan</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-traced</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-scalafuture</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-scalaforkjoin</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-elasticapm</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-traceanno</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-springamqp</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-springjms</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-springkafka</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-springpulsar</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-springmvc</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-estransport</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-vertxredis</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-vertxsql</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-httpclient5</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-commonshttp</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-jetty12http</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-ninghttp</artifactId>
             <scope>provided</scope>
         </dependency>
 <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-playws</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-spring</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-timing</artifactId>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.github.cc11001100</groupId>
+            <groupId>io.github.cc11001100</groupId>
             <artifactId>weaver-girl-plugin-trace</artifactId>
             <scope>provided</scope>
         </dependency>
@@ -846,7 +846,7 @@
                             <goal>copy-dependencies</goal>
                         </goals>
                         <configuration>
-                            <includeGroupIds>com.github.cc11001100</includeGroupIds>
+                            <includeGroupIds>io.github.cc11001100</includeGroupIds>
                             <!-- Every internal provided-scope dependency is a capability jar. Selecting
                                  by scope keeps this list in step with the dependency list above: adding
                                  a plugin dependency is enough, no second list to edit. -->

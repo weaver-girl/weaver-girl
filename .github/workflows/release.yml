@@ -116,11 +116,11 @@ jobs:
             ## Maven Central
 
             Artifacts are published to Maven Central under
-            `com.github.cc11001100:weaver-girl-*`.
+            `io.github.cc11001100:weaver-girl-*`.
 
             ```xml
             <dependency>
-              <groupId>com.github.cc11001100</groupId>
+              <groupId>io.github.cc11001100</groupId>
               <artifactId>weaver-girl-core</artifactId>
               <version>${{ env.VERSION }}</version>
             </dependency>

@@ -4,12 +4,12 @@ Status: accepted and implemented, 2026-11-12.
 
 ## Context
 
-The project is maintained under the `weaver-girl` GitHub organization. Today the site, the agent,
-the public API and all 126 built-in plugins share one repository. The site is already live at
-`https://weaver-girl.github.io/weaver-girl/`, built from `website/frontend` by
-`.github/workflows/pages.yml`. Two private repositories created in September
-(`weaver-girl-website-frontend`, `weaver-girl-website-backend`) are empty placeholders and are not
-part of any build.
+The project is maintained under the `weaver-girl` GitHub organization. At the time of
+this decision the site, the agent, the public API and all 126 built-in plugins shared
+one repository. The site was live at `https://weaver-girl.github.io/weaver-girl/`, built
+from `website/frontend` by `.github/workflows/pages.yml`. Two private repositories
+created in September (`weaver-girl-website-frontend`, `weaver-girl-website-backend`)
+were empty placeholders and were not part of any build.
 
 ## Decisions
 

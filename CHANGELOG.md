@@ -35,6 +35,9 @@ The first release-ready cut of Weaver-Girl. Highlights:
   `weaver-girl/weaver-girl-plugin-template` template repository, and release metadata now points
   at the `weaver-girl` organization. Code of Conduct, security policy, issue forms, a PR
   template, a public roadmap and a versioning/compatibility policy are in place.
+  Published coordinates use `io.github.cc11001100`, the namespace Maven Central provisions
+  automatically for the maintainer's GitHub account; Java packages keep the historical
+  `com.github.cc11001100.weavergirl` prefix.
 
 See `RELEASE_READINESS.md` for the verified gate evidence and `RELEASE_PROCEDURE.md` for the
 publishing steps.
