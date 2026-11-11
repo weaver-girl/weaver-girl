@@ -146,12 +146,12 @@
         <dependency>
             <groupId>org.eclipse.jetty</groupId>
             <artifactId>jetty-server</artifactId>
-            <version>9.4.53.v20231009</version>
+            <version>9.4.58.v20250814</version>
         </dependency>
         <dependency>
             <groupId>org.eclipse.jetty</groupId>
             <artifactId>jetty-servlet</artifactId>
-            <version>9.4.53.v20231009</version>
+            <version>9.4.58.v20250814</version>
         </dependency>
         <!-- javax.servlet API (Jetty 9 uses javax namespace).
              Compile scope (not provided): this is a standalone embedded-Jetty app
