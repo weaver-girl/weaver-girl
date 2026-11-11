@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.InterceptorHolder;
+import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -78,6 +79,51 @@ class DiagnosticsPluginTest {
     } finally {
       plugin.destroy();
       InterceptorHolder.setInterceptionEnabled(before, "test");
+    }
+  }
+
+  @Test
+  void statsRendersHooksBreakersAndEscapes() throws Exception {
+    // Populate the global counters the endpoint reads: one fast call, one slow failure, and a
+    // hook that trips its breaker. Names carry a quote and a backslash to exercise the JSON and
+    // Prometheus escaping paths.
+    String hook = "weird\"\\hook";
+    AgentStatus status = AgentStatus.getInstance();
+    // A large total keeps this hook inside the endpoint's top-10 window even when other tests in
+    // the same JVM have already recorded samples.
+    status.recordInterceptorInvocation(hook, true, 2_000_000L);
+    status.recordInterceptorInvocation(hook, false, 5_000_000_000L);
+    for (int i = 0; i < 5; i++) {
+      InterceptorHolder.recordInterceptorFailure(hook);
+    }
+
+    ServerSocket free = new ServerSocket(0);
+    int port = free.getLocalPort();
+    free.close();
+
+    DiagnosticsPlugin plugin = new DiagnosticsPlugin();
+    try {
+      plugin.init(context(config("diagnosticsPort", Integer.toString(port))));
+
+      String statsBody = read(get("http://localhost:" + port + "/stats").getInputStream());
+      assertTrue(statsBody.contains("\"topHooks\":[{"), statsBody);
+      assertTrue(statsBody.contains("\"invocations\":2"), statsBody);
+      assertTrue(statsBody.contains("\"errors\":1"), statsBody);
+      assertTrue(statsBody.contains("\"slowCalls\":1"), statsBody);
+      assertTrue(statsBody.contains("\"avgMicros\":2501000.000"), statsBody);
+      assertTrue(statsBody.contains("weird\\\"\\\\hook"), statsBody);
+      assertTrue(statsBody.contains("\"circuitBreakers\":[{"), statsBody);
+      assertTrue(statsBody.contains("\"open\":true"), statsBody);
+      assertTrue(statsBody.contains("\"timesTripped\":1"), statsBody);
+
+      String metricsBody = read(get("http://localhost:" + port + "/metrics").getInputStream());
+      assertTrue(
+          metricsBody.contains("weavergirl_interceptor_duration_seconds_count"), metricsBody);
+      assertTrue(metricsBody.contains("hook=\"weird\\\"\\\\hook\""), metricsBody);
+      assertTrue(metricsBody.contains("weavergirl_interceptor_duration_seconds_bucket"), metricsBody);
+    } finally {
+      plugin.destroy();
+      InterceptorHolder.setRegistry(null);
     }
   }
 

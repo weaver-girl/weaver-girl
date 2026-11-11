@@ -47,7 +47,10 @@ declare -A BASELINE=(
 
 if [ "${SKIP_BENCH:-0}" != "1" ]; then
   echo "==> Running JMH bench (wi=$JMH_WI i=$JMH_I forks=0)..."
-  ./mvnw -Pbench -DskipTests -Djmh.wi="$JMH_WI" -Djmh.i="$JMH_I" -Djmh.f=0 \
+  # -am: build upstream modules from this working tree. Without it, the bench compiles
+  # against whatever weaver-girl-api/core snapshot happens to be in ~/.m2, so it can
+  # silently measure stale code (or fail to compile when the API changed).
+  ./mvnw -Pbench -am -DskipTests -Djmh.wi="$JMH_WI" -Djmh.i="$JMH_I" -Djmh.f=0 \
       integration-test -pl weaver-girl-core > "$BENCH_OUT" 2>&1 || {
     echo "ERROR: benchmark run failed; see $BENCH_OUT" >&2
     exit 2

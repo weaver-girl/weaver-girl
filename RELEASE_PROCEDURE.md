@@ -1,8 +1,9 @@
 # Release Procedure
 
 Cutting a release of Weaver-Girl publishes artifacts to Maven Central and attaches
-the packaged agent jar to a GitHub Release. The whole flow is automated by the
-`.github/workflows/release.yml` workflow, triggered by pushing a `v*` tag.
+the distribution archive (agent jar + `plugins/`) to a GitHub Release. The whole
+flow is automated by the `.github/workflows/release.yml` workflow, triggered by
+pushing a `v*` tag.
 
 ## Prerequisites (one-time repo setup)
 
@@ -20,7 +21,8 @@ Export the GPG key with `gpg --armor --export-secret-keys <keyid>`.
 
 ## Cutting a release
 
-1. **Ensure `main` is green.** On JDK 8/11/17/21 the build matrix must pass:
+1. **Ensure `main` is green.** Run the gate on JDK 17 (the CI compatibility matrix
+   separately verifies the packaged agent on JDK 8/11/17/21):
    ```bash
    ./scripts/release-check.sh
    ```
@@ -36,10 +38,12 @@ Export the GPG key with `gpg --armor --export-secret-keys <keyid>`.
    ```
 5. The `release.yml` workflow now runs automatically:
    - Sets the Maven version from the tag (`v1.0.0` → `1.0.0`).
-   - Runs `clean deploy -Prelease` — this builds all modules, attaches
-     `*-sources.jar` + `*-javadoc.jar`, signs them with GPG, and uploads them to the
-     Central Publishing Portal into a **staging** deployment.
-   - Packages the agent jar and creates the GitHub Release with the jar + SHA-256.
+   - Runs `clean deploy -Pquality-gate,release` — the same quality gate as a pull
+     request, then attaches `*-sources.jar` + `*-javadoc.jar`, signs them with GPG,
+     and uploads them to the Central Publishing Portal into a **staging** deployment.
+   - Packages the agent jar and the `plugins/` directory into
+     `weaver-girl-agent-<version>-dist.zip`, verifies both artifacts, and creates the
+     GitHub Release with the archive, the bare jar, and their SHA-256 files.
 6. **Publish from staging.** Log into <https://central.sonatype.com>, find the new
    deployment, and click **Publish**. Until you do this the artifacts are not visible
    on Maven Central. (Auto-publish can be configured on the Portal if you prefer.)
@@ -51,8 +55,9 @@ Export the GPG key with `gpg --armor --export-secret-keys <keyid>`.
 - The compiler targets Java 1.8 bytecode regardless of the JDK building the release;
   the workflow uses JDK 17 only because the release tooling and GPG signing run best
   on it.
-- `quality-gate` is disabled during `deploy` (it runs the full test suite, just
-  without re-enforcing the coverage floor — that is already enforced on every PR).
+- `quality-gate` is **enabled** during `deploy` (`-Pquality-gate,release`): a release
+  must pass the same gate as a pull request. Tags only ever point at a commit whose
+  gate is green.
 - If the Central deploy fails, the GitHub Release is **not** created (the agent-jar
   verification + release steps come after deploy). Fix the issue, delete the tag
   locally and remotely, re-tag, and push again.

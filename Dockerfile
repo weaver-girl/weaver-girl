@@ -1,7 +1,13 @@
 FROM eclipse-temurin:8-jre
 
-# Copy the agent JAR and config
-COPY weaver-girl-agent/target/weaver-girl-agent-1.0.0-SNAPSHOT.jar /opt/weaver-girl/weaver-girl-agent.jar
+# The version changes on every release; pass it when building the image, e.g.
+#   docker build --build-arg AGENT_VERSION=1.0.0 -t weaver-girl .
+ARG AGENT_VERSION=1.0.0-SNAPSHOT
+
+# Copy the agent JAR and the plugins/ directory it discovers capabilities from.
+# The agent jar has no built-in plugin classes; without plugins/ it instruments nothing.
+COPY weaver-girl-agent/target/weaver-girl-agent-${AGENT_VERSION}.jar /opt/weaver-girl/weaver-girl-agent.jar
+COPY weaver-girl-agent/target/plugins /opt/weaver-girl/plugins
 COPY weaver-example.yml /opt/weaver-girl/weaver-example.yml
 
 # Default: attach agent with YAML config

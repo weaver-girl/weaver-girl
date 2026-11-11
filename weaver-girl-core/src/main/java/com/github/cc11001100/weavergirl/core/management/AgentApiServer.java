@@ -3,8 +3,6 @@ package com.github.cc11001100.weavergirl.core.management;
 import com.github.cc11001100.weavergirl.api.alert.AlertEngine;
 import com.github.cc11001100.weavergirl.api.context.ContextPropagatorRegistry;
 import com.github.cc11001100.weavergirl.api.context.ContextSnapshot;
-import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
-import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
 import com.github.cc11001100.weavergirl.api.plugin.PluginManager;
 import com.github.cc11001100.weavergirl.api.security.SecurityAuditLog;

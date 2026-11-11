@@ -4,7 +4,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.slf4j.MDC;
-import org.slf4j.LoggerFactory;
 
 /**
  * Automatic MDC injection for intercepted methods. Bridges trace/span/tenant context from

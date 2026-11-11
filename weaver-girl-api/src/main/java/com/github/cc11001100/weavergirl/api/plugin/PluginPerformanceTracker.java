@@ -1,6 +1,5 @@
 package com.github.cc11001100.weavergirl.api.plugin;
 
-import com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;

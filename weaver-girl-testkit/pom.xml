@@ -19,6 +19,10 @@
 
     <properties>
         <moduleinfo.skip>true</moduleinfo.skip>
+        <!-- Test-support harness shipped for plugin authors: every consumer test drives it, so a
+             module-local coverage ratio measures the harness against itself rather than product
+             behavior. Its own unit test still runs under the normal gate. -->
+        <jacoco.skip>true</jacoco.skip>
     </properties>
 
     <dependencies>

@@ -1,5 +1,6 @@
 package com.github.cc11001100.weavergirl.runtime;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,6 +37,17 @@ class TaintPluginTest {
     PluginContext ctx = context(config("taint", "true"));
 
     plugin.init(ctx);
+    plugin.destroy();
+  }
+
+  @Test
+  void nameAndNoOpLifecycleMethods() {
+    TaintPlugin plugin = new TaintPlugin();
+
+    assertEquals("taint", plugin.name());
+    // The capability instruments JDK classes directly, so it registers no interceptors and has
+    // nothing to remove on destroy.
+    plugin.registerInterceptors(null);
     plugin.destroy();
   }
 

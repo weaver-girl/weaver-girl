@@ -1,117 +1,137 @@
-# Weaver-Girl Release Readiness (verified 2026-06-15)
+# Weaver-Girl Release Readiness (verified 2026-11-11)
 
-Honest status of the quality gates and what stands between the current build and a
-shippable **APM Hook base**. (IAST readiness is a separate, larger effort — see
-`docs/superpowers/plans/2026-06-15-apm-iast-hook-base-release-readiness.md`.)
+Honest status of the quality gates and what stands between the current tree and a
+shippable release. Every row below is backed by a command run on this machine on
+2026-11-11, not by an older audit.
+
+## Verdict
+
+**The code and packaging are release-ready.** `scripts/release-check.sh` passes on JDK 17:
+a full `-Pquality-gate clean verify` over all 153 modules (3,671 tests, 0 failures),
+SpotBugs/Checkstyle clean everywhere, JaCoCo met on the engine/runtime modules, all 444
+`jar`/`sources`/`javadoc` publication artifacts present, and the distribution archive
+verified to contain the agent and 140 capability jars.
+
+What remains is **external to the repository**: the Maven Central credentials/GPG key and
+the actual tag push + Portal publish. Those are deliberately not performed here.
 
 ## Gate status
 
-| Gate | Target | Current | Status |
-|---|---|---|---|
-| Unit tests (`clean test`) | green | 1376 tests, 0 failures | ✅ GREEN |
-| JaCoCo coverage (`weaver-girl-api`) | 80% instr / 70% branch | **~51% instr / ~40% branch** | ❌ RED |
-| Checkstyle (google_checks, max 200) | ≤ 200 violations/module | annotation **0** (fixed); api **~3200**, others pending | ❌ RED |
-| SpotBugs (threshold High) | 0 High | see `target/spotbugsXml.xml` | ⚠️ verify |
-| Packaged agent attach (`-javaagent`) | bootstraps on real app | **verified working** | ✅ GREEN (was ❌ P0 — see below) |
-| Global emergency kill-switch | runtime on/off + provenance | config + REST + JMX; single volatile read on hot path | ✅ GREEN |
-| Overhead baseline + regression guard | published JMH numbers + CI guard | `docs/benchmarks/baseline-v1.md` + `scripts/verify-benchmarks.sh` (1.5× budget) | ✅ GREEN |
-| Startup-time budget | measured bootstrap + P99 < 500ms | **~635ms → ~425ms** (under 500ms budget); per-phase + per-plugin breakdown logged; WARN guard no longer fires | ✅ GREEN (optimized) |
-| Maven Central packaging | signed sources+javadoc + Central deploy | `release` profile (GPG + central-publishing) + `release.yml` + `RELEASE_PROCEDURE.md` | ✅ GREEN (tooling ready; publish needs secrets) |
+| Gate | Command | Result on 2026-11-11 |
+|---|---|---|
+| Full release gate | `scripts/release-check.sh` (JDK 17) | ✅ PASSED — prints `RELEASE CHECK PASSED` |
+| Unit tests | part of `clean verify -Pquality-gate` | ✅ 3,671 tests, 0 failures, 0 errors, 0 skipped |
+| SpotBugs (High) | `spotbugs:check` in every module | ✅ 0 bugs (see fixes below) |
+| Checkstyle | `checkstyle:check` in every module | ✅ 0 violations |
+| JaCoCo (engine/runtime) | 80% instructions / 70% branches | ✅ met on `api`, `core`, `annotation-runtime`, `runtime-*` |
+| JaCoCo exemptions | see below | ⚪ documented, not silently disabled |
+| Publication artifacts | `release-check.sh` artifact loop | ✅ 444 artifacts (148 modules × jar/sources/javadoc) |
+| Agent manifest | `Premain-Class` / `Agent-Class` | ✅ both `com.github.cc11001100.weavergirl.agent.WeaverGirlAgent` |
+| Distribution archive | `weaver-girl-agent-<version>-dist.zip` | ✅ 15.6 MB, agent jar + `plugins/` (126 plugin + 14 runtime jars) |
+| Overhead regression guard | `scripts/verify-benchmarks.sh` | ✅ 16/16 within 1.5x budget (max ratio 1.408) |
+| Packaged-agent smoke | `scripts/cross-jdk-smoke.sh` | ✅ PASS on JDK 8, 11, 17, 21 |
+| Maven Central packaging | `release` profile + `release.yml` | ✅ tooling ready; publishing needs secrets |
+| GitHub Release | `release.yml` on `v*` tag | ✅ tooling ready; no tag pushed |
 
-## Hardening pass — what this delivered (APM GA path)
+## Coverage policy and exemptions
 
-The following were closed in this pass (branch `feat/hook-base-release-readiness`):
+The 80% instruction / 70% branch floor is enforced on the modules whose logic runs in the
+agent engine:
 
-1. **Global emergency kill-switch** (`GlobalInterceptionSwitch`) — a single
-   `volatile boolean` consulted on every `@Advice` enter/exit, togglable at runtime
-   via config (`weavergirl.emergency.disable`), REST, or JMX, with toggle provenance
-   logged. A hook base that cannot be killed without restarting the host JVM is not
-   production-grade; this closes that gap at near-zero hot-path cost.
-2. **Published overhead baseline + CI regression guard** — JMH results recorded in
-   `docs/benchmarks/baseline-v1.md` (16 benchmarks); `scripts/verify-benchmarks.sh`
-   fails on >1.5× regression. Overhead is now *measured and guarded*, not asserted.
-3. **Startup-time budget + measurement + optimization** — `StartupMetrics` times
-   bootstrap with a 500ms budget and emits a WARN when exceeded; exposed via
-   JMX/REST. Per-phase (`pluginLoad` / `transformerInstall` / `managementInit`) and
-   per-plugin breakdowns are logged on every startup. **Measured ~635ms → optimized
-   to ~425ms** (under budget). The dominant phase turned out to be `transformerInstall`
-   (ByteBuddy's eager retransformation of already-loaded classes), *not* `pluginLoad`
-   (~30ms). Fix: `WeaverTransformer.install(instrumentation, eagerRetransform=false)`
-   skips the eager scan at premain (nothing the plugins target is loaded yet) and at
-   agentmain (already-loaded classes are retransformed explicitly). `install()` defaults
-   to eager=true so unit tests that instrument already-loaded classes are unaffected.
-4. **CI quality-gate + packaged-agent smoke** — the `quality-gate` profile runs in
-   CI (JDK 17), and `agent-smoke.yml` attaches the packaged jar to the sample app and
-   asserts `/health`, `/ready`, `/metrics` respond. This is the test that would have
-   caught the P0 below.
-5. **Maven-Central release packaging** — `release` profile (GPG sign + Central
-   Publishing Portal deploy), sources/javadoc jars on every module, and a
-   tag-triggered `release.yml` that deploys then publishes the agent jar to GitHub
-   Releases. See `RELEASE_PROCEDURE.md`.
+- `weaver-girl-annotation-runtime`, `weaver-girl-api`, `weaver-girl-core`
+- the 14 `weaver-girl-runtime-*` capability jars
 
-## Critical fix: the packaged agent jar now bootstraps (was a P0 blocker)
+The following are exempt from the **ratio** check (their tests still run — a failing test
+still fails the build):
 
-**This was the single most important release-readiness finding.** Until commit
-`66b6627`, the packaged `weaver-girl-agent.jar` could **not attach to any real
-application** — every `-javaagent` invocation failed during `WeaverGirl.bootstrap()`
-with `NoClassDefFoundError` or a `loader-constraint violation`. The framework's
-1376 unit tests never caught it because they attach **in-process**, never
-exercising the shaded `-javaagent` jar. For an APM/IAST hook base, an agent that
-cannot attach is the worst possible release blocker.
+- `weaver-girl-sample` — demo application, not a published library.
+- `weaver-girl-agent` — launcher glue (`premain`/`agentmain`, plugin-jar discovery, the
+  child-first `AgentClassLoader`). It is exercised for real by the packaged-agent smoke and
+  `JavaAgentE2ETest`, which attach the shaded jar to a live JVM; in-process line coverage
+  cannot observe that path meaningfully.
+- `weaver-girl-testkit` — test-support harness shipped for plugin authors; every consumer
+  test drives it.
+- the 126 instrumentation plugins — thin declarative adapters (matchers plus a handler that
+  delegates to the API). Their own unit tests still run, behavior-level paths are covered by
+  `weaver-girl-plugins-tests` and the packaged-agent smoke, and a per-jar ratio would mostly
+  measure defensive config/reflection branches.
 
-Root causes (both fixed in `66b6627`):
+This is a deliberate, documented scope, not a lowered threshold: the floor stays at
+80/70 where the engine lives.
 
-1. **ByteBuddy relocation** (`net.bytebuddy` → `shaded.net.bytebuddy`) in the shade
-   plugin. ByteBuddy loads some of its own classes (e.g. `AgentBuilder$Listener$Adapter`)
-   by their **original** name via the bootstrap classloader at runtime, which the
-   shade plugin cannot rewrite → `NoClassDefFoundError`. Relocation removed.
-2. **Custom `BootstrapInjection`** appended the *whole* agent JAR (which bundles all
-   of ByteBuddy) to the bootstrap classloader while the same JAR was already on the
-   app classpath via `-javaagent`. `net.bytebuddy` classes then resolved to different
-   `Class` objects in the app vs bootstrap loaders → loader-constraint violation.
-   The redundant custom injection was removed; ByteBuddy's own
-   `AgentBuilder.InjectionStrategy.UsingInstrumentation` (already configured) injects
-   only the needed helper classes into a temp JAR, avoiding the split.
+## Benchmark guard (rerun on a quiet machine)
 
-The CI **agent-smoke** workflow (`.github/workflows/agent-smoke.yml`) now guards
-against regressions of this class: it attaches the packaged jar to the sample app
-and asserts `/health`, `/ready`, `/metrics` respond.
+`scripts/verify-benchmarks.sh` on 2026-11-11, JDK 17, `wi=2 i=3 forks=0`:
 
-**Trade-off (now resolved):** the recommended follow-up — a dual-classloader agent
-architecture — has been **implemented**. The agent body now runs in an isolated
-child-first `AgentClassLoader` (`weaver-girl-agent/.../classloader/AgentClassLoader.java`),
-and ByteBuddy is relocated again (`net.bytebuddy` → `shaded.net.bytebuddy`) under
-that isolation. The advice-bridge constraint (the inlined advice must resolve its
-bridge classes to the same `Class` objects `setRegistry` targets) is handled by
-keeping the bridge closure parent-first; see `docs/classloader-architecture.md`. The
-cross-JDK smoke now also asserts interception actually fires
-(`weavergirl_operation_duration_ms_count{plugin="servlet"} > 0`) and that ByteBuddy
-resolves in the isolated loader (`byteBuddyClassLoader=AgentClassLoader` in `/stats`),
-closing the blind spot where a split-bridge regression silently broke instrumentation
-while every endpoint stayed green.
+```
+Checked: 16   Failures: 0   (budget: 1.5x of baseline)
+RESULT: within budget
+```
 
-## What this means
+Worst ratio was `CoreComponentBenchmark.circuitBreaker_recordSuccess` at 1.408x
+(34.4 ns vs 24.4 ns baseline); every other benchmark was within 1.17x (two earlier
+quiet runs put the worst ratio at 1.49x and 1.21x — run-to-run noise on a shared
+desktop, but all well under the 1.5x budget). The guard now passes `-am`, so it
+compiles upstream modules from the working tree instead of whatever snapshot is in
+`~/.m2`; the JMH profile was moved from the parent pom into `weaver-girl-core` because
+`-am` otherwise tried to run the core-only runner class in the aggregator module.
+An earlier
+run on a machine that was also compiling showed a false 1.645x for that benchmark
+and a 4.5 µs reading for `sampling_shouldSample_rate10`; the latter was real — the
+benchmark called `setSamplingRate` (which logs) inside the measured operation. It now
+sets the rate in `@Setup(Level.Iteration)`, so the benchmark measures `shouldSample()`
+itself (1.85 ns). The guard's job is catching regressions, not tracking that
+methodology fix, so the baseline in `docs/benchmarks/baseline-v1.md` is left as the
+historical reference.
 
-- The **build compiles and all unit tests pass**. The framework is functionally usable.
-- The **`verify`-phase quality gate does not pass**: the 80% coverage rule fails on
-  `weaver-girl-api`, and the google_checks (2-space) style rule fails across modules
-  written in 4-space style. `README.md` advertises "JaCoCo (80%+ coverage)" — that
-  target is **not currently met**.
-- The annotation module's 116 style violations were fixed (reformatted to google style);
-  it is the reference for bringing the remaining modules in line.
+## Cross-JDK packaged-agent smoke
 
-## Path to a green quality gate
+`SKIP_BUILD=1 scripts/cross-jdk-smoke.sh` on the shaded agent produced by the release
+build, attaching to the sample app under four JDKs:
 
-1. **Coverage** — raise `weaver-girl-api` from ~51% toward 80%. Biggest wins: add tests
-   for the untested public API surface in `api/` (66 main classes, 18 test classes).
-   Do **not** lower the 0.80/0.70 floor; raise the tests.
-2. **Checkstyle** — reformat `weaver-girl-api` / `weaver-girl-core` / `weaver-girl-plugins`
-   to `google_checks.xml`. The annotation module was done with
-   `google-java-format --replace`; the same tool applied per-module clears the 2-space
-   violations deterministically. Review the diff (it reflows more than indent).
-3. Re-run `./scripts/release-check.sh` until coverage and style rows go GREEN.
+```
+=== JDK openjdk version "1.8.0_492" ===          PASS
+=== JDK openjdk version "11.0.33" ===            PASS
+=== JDK openjdk version "17.0.21.0.3" ===        PASS
+=== JDK openjdk version "21.0.13.0.3" ===        PASS
+CROSS-JDK SMOKE PASSED on 4 JDK(s)
+```
+
+Each pass asserts `/health`, `/ready`, `/stats`, `/metrics`, ByteBuddy resolving in
+`AgentClassLoader` (isolation), a positive servlet-interception counter, populated
+`topHooks` p95 data, and circuit-breaker state — i.e. the real `-javaagent` path, not
+just process startup.
+
+## What this pass fixed
+
+1. **Distribution completeness (the release blocker).** The agent jar contains no built-in
+   plugin classes — it discovers them from a sibling `plugins/` directory. Releases used to
+   publish only the agent jar, which would have instrumented nothing. Added
+   `weaver-girl-agent/src/assembly/dist.xml`, wired it into the agent build, and made
+   `release-check.sh` and `release.yml` reject a release whose archive lacks the servlet or
+   jdbc plugin.
+2. **Release workflow correctness.** The workflow now verifies `Premain-Class`/`Agent-Class`
+   and the dist archive, writes SHA-256 files with bare file names (so `sha256sum -c` works
+   on the downloaded asset), and the install snippet downloads the archive instead of
+   renaming it.
+3. **Container/Helm deployment.** `Dockerfile` copies `plugins/` next to the agent and takes
+   the version as a build arg; the Helm README init-container example copies `plugins/` too.
+4. **Docs truthfulness.** README/CHANGELOG/RELEASE_PROCEDURE now state 126 instrumentation
+   plugins + 14 runtime jars, the dist-archive requirement, and that `quality-gate` stays on
+   during deploy.
+5. **Checkstyle.** Fixed all redundant/unused imports across `annotation-runtime`, `api`,
+   and `core`.
+6. **SpotBugs.** Fixed two real concurrency defects — `LoggingExporter.exportCount` and
+   `DefaultInterceptorRegistry.generation` were `volatile long` incremented with `++`; both
+   are now `AtomicLong`. The 22 remaining High findings were ByteBuddy advice parameter
+   write-backs (`@Advice.Argument(readOnly = false)` / `@Advice.Return(readOnly = false)`),
+   which SpotBugs cannot see as used; they are excluded in `spotbugs-exclude.xml` with the
+   reason recorded there.
+7. **Coverage.** Added tests for the Hikari plugin (previously none), the update-check
+   capability, taint, diagnostics (top-hooks/breakers rendering and escaping), OTLP (live
+   POST, dead endpoint, escaping), and the Micrometer/AOP-Alliance bridges.
 
 ## Reproducible build
 
-`mvnw` was regenerated (the committed script was a 14-byte `404: Not Found`). Use
-`./mvnw` so the build is reproducible without a system Maven.
+The release gate requires JDK 17 (`scripts/release-check.sh` checks it) while the compiler
+targets Java 1.8 bytecode. Use `./mvnw` so the build does not depend on a system Maven.

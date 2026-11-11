@@ -3,6 +3,7 @@ package com.github.cc11001100.weavergirl.core.exporter;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.exporter.DataExporter;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,7 +21,7 @@ public class LoggingExporter implements DataExporter {
       LoggerFactory.getLogger("com.github.cc11001100.weavergirl.exporter.logging");
 
   private volatile boolean includeAttributes = true;
-  private volatile long exportCount = 0;
+  private final AtomicLong exportCount = new AtomicLong();
 
   @Override
   public String name() {
@@ -60,7 +61,7 @@ public class LoggingExporter implements DataExporter {
     json.append("}");
 
     log.info(json.toString());
-    exportCount++;
+    exportCount.incrementAndGet();
   }
 
   @Override
@@ -80,7 +81,7 @@ public class LoggingExporter implements DataExporter {
 
   /** Get total exported event count. */
   public long getExportCount() {
-    return exportCount;
+    return exportCount.get();
   }
 
   private void appendField(StringBuilder sb, String key, String value) {

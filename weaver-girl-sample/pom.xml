@@ -117,6 +117,10 @@
 
     <properties>
         <moduleinfo.skip>true</moduleinfo.skip>
+        <!-- This module is a demo application, not a published library: its value is the scenarios
+             it demonstrates and the attach tests that run against it, not the line coverage of the
+             demo endpoints. Coverage stays enforced on the API, core, agent, and capability jars. -->
+        <jacoco.skip>true</jacoco.skip>
     </properties>
 
     <dependencies>

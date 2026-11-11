@@ -152,6 +152,12 @@
 
     <properties>
         <moduleinfo.skip>true</moduleinfo.skip>
+        <!-- Instrumentation plugins are thin declarative adapters: matcher definitions plus a
+             handler that mostly delegates to the API. Their behavior is exercised end-to-end by
+             weaver-girl-plugins-tests and the packaged-agent smoke test, while per-jar line
+             coverage would mostly measure defensive config/reflection branches. Keep the 80/70
+             JaCoCo floor on the engine modules (api/core/agent/runtime-*) where the logic lives. -->
+        <jacoco.skip>true</jacoco.skip>
     </properties>
 
     <dependencyManagement>

@@ -10,7 +10,7 @@ import java.util.concurrent.ScheduledExecutorService;
  * activates it while the task runs.
  *
  * <p>Use this wrapper when code accepts only the base {@link Executor} contract. For {@link
- * java.util.concurrent.ExecutorService}, prefer {@link ContextExecutorService} so submit and batch
+ * ExecutorService}, prefer {@link ContextExecutorService} so submit and batch
  * methods are covered too.
  *
  * @see ContextExecutorService
@@ -62,11 +62,11 @@ public class ContextExecutor implements Executor {
     if (delegate instanceof ContextExecutor) {
       return (ContextExecutor) delegate;
     }
-    if (delegate instanceof java.util.concurrent.ScheduledExecutorService) {
-      return ContextScheduledExecutorService.wrap((java.util.concurrent.ScheduledExecutorService) delegate);
+    if (delegate instanceof ScheduledExecutorService) {
+      return ContextScheduledExecutorService.wrap((ScheduledExecutorService) delegate);
     }
-    if (delegate instanceof java.util.concurrent.ExecutorService) {
-      return ContextExecutorService.wrap((java.util.concurrent.ExecutorService) delegate);
+    if (delegate instanceof ExecutorService) {
+      return ContextExecutorService.wrap((ExecutorService) delegate);
     }
     return new ContextExecutor(delegate);
   }

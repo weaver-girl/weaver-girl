@@ -1,6 +1,5 @@
 package com.github.cc11001100.weavergirl.api.event;
 
-import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 
 /**
  * Structured lifecycle events for interceptor registry mutations and plugin lifecycle transitions.

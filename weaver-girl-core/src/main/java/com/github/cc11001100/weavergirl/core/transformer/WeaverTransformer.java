@@ -20,7 +20,6 @@ import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
 import static net.bytebuddy.matcher.ElementMatchers.whereAny;
 
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
-import com.github.cc11001100.weavergirl.api.introduction.IntroductionDefinition;
 import com.github.cc11001100.weavergirl.api.introduction.IntroductionRegistry;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;

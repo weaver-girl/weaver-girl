@@ -10,7 +10,7 @@ import com.github.cc11001100.weavergirl.annotation.DeclarePrecedence;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
+import java.util.concurrent.atomic.AtomicLong;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.event.LifecycleEvents;
 import org.slf4j.Logger;
@@ -27,14 +27,14 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
   private final List<InterceptorDefinition> definitions = new CopyOnWriteArrayList<>();
   private volatile Map<String, List<InterceptorDefinition>> classIndex = new ConcurrentHashMap<>();
   private volatile boolean indexDirty = true;
-  private volatile long generation = 0;
+  private final AtomicLong generation = new AtomicLong();
   private final CopyOnWriteArrayList<Runnable> reloadHooks = new CopyOnWriteArrayList<>();
   private volatile SecurityPolicy securityPolicy;
   private final Map<String, Integer> precedenceMap = new ConcurrentHashMap<>();
 
   /** Return the current generation counter, incremented on every mutation. */
   public long getGeneration() {
-    return generation;
+    return generation.get();
   }
 
   public void setSecurityPolicy(SecurityPolicy policy) {
@@ -743,6 +743,6 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
   }
 
   private void bumpGeneration() {
-    generation++;
+    generation.incrementAndGet();
   }
 }

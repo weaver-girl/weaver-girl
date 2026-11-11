@@ -1,6 +1,5 @@
 package com.github.cc11001100.weavergirl.api.security;
 
-import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.event.LifecycleEvents;
 import java.util.*;

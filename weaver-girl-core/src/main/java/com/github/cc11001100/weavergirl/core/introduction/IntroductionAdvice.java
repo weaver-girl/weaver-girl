@@ -2,7 +2,6 @@ package com.github.cc11001100.weavergirl.core.introduction;
 
 import com.github.cc11001100.weavergirl.api.introduction.IntroductionDefinition;
 import com.github.cc11001100.weavergirl.api.introduction.IntroductionRegistry;
-import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import java.lang.reflect.Method;
 import java.util.concurrent.ConcurrentHashMap;
 import net.bytebuddy.asm.Advice;

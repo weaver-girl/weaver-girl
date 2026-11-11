@@ -120,7 +120,7 @@ public final class ContextCompletableFuture {
    * @since 1.9.0
    */
   public static <T, U> CompletableFuture<U> thenApply(
-      CompletableFuture<T> future, java.util.function.Function<? super T, ? extends U> function) {
+      CompletableFuture<T> future, Function<? super T, ? extends U> function) {
     Objects.requireNonNull(future, "future");
     Objects.requireNonNull(function, "function");
     return future.thenApply(ContextPropagators.wrap(function));
@@ -140,7 +140,7 @@ public final class ContextCompletableFuture {
    */
   public static <T, U> CompletableFuture<U> thenApplyAsync(
       CompletableFuture<T> future,
-      java.util.function.Function<? super T, ? extends U> function,
+      Function<? super T, ? extends U> function,
       Executor executor) {
     Objects.requireNonNull(future, "future");
     Objects.requireNonNull(function, "function");
@@ -229,7 +229,7 @@ public final class ContextCompletableFuture {
    */
   public static <T, U> CompletableFuture<U> thenCompose(
       CompletableFuture<T> future,
-      java.util.function.Function<? super T, ? extends CompletableFuture<U>> function) {
+      Function<? super T, ? extends CompletableFuture<U>> function) {
     Objects.requireNonNull(future, "future");
     Objects.requireNonNull(function, "function");
     return future.thenCompose(ContextPropagators.wrap(function));
@@ -249,7 +249,7 @@ public final class ContextCompletableFuture {
    */
   public static <T, U> CompletableFuture<U> thenComposeAsync(
       CompletableFuture<T> future,
-      java.util.function.Function<? super T, ? extends CompletableFuture<U>> function,
+      Function<? super T, ? extends CompletableFuture<U>> function,
       Executor executor) {
     Objects.requireNonNull(future, "future");
     Objects.requireNonNull(function, "function");
@@ -272,7 +272,7 @@ public final class ContextCompletableFuture {
    */
   public static <T> CompletableFuture<T> exceptionallyAsync(
       CompletableFuture<T> future,
-      java.util.function.Function<Throwable, ? extends T> function,
+      Function<Throwable, ? extends T> function,
       Executor executor) {
     Objects.requireNonNull(future, "future");
     Objects.requireNonNull(function, "function");

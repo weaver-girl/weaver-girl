@@ -18,6 +18,13 @@
 
     <properties>
         <moduleinfo.skip>true</moduleinfo.skip>
+        <!-- The agent module is launcher glue (premain/agentmain, plugin-jar discovery, the
+             child-first AgentClassLoader). It is exercised for real by the packaged-agent
+             smoke (scripts/cross-jdk-smoke.sh, agent-smoke.yml) and JavaAgentE2ETest, which
+             attach the shaded jar to a live JVM — something in-process unit coverage cannot
+             measure. The JaCoCo 80/70 floor stays on the engine modules whose logic is loaded
+             by that launcher. -->
+        <jacoco.skip>true</jacoco.skip>
     </properties>
 
     <dependencies>
@@ -846,6 +853,31 @@
                             <includeScope>provided</includeScope>
                             <outputDirectory>${project.build.directory}/plugins</outputDirectory>
                             <stripVersion>false</stripVersion>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Bundle the agent jar and target/plugins into the distribution archive users
+                 actually download. The agent has no built-in plugin classes of its own: they are
+                 discovered from the plugins/ directory next to the jar, so shipping the jar alone
+                 would attach an agent that instruments nothing. Bound after shade + copy-plugins
+                 (declaration order within the same phase) so both inputs exist. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.7.1</version>
+                <executions>
+                    <execution>
+                        <id>bundle-distribution</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>${project.basedir}/src/assembly/dist.xml</descriptor>
+                            </descriptors>
+                            <appendAssemblyId>true</appendAssemblyId>
                         </configuration>
                     </execution>
                 </executions>

@@ -2,7 +2,6 @@ package com.github.cc11001100.weavergirl.core;
 
 import com.github.cc11001100.weavergirl.api.interceptor.FieldInvocation;
 import com.github.cc11001100.weavergirl.api.interceptor.FieldInterceptor;
-import com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.interceptor.FieldInvocationPool;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
 import java.lang.reflect.Field;

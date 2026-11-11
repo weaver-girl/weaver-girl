@@ -86,4 +86,45 @@ class MicrometerBridgeTest {
     MicrometerBridge.start(null);
     assertFalse(MicrometerBridge.isStarted());
   }
+
+  @Test
+  void duplicateStartIsIgnoredAndStopIsIdempotent() {
+    assertTrue(MicrometerBridge.isStarted());
+
+    MicrometerBridge.start(registry); // second start is a no-op
+    assertTrue(MicrometerBridge.isStarted());
+
+    MicrometerBridge.stop();
+    assertFalse(MicrometerBridge.isStarted());
+    assertDoesNotThrow(MicrometerBridge::stop); // stop before start / repeated stop
+  }
+
+  @Test
+  void eventsWithoutAMethodNameSkipTheHookTimerAndUnknownTypesAreIgnored() {
+    InterceptorEventPublisher.getInstance()
+        .publish(InterceptorEvent.builder().type("interceptor").plugin("test").build());
+    InterceptorEventPublisher.getInstance()
+        .publish(
+            InterceptorEvent.builder()
+                .type("interceptor")
+                .plugin("test")
+                .methodName("")
+                .build());
+    InterceptorEventPublisher.getInstance()
+        .publish(InterceptorEvent.builder().type("unknown").plugin("test").build());
+
+    Counter invocation = registry.find("weavergirl.interceptor.invocations.total").counter();
+    assertNotNull(invocation);
+    assertEquals(2.0, invocation.count(), 0.0);
+    assertTrue(registry.find("weavergirl.interceptor.hook").timers().isEmpty());
+  }
+
+  @Test
+  void registeredInterceptorGaugeReadsZeroWithoutAnEngine() {
+    io.micrometer.core.instrument.Gauge gauge =
+        registry.find("weavergirl.registered.interceptors").gauge();
+
+    assertNotNull(gauge);
+    assertEquals(0.0, gauge.value(), 0.0);
+  }
 }

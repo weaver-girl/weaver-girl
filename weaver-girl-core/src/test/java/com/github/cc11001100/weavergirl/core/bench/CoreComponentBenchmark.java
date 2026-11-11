@@ -33,13 +33,29 @@ public class CoreComponentBenchmark {
     return samplingController.shouldSample();
   }
 
+  /**
+   * Hot path at a 1-in-10 sampling rate. The rate is changed once per iteration, not inside the
+   * benchmarked operation: {@link SamplingController#setSamplingRate(int)} logs on every change,
+   * so measuring it per invocation would time the logger instead of {@code shouldSample()}.
+   */
   @Benchmark
-  public boolean sampling_shouldSample_rate10() {
-    int old = samplingController.getSamplingRate();
-    samplingController.setSamplingRate(10);
-    boolean result = samplingController.shouldSample();
-    samplingController.setSamplingRate(old);
-    return result;
+  public boolean sampling_shouldSample_rate10(Rate10State state) {
+    return samplingController.shouldSample();
+  }
+
+  @State(Scope.Benchmark)
+  public static class Rate10State {
+    private final SamplingController controller = SamplingController.getInstance();
+
+    @Setup(Level.Iteration)
+    public void raiseRate() {
+      controller.setSamplingRate(10);
+    }
+
+    @TearDown(Level.Iteration)
+    public void restoreRate() {
+      controller.setSamplingRate(1);
+    }
   }
 
   // --- Circuit Breaker (InterceptorHolder) ---

@@ -58,6 +58,9 @@ resources:
 
 # Target application settings
 targetApplication:
+  # Value of the `app` label on the pods this chart's Service selects for metrics/health scrapes.
+  name: application
+
   # The container index in the target pod to inject the agent into (default: 0)
   containerIndex: 0
 

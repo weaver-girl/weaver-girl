@@ -1,6 +1,5 @@
 package com.github.cc11001100.weavergirl.api.introduction;
 
-import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;

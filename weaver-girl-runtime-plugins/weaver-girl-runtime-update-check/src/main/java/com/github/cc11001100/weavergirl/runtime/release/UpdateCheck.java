@@ -79,7 +79,8 @@ public final class UpdateCheck {
     }
   }
 
-  private static void onNewVersionAvailable(
+  /** Package-private so the branch matrix can be exercised without a live scheduler. */
+  static void onNewVersionAvailable(
       VersionInfo remote, boolean autoStage, String stagingDir, String headers) {
     String notes = remote.getReleaseNotes();
     log.warn(

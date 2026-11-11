@@ -39,7 +39,9 @@ To inject the agent into an existing deployment:
 initContainers:
   - name: copy-agent
     image: weaver-girl/agent:1.0.0
-    command: ['sh', '-c', 'cp /opt/weaver-girl/*.jar /agent/']
+    # Copy the jar AND the plugins/ directory next to it. The agent jar contains no
+    # built-in plugin classes; it discovers them from plugins/ at startup.
+    command: ['sh', '-c', 'cp /opt/weaver-girl/*.jar /agent/ && cp -r /opt/weaver-girl/plugins /agent/']
     volumeMounts:
       - name: agent-volume
         mountPath: /agent

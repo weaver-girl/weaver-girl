@@ -1,7 +1,6 @@
 package com.github.cc11001100.weavergirl.core.introduction;
 
 import java.lang.reflect.Method;
-import net.bytebuddy.implementation.MethodDelegation;
 import net.bytebuddy.implementation.bind.annotation.This;
 import net.bytebuddy.implementation.bind.annotation.Origin;
 import net.bytebuddy.implementation.bind.annotation.AllArguments;

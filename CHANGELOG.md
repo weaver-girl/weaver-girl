@@ -4,6 +4,38 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## 1.0.0 — First release (2026-11-11)
+
+The first release-ready cut of Weaver-Girl. Highlights:
+
+- **126 built-in instrumentation plugins** (Servlet, Spring, JDBC, Redis, Kafka, gRPC, MongoDB,
+  HttpClient, HikariCP, OkHttp, RabbitMQ, Elasticsearch, Dubbo, MyBatis, RocketMQ, Druid, Feign,
+  Caffeine, Netty, Tomcat/Jetty/Undertow, Quartz/XXL-Job, and more), one jar per capability, plus
+  **14 runtime capability jars** (Prometheus, health, OTLP, JSON events, JMX, config watch,
+  diagnostics, update check, taint, …). Only enabled jars are loaded.
+- **Distribution archive** (`weaver-girl-agent-<version>-dist.zip`) now ships the agent jar and its
+  `plugins/` directory together. The agent has no built-in plugin classes, so a jar-only download
+  would instrument nothing; `scripts/release-check.sh` and `release.yml` both verify the archive
+  contains the agent and the servlet/jdbc plugins before a release is published.
+- **Release gate is green**: `clean verify -Pquality-gate` passes on JDK 17 for all 153 modules —
+  unit tests, SpotBugs (High), and Checkstyle everywhere, plus JaCoCo instruction ≥ 80% / branch
+  ≥ 70% on the engine and runtime modules. The sample demo, the launcher-only agent module and
+  the thin instrumentation-plugin adapters are exempt from the coverage ratio: the agent is
+  attached for real by the cross-JDK smoke, and plugin behavior is covered by the cross-plugin
+  integration tests instead of per-jar line ratios.
+- **Java 8 compatibility** verified by the packaged-bytecode scanner and the bare-attach smoke on
+  JDK 8/11/17/21; agent ByteBuddy resolves in the isolated child-first `AgentClassLoader`.
+- **Observability**: W3C trace context propagation, OTLP span/log export, Prometheus metrics,
+  health/readiness endpoints, JMX, topology, alerting, metric governance, and tracer
+  self-telemetry.
+- **Production safety**: global emergency kill-switch, circuit breaker with slow-call tripping,
+  adaptive sampling, graceful degradation, plugin health, and dynamic config with rollback/audit.
+
+See `RELEASE_READINESS.md` for the verified gate evidence and `RELEASE_PROCEDURE.md` for the
+publishing steps.
+
+---
+
 ## P80 — Agent Self-Update Mechanism (2026-09-06)
 
 ### P80: Version check + staged update, wired into bootstrap

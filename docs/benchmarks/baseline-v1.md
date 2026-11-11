@@ -4,7 +4,7 @@ This is the first published overhead baseline for the weaver-girl interceptor en
 It captures the per-operation cost of every hot-path component so future changes can
 be checked for regressions.
 
-> **How to re-measure:** `./mvnw -Pbench -DskipTests -Djmh.wi=2 -Djmh.i=3 -Djmh.f=0 integration-test -pl weaver-girl-core`
+> **How to re-measure:** `./mvnw -Pbench -am -DskipTests -Djmh.wi=2 -Djmh.i=3 -Djmh.f=0 integration-test -pl weaver-girl-core`
 > (or `scripts/verify-benchmarks.sh` for a pass/fail regression guard).
 
 ## Measurement environment
@@ -63,13 +63,21 @@ All values are **nanoseconds per operation (ns/op)**, shown as `score ± 99.9% e
 | `sampling_shouldSample_rate1` | 2.740 | 0.191 |
 | `sampling_shouldSample_rate10` | 7.271 | 0.960 |
 
+> **Note (2026-11-11):** the `sampling_shouldSample_rate10` row above was measured while
+> the benchmark called `setSamplingRate(10)` inside the measured operation; that method
+> logs, so the row times the logger as much as the sampler. The benchmark now sets the
+> rate in `@Setup(Level.Iteration)` and measures ~1.85 ns. The original value is kept as
+> the historical baseline the guard compares against, which is conservative (a real
+> regression would have to exceed 10.9 ns to trip the 1.5x budget).
+
 ## Interpretation for APM / Hook-base use
 
 These numbers describe the **per-instrumented-call** cost the engine adds on top of the
 target method. The picture that emerges for an APM/Hook base:
 
 - **Cheap paths dominate.** Exact matchers (~1.2 ns), the sampling check (~2.7 ns at 100%
-  sample, ~7.3 ns at 10× counter), the empty-registry fast exit (~10.7 ns), and the
+  sample, under 2 ns at 10× counter after the methodology fix noted above), the
+  empty-registry fast exit (~10.7 ns), and the
   circuit-breaker checks (~25 ns) are all well under a hundred nanoseconds. A method that
   matches nothing or is not sampled pays almost nothing.
 - **The hot path is registry lookup + pointcut match.** A real hit costs ~20.8 ns for the

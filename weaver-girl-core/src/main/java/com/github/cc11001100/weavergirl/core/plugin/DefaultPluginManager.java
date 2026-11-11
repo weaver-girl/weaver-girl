@@ -1,10 +1,8 @@
 package com.github.cc11001100.weavergirl.core.plugin;
 
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
-import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.event.LifecycleEvents;
-import com.github.cc11001100.weavergirl.api.plugin.PluginHealth;
 import com.github.cc11001100.weavergirl.api.plugin.PluginHealthRegistry;
 import com.github.cc11001100.weavergirl.api.plugin.PluginInfo;
 import com.github.cc11001100.weavergirl.api.plugin.PluginManager;
