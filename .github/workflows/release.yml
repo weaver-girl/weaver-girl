@@ -4,6 +4,17 @@ on:
   push:
     tags:
       - 'v*'
+  # Dry run proves the build, signing and packaging pipeline without a tag and
+  # without touching Maven Central. Real releases still come from `v*` tags.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to build, without the leading v (for example 1.0.0-rc.1)
+        required: true
+      dry_run:
+        description: Build, sign and package, but do not deploy or create a release
+        type: boolean
+        default: true
 
 # softprops/action-gh-release creates the release and uploads assets with the
 # workflow token; without this the default read-only token fails at upload.
@@ -38,14 +49,28 @@ jobs:
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2-
 
-      - name: Set version from tag
+      - name: Resolve the release version
         run: |
-          TAG_VERSION=${GITHUB_REF_NAME#v}
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG_VERSION="${{ inputs.version }}"
+          else
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          test -n "$TAG_VERSION" || (echo "FAIL: no version" && exit 1)
           echo "Setting Maven version to $TAG_VERSION"
           echo "VERSION=$TAG_VERSION" >> $GITHUB_ENV
           ./mvnw versions:set -DnewVersion=$TAG_VERSION -B
 
+      - name: Build and sign without publishing (dry run)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run == true
+        env:
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: >-
+          ./mvnw -B -Prelease clean verify -DskipTests
+          -Djacoco.skip=true -Dcheckstyle.skip=true -Dspotbugs.skip=true
+
       - name: Deploy to Maven Central
+        if: github.event_name == 'push' || inputs.dry_run != true
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
@@ -96,7 +121,19 @@ jobs:
           echo "=== Checksums ==="
           cat "$AGENT_JAR.sha256" "$DIST_ZIP.sha256"
 
+      - name: Upload release assets as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: weaver-girl-${{ env.VERSION }}
+          if-no-files-found: error
+          path: |
+            ${{ env.AGENT_JAR }}
+            ${{ env.AGENT_JAR }}.sha256
+            ${{ env.DIST_ZIP }}
+            ${{ env.DIST_ZIP }}.sha256
+
       - name: Create GitHub Release
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v3
         with:
           name: Weaver-Girl ${{ github.ref_name }}
