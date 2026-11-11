@@ -25,6 +25,11 @@ class PluginManagerTest {
 
   @BeforeEach
   void setUp() {
+    // Ownership tracking is static and outlives a test's registry. A previous test that tracked a
+    // plugin loaded by the application classloader otherwise makes registrations made from this
+    // test class look like that stale plugin's, which changes disable/unload behaviour with the
+    // execution order. Clear it before each test so the suite is order-independent.
+    DefaultInterceptorRegistry.clearTracking();
     registry = new DefaultInterceptorRegistry();
     pluginLoader = new PluginLoader();
   }
