@@ -40,6 +40,27 @@ The release workflow needs these [repository secrets](https://docs.github.com/en
 Create the Central token at <https://central.sonatype.com> (account → Access Tokens).
 Export the GPG key with `gpg --armor --export-secret-keys <keyid>`.
 
+### 3. Release signing key
+
+Releases are signed with a dedicated key, not a maintainer's personal key. The
+public half is committed as [`docs/release-signing-key.asc`](docs/release-signing-key.asc):
+
+```
+Fingerprint: FB0D 93FF 3C8D 06F2 5048 2583 56EF 998B 96FA 1B31
+UID:         Weaver-Girl Release Signing <cc11001100@users.noreply.github.com>
+Expires:     2029-11-11
+```
+
+`GPG_PRIVATE_KEY` and `GPG_PASSPHRASE` hold the armored private key and its
+passphrase. The private key exists only in the repository secrets; rotate it by
+generating a new key, setting both secrets, uploading the new public key, and
+updating this document. Consumers verify a downloaded artifact with:
+
+```bash
+gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys 56EF998B96FA1B31
+gpg --verify artifact.jar.asc artifact.jar
+```
+
 ## Cutting a release
 
 1. **Ensure `main` is green.** Run the gate on JDK 17 (the CI compatibility matrix
