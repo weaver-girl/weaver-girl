@@ -54,7 +54,7 @@ export function HomePage() {
           </h1>
           <p className="lede">
             挂上一个 agent，不用改一行业务代码。126 个插件自动发现并拦截方法、字段与异常，调用链、指标、拓扑、
-            告警与污点分析即刻可用。为 APM、IAST 与业务韧性准备的 Hook 底座。
+            告警与污点分析即刻可用。为 APM、IAST、RASP 等切面应用准备的 Hook 底座。
           </p>
           <div className="cta-row">
             <Link to="/quick-start" className="btn btn-primary">
@@ -85,17 +85,20 @@ export function HomePage() {
         ))}
       </section>
 
-      <section className="section wrap">
+      <section className="section wrap" id="scenarios">
         <Reveal>
           <div className="section-intro">
             <p className="eyebrow">能做什么</p>
             <h2>不止是拦截，是一整条产品线。</h2>
-            <p>同一个 agent 底座，四种常见的落地方式；仓库里都有可运行的演示。</p>
+            <p>同一个 agent 底座，多种落地方式；APM、数据安全与韧性在仓库里都有可运行的演示。</p>
           </div>
         </Reveal>
         <div className="scenario-grid">
           {scenarios.map((scenario) => (
-            <Reveal key={scenario.key}>
+            <Reveal
+              key={scenario.key}
+              className={scenario.key === "rasp" ? "scenario-wide" : undefined}
+            >
               <article className="scenario-card">
                 <span className="scenario-tag">{scenario.tag}</span>
                 <h3>{scenario.title}</h3>
@@ -109,6 +112,62 @@ export function HomePage() {
             </Reveal>
           ))}
         </div>
+      </section>
+
+      <section className="section wrap" id="positioning">
+        <Reveal>
+          <div className="section-intro">
+            <p className="eyebrow">定位</p>
+            <h2>一个底座，多种切面应用。</h2>
+            <p>
+              APM、IAST、RASP 的动作其实是同一套：在方法、字段或异常处植入切点，拿到上下文，做判定并上报。
+              weaver-girl 做的是这套底座，应用层的规则与管控由产品自己实现。
+            </p>
+          </div>
+        </Reveal>
+        <Reveal>
+          <div className="layer-stack">
+            <div className="layer">
+              <span className="layer-label">切面应用</span>
+              <div className="layer-tags">
+                <b>APM</b>
+                <b>IAST</b>
+                <b>RASP</b>
+                <b>数据安全</b>
+                <b>业务韧性</b>
+                <b>业务审计</b>
+              </div>
+              <p>规则、判定与处置：漏洞规则、攻击拦截、脱敏策略、降级阈值、审计口径。</p>
+            </div>
+            <div className="layer-arrow">↓</div>
+            <div className="layer layer-base">
+              <span className="layer-label">切面底座 · weaver-girl</span>
+              <div className="layer-cols">
+                <div>
+                  <b>切点植入</b>
+                  <p>方法、字段与异常，premain 与运行期 agentmain</p>
+                </div>
+                <div>
+                  <b>上下文与判定</b>
+                  <p>参数、返回值、异常改写，跳过方法或字段写入</p>
+                </div>
+                <div>
+                  <b>数据上报</b>
+                  <p>事件、指标、trace、OTLP / Prometheus / REST</p>
+                </div>
+                <div>
+                  <b>模块加载</b>
+                  <p>插件发现、类加载隔离、熔断与自适应采样</p>
+                </div>
+              </div>
+            </div>
+            <div className="layer-arrow">↓</div>
+            <div className="layer layer-control">
+              <span className="layer-label">切面管控</span>
+              <p>控制台、规则下发、存储与告警编排——属于产品层，本仓库不提供。</p>
+            </div>
+          </div>
+        </Reveal>
       </section>
 
       <section className="section wrap">

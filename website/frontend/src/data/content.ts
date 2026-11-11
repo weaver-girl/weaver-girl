@@ -22,7 +22,7 @@ export const features: Feature[] = [
   {
     title: "插件即产品底座",
     description:
-      "做 APM 或 IAST 只需写一个插件：方法、字段、异常捕获三种拦截，加上追踪、指标、导出、拓扑、告警和污点分析，全部只依赖 weaver-girl-api。",
+      "做 APM、IAST 或 RASP 只需写一个插件：方法、字段、异常捕获三种拦截，加上追踪、指标、导出、拓扑、告警和污点分析，全部只依赖 weaver-girl-api。",
   },
   {
     title: "零分配字节码织入",
@@ -154,6 +154,14 @@ export const scenarios: Scenario[] = [
     description:
       "taint 能力把 source、propagator、sink 串起来，配合方法/字段拦截，在不改代码的前提下发现注入类风险。",
     outcomes: ["请求参数到 SQL / 命令执行的链路", "字段读写自动传播污点", "按规则命中告警，不阻断业务"],
+  },
+  {
+    key: "rasp",
+    tag: "RASP",
+    title: "把运行时防护做成插件",
+    description:
+      "在危险调用前后做判定：命中规则时跳过方法、改写返回值或替换异常。底座提供切点、上下文、隔离与熔断；规则库与阻断白名单属于应用层，本仓库不内置。",
+    outcomes: ["方法跳过、返回值改写、异常替换", "字段写拒绝与 catch 抑制", "插件级隔离，规则出错不拖垮业务"],
   },
   {
     key: "security",
@@ -464,6 +472,7 @@ export interface DocLink {
 
 export const docLinks: DocLink[] = [
   { title: "架构说明", description: "模块划分、类加载隔离与织入流程", href: `${REPO_URL}/blob/main/docs/ARCHITECTURE.md` },
+  { title: "切面底座定位", description: "为什么本仓库只做底座，APM / IAST / RASP 属于切面应用", href: `${REPO_URL}/blob/main/docs/ant-aspect-base-decision.md` },
   { title: "插件开发指南", description: "从零编写并发布一个 WeaverPlugin", href: `${REPO_URL}/blob/main/docs/plugin-developer-guide.md` },
   { title: "YAML 配置参考", description: "全部配置项与默认值", href: `${REPO_URL}/blob/main/docs/yaml-config-reference.md` },
   { title: "可观测性指南", description: "追踪、指标、OTLP 与告警的完整目录", href: `${REPO_URL}/blob/main/docs/observability.md` },
