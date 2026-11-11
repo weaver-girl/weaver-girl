@@ -1,0 +1,67 @@
+name: Feature request
+description: Propose a capability, plugin, or extension point
+title: "[feature] "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Weaver-Girl is a hook base: it provides interception, plugin isolation,
+        tracing, metrics, export, topology, alerting and taint services. Product
+        logic (an APM backend, an IAST rule set, a RASP block list) belongs to a
+        plugin, not to the core. Keep that boundary in mind when describing the
+        proposal.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      multiple: true
+      options:
+        - Instrumentation plugin (new framework/library)
+        - Runtime capability (exporter, health, metrics, diagnostics, …)
+        - Plugin API / extension point
+        - Agent behavior or configuration
+        - Documentation or tooling
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what blocks you today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: API shape, configuration keys, plugin name, expected behavior.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Could this be a third-party plugin instead of a core change?
+    validations:
+      required: false
+
+  - type: input
+    id: references
+    attributes:
+      label: References
+      description: Comparable implementations in SkyWalking, OpenTelemetry, Elastic APM, etc.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to open a pull request for this.
+          required: false

@@ -26,7 +26,7 @@
         <module>weaver-girl-sample</module>
     </modules>
 
-    <url>https://github.com/cc11001100/weaver-girl</url>
+    <url>https://github.com/weaver-girl/weaver-girl</url>
 
     <licenses>
         <license>
@@ -37,10 +37,15 @@
     </licenses>
 
     <scm>
-        <url>https://github.com/cc11001100/weaver-girl</url>
-        <connection>scm:git:git://github.com/cc11001100/weaver-girl.git</connection>
-        <developerConnection>scm:git:git@github.com:cc11001100/weaver-girl.git</developerConnection>
+        <url>https://github.com/weaver-girl/weaver-girl</url>
+        <connection>scm:git:git://github.com/weaver-girl/weaver-girl.git</connection>
+        <developerConnection>scm:git:git@github.com:weaver-girl/weaver-girl.git</developerConnection>
     </scm>
+
+    <issueManagement>
+        <system>GitHub</system>
+        <url>https://github.com/weaver-girl/weaver-girl/issues</url>
+    </issueManagement>
 
     <developers>
         <developer>

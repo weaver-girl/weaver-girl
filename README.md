@@ -1,6 +1,24 @@
 # Weaver-Girl
 
+[![CI](https://github.com/weaver-girl/weaver-girl/actions/workflows/ci.yml/badge.svg)](https://github.com/weaver-girl/weaver-girl/actions/workflows/ci.yml)
+[![Agent Smoke](https://github.com/weaver-girl/weaver-girl/actions/workflows/agent-smoke.yml/badge.svg)](https://github.com/weaver-girl/weaver-girl/actions/workflows/agent-smoke.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Java 8+](https://img.shields.io/badge/Java-8%2B-blue.svg)](docs/versioning-and-compatibility.md)
+[![Website](https://img.shields.io/badge/website-weaver--girl.github.io-blue)](https://weaver-girl.github.io/)
+
 A modular Java bytecode instrumentation framework built on ByteBuddy, inspired by SkyWalking and OpenTelemetry Java Agent.
+
+**Weaver-Girl is a hook base, not a turnkey APM product.** It provides the
+interception engine, plugin isolation and shared runtime services; an APM agent,
+an IAST scanner, a RASP shield, an audit trail or a resilience layer is a plugin
+built on top. If you want a complete APM platform today, use SkyWalking or
+OpenTelemetry plus a backend. If you are building your own product on a stable
+hook layer, this is the base. See [`docs/positioning.md`](docs/positioning.md).
+
+> **Status:** pre-1.0. The first release is being prepared; artifacts publish to
+> Maven Central when `v1.0.0` is tagged. Versioning and compatibility are
+> documented in
+> [`docs/versioning-and-compatibility.md`](docs/versioning-and-compatibility.md).
 
 ## Quick Start (30 seconds)
 
@@ -291,13 +309,21 @@ cd weaver-girl.github.io && npm ci && npm run dev   # local preview
 
 ## Documentation
 
+- [Positioning](docs/positioning.md) — what this project is, and what it is not
 - [Architecture](docs/ARCHITECTURE.md)
 - [Plugin Developer Guide](docs/plugin-developer-guide.md)
+- [Plugin Template](https://github.com/weaver-girl/weaver-girl-plugin-template) — start a third-party plugin
+- [Versioning and Compatibility](docs/versioning-and-compatibility.md)
+- [Roadmap](ROADMAP.md)
 - [YAML Config Reference](docs/yaml-config-reference.md)
+- [Observability Guide](docs/observability.md)
+- [Extension Point Guide](docs/extension-point-guide.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Operations Runbook](docs/runbook.md)
 - [OTel Collector Example](docs/otel-collector-example.yaml)
 - [Contributing](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security Policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
 
 ## License

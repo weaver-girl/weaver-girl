@@ -18,12 +18,12 @@ Be respectful, constructive, and inclusive. We follow the [Contributor Covenant]
 ### Clone and Build
 
 ```bash
-git clone https://github.com/cc11001100/weaver-girl.git
+git clone https://github.com/weaver-girl/weaver-girl.git
 cd weaver-girl/weaver-girl
 mvn clean install
 ```
 
-This compiles all six modules, runs the full test suite, and installs artifacts to your local Maven repository.
+This compiles the full reactor — the API, engine, 126 instrumentation plugins, 14 runtime capability jars, bridges, agent, testkit and sample — runs the test suite, and installs artifacts to your local Maven repository.
 
 ### Verify the Agent JAR
 
@@ -64,15 +64,15 @@ mvn clean install -DskipTests
 
 ### Test Requirements
 
-All 914+ tests must pass. The test suite includes:
+The full reactor test suite must pass (3,671 tests at the 1.0.0 cut; see `RELEASE_READINESS.md`). It includes:
 
-- **Unit tests** in every module (JUnit 5 + Mockito)
+- **Unit tests** in every module (JUnit 6 + Mockito)
 - **Integration tests** in `weaver-girl-core` (agent bootstrap, multi-agent coexistence, circuit breaker, sampling)
 - **E2E tests** in `weaver-girl-agent` (full agent lifecycle with `byte-buddy-agent`)
 - **Benchmarks** in `weaver-girl-core` (JMH micro-benchmarks for interceptor and matcher performance)
-- **Regression tests** in `weaver-girl-plugins` (`PluginMatchTypeRegressionTest` verifies correct `MatchType` usage across all 12 plugins)
+- **Regression tests** in `weaver-girl-plugins` (`PluginMatchTypeRegressionTest` verifies correct `MatchType` usage across the built-in plugins)
 
-CI runs the full build matrix across JDK 8, 11, 17, and 21 (see `.github/workflows/ci.yml`).
+CI builds and runs the test suite on JDK 17 and 21. The packaged agent is attached and exercised on JDK 8, 11, 17 and 21 by `.github/workflows/agent-smoke.yml`.
 
 ---
 
@@ -85,7 +85,7 @@ CI runs the full build matrix across JDK 8, 11, 17, and 21 (see `.github/workflo
 - **No empty catch blocks** -- at minimum, log the exception
 - **Interceptors must be thread-safe** -- a single interceptor instance may be invoked concurrently by multiple threads. Use `ThreadLocal` or `ThreadContext` for per-invocation state
 - **Interceptors must not throw exceptions** that escape callback methods -- catch internally; the framework also catches as a safety net, but plugins should handle their own errors gracefully
-- **Checkstyle** rules may be added in a future phase; for now, follow the patterns established by the existing codebase
+- **Checkstyle, SpotBugs (High) and JaCoCo** run in `-Pquality-gate`; a pull request must keep them green
 
 ---
 
@@ -347,7 +347,7 @@ This project follows [Conventional Commits](https://www.conventionalcommits.org/
 feat(plugins): add MongoDB instrumentation plugin
 fix(core): prevent ClassCircularityError when agent classes are transformed
 refactor(scaffold): restructure to 5-module layered architecture
-test(plugins): add MatchType regression tests for all 12 plugins
+test(plugins): add MatchType regression tests for the built-in plugins
 docs(api): add Javadoc to PluginContext config methods
 chore(ci): add JDK 21 to build matrix
 ```
@@ -362,7 +362,7 @@ chore(ci): add JDK 21 to build matrix
    git checkout -b feat/my-feature
    ```
 3. **Write code with tests** -- every new feature or bug fix must have corresponding tests
-4. **Run the full build** to ensure all 914+ tests pass:
+4. **Run the full build** to ensure the reactor tests pass:
    ```bash
    mvn clean install
    ```
@@ -372,7 +372,7 @@ chore(ci): add JDK 21 to build matrix
    - What the change does and why
    - How to test it
    - Any breaking changes or migration notes
-8. **CI must pass** -- the build matrix runs on JDK 8, 11, 17, and 21
+8. **CI must pass** -- build/test on JDK 17 and 21, packaged-agent smoke on JDK 8/11/17/21
 9. **Code review** -- at least one approval required before merge
 
 ### Bug Reports

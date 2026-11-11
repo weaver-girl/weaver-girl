@@ -104,8 +104,8 @@ jobs:
 
             ```bash
             # Download the archive and its checksum (keep the original file names)
-            curl -LO https://github.com/cc11001100/weaver-girl/releases/download/${{ github.ref_name }}/weaver-girl-agent-${{ env.VERSION }}-dist.zip
-            curl -LO https://github.com/cc11001100/weaver-girl/releases/download/${{ github.ref_name }}/weaver-girl-agent-${{ env.VERSION }}-dist.zip.sha256
+            curl -LO https://github.com/weaver-girl/weaver-girl/releases/download/${{ github.ref_name }}/weaver-girl-agent-${{ env.VERSION }}-dist.zip
+            curl -LO https://github.com/weaver-girl/weaver-girl/releases/download/${{ github.ref_name }}/weaver-girl-agent-${{ env.VERSION }}-dist.zip.sha256
             sha256sum -c weaver-girl-agent-${{ env.VERSION }}-dist.zip.sha256
 
             # Unpack and attach (the plugins/ directory must stay next to the jar)
@@ -122,7 +122,7 @@ jobs:
             <dependency>
               <groupId>com.github.cc11001100</groupId>
               <artifactId>weaver-girl-core</artifactId>
-              <version>${{ github.ref_name }}</version>
+              <version>${{ env.VERSION }}</version>
             </dependency>
             ```
 

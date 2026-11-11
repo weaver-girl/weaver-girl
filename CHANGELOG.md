@@ -30,6 +30,11 @@ The first release-ready cut of Weaver-Girl. Highlights:
   self-telemetry.
 - **Production safety**: global emergency kill-switch, circuit breaker with slow-call tripping,
   adaptive sampling, graceful degradation, plugin health, and dynamic config with rollback/audit.
+- **Project layout**: the website moved to `weaver-girl/weaver-girl.github.io` (served from the
+  organization root), third-party plugins start from the
+  `weaver-girl/weaver-girl-plugin-template` template repository, and release metadata now points
+  at the `weaver-girl` organization. Code of Conduct, security policy, issue forms, a PR
+  template, a public roadmap and a versioning/compatibility policy are in place.
 
 See `RELEASE_READINESS.md` for the verified gate evidence and `RELEASE_PROCEDURE.md` for the
 publishing steps.

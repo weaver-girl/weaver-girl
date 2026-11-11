@@ -1,0 +1,6 @@
+# The image only needs the packaged agent and its plugins directory. Keeping the
+# context small also keeps the multi-arch build fast.
+*
+!weaver-girl-agent/target/weaver-girl-agent-*.jar
+!weaver-girl-agent/target/plugins/**
+!weaver-example.yml

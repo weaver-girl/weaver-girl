@@ -161,7 +161,7 @@ java -javaagent:weaver-girl-agent.jar=config=/weaver.yml,watch=true -jar your-ap
 
 If you're still stuck:
 
-1. Search existing issues: https://github.com/cc11001100/weaver-girl/issues
+1. Search existing issues: https://github.com/weaver-girl/weaver-girl/issues
 2. Open a new issue with:
    - Java version (`java -version`)
    - Weaver-Girl version

@@ -1,8 +1,8 @@
 # Weaver-Girl Helm Chart values
 
-# Agent image configuration
+# Agent image configuration (published by .github/workflows/container.yml)
 image:
-  repository: weaver-girl/agent
+  repository: ghcr.io/weaver-girl/weaver-girl-agent
   pullPolicy: IfNotPresent
   tag: "1.0.0"
 
@@ -45,7 +45,7 @@ config:
 # YAML configuration content (rendered as ConfigMap)
 yamlConfig: |
   # Weaver-Girl configuration
-  # See: https://github.com/cc11001100/weaver-girl/blob/main/docs/yaml-config-reference.md
+  # See: https://github.com/weaver-girl/weaver-girl/blob/main/docs/yaml-config-reference.md
 
 # Resource limits for the init container
 resources:
@@ -67,7 +67,8 @@ targetApplication:
   # JVM options to append
   extraJvmOpts: ""
 
-# Health check probes
+# Health check probes for the target workload's container. The chart does not
+# create that workload; these values document the endpoints and timings to use.
 livenessProbe:
   httpGet:
     path: /health

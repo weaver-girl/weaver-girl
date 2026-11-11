@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://weaver-girl.github.io/docs
+    about: Quick start, architecture, plugin guide and configuration reference.
+  - name: Questions and ideas
+    url: https://github.com/weaver-girl/weaver-girl/discussions
+    about: Ask a question or discuss a design before opening an issue.
+  - name: Report a security vulnerability
+    url: https://github.com/weaver-girl/weaver-girl/security/advisories/new
+    about: Report privately. Do not open a public issue for vulnerabilities.

@@ -1,0 +1,106 @@
+name: Bug report
+description: Something does not work as documented
+title: "[bug] "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please search existing issues first, and do not
+        include secrets, production data, or full customer payloads.
+
+  - type: input
+    id: version
+    attributes:
+      label: Weaver-Girl version
+      description: The release tag, or the commit SHA if you built from source.
+      placeholder: "1.0.0 / 093136b"
+    validations:
+      required: true
+
+  - type: input
+    id: jdk
+    attributes:
+      label: JDK
+      description: Output of `java -version`.
+      placeholder: "OpenJDK 17.0.12 (Temurin)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: attach
+    attributes:
+      label: Attach mode
+      options:
+        - "-javaagent at startup"
+        - "Dynamic attach (agentmain)"
+        - "In-process PluginTestHarness"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: input
+    id: framework
+    attributes:
+      label: Instrumented framework
+      description: Framework/library and version that the affected plugin targets.
+      placeholder: "Spring Boot 3.3, Tomcat 10.1, MySQL 8.4"
+    validations:
+      required: false
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: Relevant `weaver.yml` and agent options. Redact credentials.
+      render: yaml
+    validations:
+      required: false
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start the app with ...
+        2. Send ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the exception and the relevant agent log lines, not the whole log.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: |
+        If the agent is running, paste the relevant output of `/diagnostics`,
+        `/plugins`, or `/stats` (redact hostnames and payloads).
+      render: json
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and the troubleshooting guide.
+          required: true
+        - label: This report contains no secrets or production data.
+          required: true

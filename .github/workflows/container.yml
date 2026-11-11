@@ -1,0 +1,94 @@
+name: Container image and Helm chart
+
+# Publishes the agent as a base image (the `plugins/` directory is embedded) and
+# the chart as an OCI artifact. Application images build FROM the published
+# image and only add their own jar, e.g.:
+#
+#   FROM ghcr.io/weaver-girl/weaver-girl-agent:1.0.0
+#   COPY app.jar /opt/app/app.jar
+#   ENV APP_JAR=/opt/app/app.jar
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (without the leading v). Empty uses the pom version."
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    name: Publish image and chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: 17
+          distribution: temurin
+          cache: maven
+
+      - name: Resolve version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION=$(./mvnw -q help:evaluate -Dexpression=project.version -DforceStdout)
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Set Maven version for a tagged build
+        if: github.ref_type == 'tag'
+        run: ./mvnw -B versions:set -DnewVersion="${VERSION}"
+
+      # The image copies the agent jar and plugins/ from the build output, so the
+      # distribution has to exist before docker build runs.
+      - name: Build the distribution
+        run: ./mvnw -B -DskipTests package
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            AGENT_VERSION=${{ env.VERSION }}
+          tags: |
+            ghcr.io/weaver-girl/weaver-girl-agent:${{ env.VERSION }}
+            ghcr.io/weaver-girl/weaver-girl-agent:latest
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Package and push the chart
+        run: |
+          helm registry login ghcr.io -u "${{ github.actor }}" --password "${{ secrets.GITHUB_TOKEN }}"
+          helm package deploy/helm/weaver-girl \
+            --version "${VERSION}" \
+            --app-version "${VERSION}" \
+            --destination dist-chart
+          helm push "dist-chart/weaver-girl-${VERSION}.tgz" oci://ghcr.io/weaver-girl/charts
