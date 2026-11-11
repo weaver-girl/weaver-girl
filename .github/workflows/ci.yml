@@ -11,14 +11,14 @@ jobs:
     name: Build & Test (JDK ${{ matrix.java }})
     runs-on: ubuntu-latest
     strategy:
-      # Build + test the reactor on JDK 9+ only. All main sources compile with
-      # --release 8 (parent pom), which is NOT a valid flag on a JDK 8 javac, so
-      # the reactor cannot build on JDK 8. JDK 8 *runtime* compatibility is
-      # instead verified by agent-smoke.yml's bare-attach matrix, which builds on
-      # JDK 17 with --release 8 and runs the packaged agent on JDK 8/11/17/21.
-      # This is the conventional layout for a library that targets old bytecode.
+      # Build + test the reactor on JDK 17+ only. All main sources compile with
+      # --release 8 (parent pom), but the test toolchain (JUnit 6) is compiled
+      # for class-file version 61, so a JDK 11 compiler cannot read it. JDK 8/11
+      # *runtime* compatibility is verified where it belongs: agent-smoke.yml
+      # builds on JDK 17 with --release 8 and runs the packaged agent on
+      # JDK 8/11/17/21.
       matrix:
-        java: [ 11, 17, 21 ]
+        java: [ 17, 21 ]
       fail-fast: false
 
     steps:
@@ -111,8 +111,11 @@ jobs:
           test -n "$AGENT_JAR" || (echo "FAIL: No agent JAR found" && exit 1)
           echo "Premain-Class:"
           unzip -p "$AGENT_JAR" META-INF/MANIFEST.MF | grep Premain-Class
-          echo "Plugin count:"
-          jar tf "$AGENT_JAR" | grep 'plugins/.*Plugin\.class' | grep -v '\$' | wc -l
+          unzip -p "$AGENT_JAR" META-INF/MANIFEST.MF | grep -q '^Agent-Class:'
+          # The agent carries no built-in plugin classes; capabilities are separate jars under
+          # plugins/ (shipped in the dist archive and validated by release-check.sh).
+          echo "Plugin jars in dist archive:"
+          unzip -l weaver-girl-agent/target/weaver-girl-agent-*-dist.zip | grep -c 'plugins/weaver-girl-plugin-.*\.jar$'
 
       - uses: actions/upload-artifact@v7
         with:
