@@ -64,7 +64,7 @@ jobs:
       - name: Build and sign without publishing (dry run)
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run == true
         env:
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: >-
           ./mvnw -B -Prelease clean verify -DskipTests
           -Djacoco.skip=true -Dcheckstyle.skip=true -Dspotbugs.skip=true
@@ -74,7 +74,7 @@ jobs:
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
-          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         # A release must pass the same quality gate as a pull request.
         run: ./mvnw -B -Pquality-gate,release clean deploy
 
