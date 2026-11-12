@@ -27,9 +27,11 @@ What remains is launch hygiene, not engineering:
 - [ ] Central namespace `io.github.cc11001100` verified on central.sonatype.com
 - [ ] Central Publishing credentials and GPG key configured as repository secrets
 - [ ] `v1.0.0` tag pushed and the staging deployment published
-- [ ] Seed “good first issue” issues and apply labels
+- [x] Seed “good first issue” issues and apply labels ([#43](https://github.com/weaver-girl/weaver-girl/issues/43)–[#46](https://github.com/weaver-girl/weaver-girl/issues/46))
 - [ ] Launch post, demo recording and a short “what it is / is not” explainer
-- [ ] `weaver-girl-examples` repository created from released artifacts (after 1.0.0)
+- [ ] `weaver-girl-examples` repository created from released artifacts (after 1.0.0);
+      [#46](https://github.com/weaver-girl/weaver-girl/issues/46) is reserved for
+      `@shivamRaj777` and must be unblocked with a ping once the release is live
 
 ## 1.x — ecosystem and delivery
 
