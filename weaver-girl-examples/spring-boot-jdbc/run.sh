@@ -36,8 +36,18 @@ else
   echo "==> Downloading weaver-girl-agent-$AGENT_VERSION-dist.zip from Maven Central"
   mkdir -p "$HERE/target"
   ZIP="$HERE/target/weaver-girl-agent-$AGENT_VERSION-dist.zip"
-  curl -fsSL -o "$ZIP" \
-    "https://repo1.maven.org/maven2/io/github/cc11001100/weaver-girl-agent/$AGENT_VERSION/weaver-girl-agent-$AGENT_VERSION-dist.zip"
+  if ! curl -fsSL -o "$ZIP" \
+    "https://repo1.maven.org/maven2/io/github/cc11001100/weaver-girl-agent/$AGENT_VERSION/weaver-girl-agent-$AGENT_VERSION-dist.zip"; then
+    rm -f "$ZIP"
+    echo >&2
+    echo "ERROR: $AGENT_VERSION is not on Maven Central (yet)." >&2
+    echo "       Until the first release, point AGENT_ZIP at a locally built distribution:" >&2
+    echo "         (cd ../.. && ./mvnw -pl weaver-girl-agent -am package -DskipTests \\" >&2
+    echo "            -Djacoco.skip=true -Dcheckstyle.skip=true -Dspotbugs.skip=true)" >&2
+    echo "         AGENT_ZIP=../../weaver-girl-agent/target/weaver-girl-agent-*-dist.zip ./run.sh" >&2
+    echo "       Or pick a published version: AGENT_VERSION=1.0.0-rc.1 ./run.sh" >&2
+    exit 1
+  fi
 fi
 
 if [ ! -f "$ZIP" ]; then
