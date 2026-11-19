@@ -55,11 +55,14 @@ Legend:
 
 | Plugin | Target class(es) it matches | Booted in CI | Level | Evidence |
 |---|---|---|---|---|
-| `servlet` | `javax.servlet.http.HttpServlet`, `jakarta.servlet.http.HttpServlet`, `*.Filter` | Jetty **9.4.58**, Servlet API **4.0.1** (javax) | **CI-tested** | `agent-smoke.yml` `sample-attach` asserts `weavergirl_operation_duration_ms_count{plugin="servlet"} ≥ 1` after driving `/users` and `/health` |
+| `servlet` | `javax.servlet.http.HttpServlet`, `jakarta.servlet.http.HttpServlet`, `*.Filter` | Jetty **9.4.58** / javax Servlet **4.0.1**, and **Tomcat 10.1 + jakarta.servlet 6.0** via Spring Boot **3.3.5** | **CI-tested** | `agent-smoke.yml` `sample-attach` (Jetty, javax) and `spring-boot-example` (Boot 3.3 fat jar, jakarta); both assert `weavergirl_operation_duration_ms_count{plugin="servlet"} ≥ 1` |
+| `springmvc` | `org.springframework.web.servlet.HandlerAdapter` | Spring Framework **6.1.14** (Boot 3.3.5) | **CI-tested** | `agent-smoke.yml` `spring-boot-example` asserts a non-zero `weavergirl_operation_duration_ms_count{plugin="springmvc"}` |
+| `tomcat` | `org.apache.catalina.connector.CoyoteAdapter` | Tomcat **10.1** (embedded in Boot 3.3.5) | Loaded in CI | same fat-jar job; the plugin activates, but no counter is asserted for it |
 | `jetty` | `org.eclipse.jetty.server.HttpChannel` | Jetty **9.4.58** | Loaded in CI | same sample; the plugin activates but nothing asserts a jetty-specific series |
-| `jdbc` | `java.sql.PreparedStatement` / `Statement` / `CallableStatement` | H2 **2.2.224** | Loaded in CI | SQL runs through H2 under the agent; only the servlet metric is asserted. `scripts/cross-jdk-smoke.sh` (not wired into CI) also checks that `topHooks` contains a `jdbc` hook |
-| `hikari` | `com.zaxxer.hikari.pool.HikariPool`, `ProxyConnection` | — | Best-effort | matcher unit test only |
-| `method-timing`, `timing`, `trace`, `trace-correlation`, `exception`, `logging` | framework-independent (any method / exception / HTTP headers) | Jetty sample | Loaded in CI | they fire on the sample, but no assertion is specific to them |
+| `jdbc` | `java.sql.PreparedStatement` / `Statement` / `CallableStatement` | H2 **2.2.224** (sample) and H2 (Boot example) | Loaded in CI | SQL runs through H2 under the agent; `spring-boot-example` asserts servlet/springmvc rather than jdbc, and `scripts/cross-jdk-smoke.sh` (not wired into CI) checks that `topHooks` contains a `jdbc` hook |
+| `hikari` | `com.zaxxer.hikari.pool.HikariPool`, `ProxyConnection` | HikariCP (Boot 3.3.5 default) | Loaded in CI | the example uses the Boot datasource; no hikari-specific counter is asserted |
+| `method-timing`, `timing`, `trace`, `trace-correlation`, `exception`, `logging` | framework-independent (any method / exception / HTTP headers) | Jetty sample, Boot example | Loaded in CI | they fire on both samples, but no assertion is specific to them |
+| `spring` | `org.springframework.stereotype.{Service,Controller,Repository}` + mapping annotations | Spring Framework **6.1.14** (Boot 3.3.5) | Loaded in CI | activates in the Boot example; no assertion is specific to it |
 
 Everything below is **best-effort**: unit tests assert the matcher strings, and no automated job has
 ever booted the target library under the agent.

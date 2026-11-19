@@ -88,6 +88,68 @@ jobs:
           wait "$APP_PID" 2>/dev/null || true
           echo "Bare agent smoke PASSED on JDK ${{ matrix.java }}."
 
+  # The Spring Boot + JDBC example (weaver-girl-examples/spring-boot-jdbc) is the compatibility
+  # matrix's one real-framework row for a *fat jar* layout. It is deliberately NOT part of the
+  # reactor; this job builds it the way a user would (its own pom, no parent) and asserts that a
+  # non-zero servlet counter appears — startup alone would not catch the bug that made every
+  # servlet/Spring plugin deactivate itself inside BOOT-INF/.
+  spring-boot-example:
+    name: Attach agent to the Spring Boot 3.3 example (JDK 17)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Cache Maven packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Build the agent distribution
+        run: ./mvnw -B -pl weaver-girl-agent -am package -DskipTests \
+               -Djacoco.skip=true -Dcheckstyle.skip=true -Dspotbugs.skip=true
+
+      - name: Build the example (standalone pom, no reactor)
+        run: ./mvnw -B -f weaver-girl-examples/spring-boot-jdbc/pom.xml package -DskipTests
+
+      - name: Attach the agent and assert interception
+        run: |
+          set -e
+          AGENT_ZIP=$(ls weaver-girl-agent/target/weaver-girl-agent-*-dist.zip | head -1)
+          APP_JAR=$(ls weaver-girl-examples/spring-boot-jdbc/target/weaver-girl-example-*.jar | head -1)
+          test -n "$AGENT_ZIP"
+          test -n "$APP_JAR"
+          STAGE=$(mktemp -d)
+          unzip -q "$AGENT_ZIP" -d "$STAGE"
+          AGENT_HOME=$(dirname "$(find "$STAGE" -name 'weaver-girl-agent-*.jar' ! -name '*sources*' | head -1)")
+          java -javaagent:"$AGENT_HOME"/weaver-girl-agent-*.jar=plugins="$AGENT_HOME/plugins",\
+                metricsPort=9600,healthPort=9601,diagnosticsPort=9602 \
+               -jar "$APP_JAR" --server.port=18086 &
+          APP_PID=$!
+          for i in $(seq 1 90); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18086/orders || true)
+            [ "$code" = "200" ] && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:9601/health | grep -q '"status":"UP"'
+          curl -s http://127.0.0.1:18086/orders > /dev/null
+          curl -s http://127.0.0.1:18086/orders/slow > /dev/null
+          sleep 3
+          # The whole point: the fat-jar layout must still yield servlet + springmvc interception.
+          curl -sf http://127.0.0.1:9600/metrics | grep -qE '^weavergirl_operation_duration_ms_count\{plugin="servlet"\} [1-9]'
+          curl -sf http://127.0.0.1:9600/metrics | grep -qE '^weavergirl_operation_duration_ms_count\{plugin="springmvc"\} [1-9]'
+          curl -sf http://127.0.0.1:9600/metrics | grep -qE '^weavergirl_circuit_breaker_open\{'
+          kill "$APP_PID" 2>/dev/null || true
+          wait "$APP_PID" 2>/dev/null || true
+          echo "Spring Boot example smoke PASSED: servlet and springmvc interception confirmed in a fat jar."
+
   sample-attach:
     name: Attach agent to Jetty/H2 sample (JDK 17)
     runs-on: ubuntu-latest
