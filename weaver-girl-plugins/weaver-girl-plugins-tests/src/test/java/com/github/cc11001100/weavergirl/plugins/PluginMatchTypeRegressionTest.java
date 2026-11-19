@@ -351,16 +351,29 @@ class PluginMatchTypeRegressionTest {
 
   // ---- LoggingPlugin ----
 
+  /**
+   * The logging plugin's job is log-to-trace correlation: it weaves the backend logger's emit
+   * methods so the active trace id is in the MDC (or Log4j2 ThreadContext) while the line is
+   * written. It must therefore register against the logging backend, not nothing.
+   */
   @Test
-  void loggingPlugin_registersNoInterceptors() {
+  void loggingPlugin_weavesTheLoggingBackend() {
     LoggingPlugin plugin = new LoggingPlugin();
     CollectingRegistry registry = new CollectingRegistry();
     plugin.init(new TestPluginContext());
     plugin.registerInterceptors(registry);
 
-    assertEquals(
-        0,
-        registry.definitions.size(),
-        "LoggingPlugin is a support plugin and should not register interceptors");
+    assertFalse(
+        registry.definitions.isEmpty(),
+        "LoggingPlugin must weave the backend logger to correlate log lines with the trace");
+    boolean targetsBackend =
+        registry.definitions.stream()
+            .anyMatch(
+                d ->
+                    d.getPointcut().getClassMatcher().matches("ch.qos.logback.classic.Logger")
+                        || d.getPointcut()
+                            .getClassMatcher()
+                            .matches("org.apache.logging.log4j.core.Logger"));
+    assertTrue(targetsBackend, "LoggingPlugin registered interceptors, but none on a logging backend");
   }
 }
