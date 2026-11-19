@@ -246,6 +246,31 @@ weavergirl_plugin_interceptors{plugin="servlet"} 3
 `weavergirl_plugin_interceptors` 掉到 0 通常意味着插件注册失败。未安装 `PluginManager`
 （单独运行插件测试）时不输出。
 
+### 4.2.4b 熔断器状态（CircuitBreaker）
+
+每个拦截器定义的熔断器状态。回调连续失败达到 `failureThreshold`（默认 5）或连续慢调用达到
+`slowConsecutiveLimit`（默认 10 次，阈值 `-Dweavergirl.hook.slowThresholdNanos`，默认 50ms）后，
+熔断器转 OPEN，该定义的回调被跳过，直到冷却期（默认 60s）结束。OPEN 意味着**这个钩子已经不跑了**，
+比错误日志更值得告警：
+
+```text
+# TYPE weavergirl_circuit_breaker_open gauge
+weavergirl_circuit_breaker_open{interceptor="jdbc-java.sql.Statement-execute"} 0
+weavergirl_circuit_breaker_open{interceptor="servlet-.*Servlet-service"} 1
+```
+
+| 指标 | 类型 | 标签 | 含义 |
+| --- | --- | --- | --- |
+| `weavergirl_circuit_breaker_open` | gauge | `interceptor` | 1 = 已熔断，该钩子被跳过 |
+| `weavergirl_circuit_breaker_consecutive_failures` | gauge | `interceptor` | 距上次成功以来的连续失败数 |
+| `weavergirl_circuit_breaker_consecutive_slow` | gauge | `interceptor` | 距上次快调用以来的连续慢调用数 |
+| `weavergirl_circuit_breaker_trips_total` | counter | `interceptor` | 累计熔断次数 |
+
+数据来自 `weaver-girl-core` 的 `InterceptorCircuitBreaker`，经 API 层的
+`CircuitBreakerRegistry` 暴露给 Prometheus 插件（后者只依赖 `weaver-girl-api`）。没有引擎运行时
+不输出任何序列；从未被观测到的定义不会出现（而不是输出 0）。
+告警表达式：`weavergirl_circuit_breaker_open == 1`。
+
 ### 4.2.5 组件健康检查（HealthCheck）
 
 `/metrics` 每次抓取都会调用所有插件注册的 `HealthCheck`（与 `MetricSource` 同一时机），把结果

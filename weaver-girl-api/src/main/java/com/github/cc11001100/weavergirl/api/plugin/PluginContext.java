@@ -478,7 +478,14 @@ public interface PluginContext {
       return true;
     }
     ClassLoader api = PluginContext.class.getClassLoader();
-    return api != null && seen.add(api) && api.getResource(resource) != null;
+    if (api != null && seen.add(api) && api.getResource(resource) != null) {
+      return true;
+    }
+    // No loader can see it. That is expected, not conclusive: in a Spring Boot executable jar the
+    // application and every framework jar sit inside the launcher jar, which only Spring Boot's own
+    // loader can open — and that loader does not exist yet when the agent runs from premain. Fall
+    // back to the launch class path, where the nested jars are indexed directly.
+    return ApplicationClasspath.present(className);
   }
 
   /**

@@ -367,6 +367,7 @@ public class PrometheusExporter implements InterceptorEventListener {
     appendPluginPerformanceMetrics(sb);
     appendExtensionPerformanceMetrics(sb);
     appendPluginStateMetrics(sb);
+    appendCircuitBreakerMetrics(sb);
     appendSpanProcessorMetrics(sb);
     appendSamplingStrategyMetrics(sb);
     appendSpanSinkMetrics(sb);
@@ -1093,6 +1094,84 @@ public class PrometheusExporter implements InterceptorEventListener {
           .append(escape(name))
           .append("\"} ")
           .append(formatNumber(plugin.getCheckTimestamp() / 1000.0))
+          .append("\n");
+    }
+    sb.append("\n");
+  }
+
+  /**
+   * Circuit-breaker state per interceptor definition, from
+   * {@link com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerRegistry}.
+   *
+   * <p>A breaker trips when its interceptor throws {@code failureThreshold} times in a row or stays
+   * slow for {@code slowConsecutiveLimit} calls, and it skips the callback until the cooldown
+   * expires. An OPEN breaker is therefore a hook that has silently stopped running: alert on
+   * {@code weavergirl_circuit_breaker_open == 1} rather than waiting for the errors to show up in
+   * the host's own logs. Nothing is rendered when no engine is installed, matching the other
+   * agent-sourced families.
+   */
+  private void appendCircuitBreakerMetrics(StringBuilder sb) {
+    java.util.List<? extends com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerView>
+        breakers;
+    try {
+      breakers = com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerRegistry.snapshots();
+    } catch (RuntimeException e) {
+      return;
+    }
+    if (breakers == null || breakers.isEmpty()) {
+      return;
+    }
+
+    java.util.List<com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerView> sorted =
+        new ArrayList<com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerView>(breakers);
+    Collections.sort(
+        sorted,
+        new java.util.Comparator<com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerView>() {
+          public int compare(
+              com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerView left,
+              com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerView right) {
+            return left.getInterceptorName().compareTo(right.getInterceptorName());
+          }
+        });
+
+    sb.append("# HELP weavergirl_circuit_breaker_open Whether the interceptor is skipped, 1 = open\n");
+    sb.append("# TYPE weavergirl_circuit_breaker_open gauge\n");
+    for (com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerView breaker : sorted) {
+      sb.append("weavergirl_circuit_breaker_open{interceptor=\"")
+          .append(escape(breaker.getInterceptorName()))
+          .append("\"} ")
+          .append(breaker.isOpen() ? 1 : 0)
+          .append("\n");
+    }
+
+    sb.append(
+        "# HELP weavergirl_circuit_breaker_consecutive_failures Failures since the last success\n");
+    sb.append("# TYPE weavergirl_circuit_breaker_consecutive_failures gauge\n");
+    for (com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerView breaker : sorted) {
+      sb.append("weavergirl_circuit_breaker_consecutive_failures{interceptor=\"")
+          .append(escape(breaker.getInterceptorName()))
+          .append("\"} ")
+          .append(breaker.getConsecutiveFailures())
+          .append("\n");
+    }
+
+    sb.append("# HELP weavergirl_circuit_breaker_consecutive_slow Slow calls since the last fast one\n");
+    sb.append("# TYPE weavergirl_circuit_breaker_consecutive_slow gauge\n");
+    for (com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerView breaker : sorted) {
+      sb.append("weavergirl_circuit_breaker_consecutive_slow{interceptor=\"")
+          .append(escape(breaker.getInterceptorName()))
+          .append("\"} ")
+          .append(breaker.getConsecutiveSlow())
+          .append("\n");
+    }
+
+    sb.append("# HELP weavergirl_circuit_breaker_trips_total Times the breaker tripped OPEN\n");
+    sb.append("# TYPE weavergirl_circuit_breaker_trips_total counter\n");
+    for (com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerView breaker : sorted) {
+      sb.append("weavergirl_circuit_breaker_trips_total{interceptor=\"")
+          .append(escape(breaker.getInterceptorName()))
+          .append("\"} ")
+          .append(breaker.getTimesTripped())
           .append("\n");
     }
     sb.append("\n");

@@ -88,7 +88,7 @@ java -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml,watch=true -jar
 | `method-timing` | Method execution timing |
 | `trace-correlation` | Cross-service trace ID propagation |
 | `exception-monitor` | Exception monitoring and tracking |
-| `logging` | SLF4J/Log4j2 logging integration |
+| `logging` | Log-to-trace correlation: `traceId`/`spanId` in SLF4J MDC and Log4j2 `ThreadContext` |
 
 The names in this table are the values returned by `WeaverPlugin.name()` in the corresponding plugin module, and they are what `disabledPlugins` / `enabledPlugins` / `depends()` match. The bundled plugin set is much larger than the table (about 120 modules); the module directory name and the plugin name usually agree but not always (`weaver-girl-plugin-timing` is `method-timing`, `weaver-girl-plugin-exception` is `exception-monitor`). Read `name()` rather than guessing from the artifact id.
 
@@ -209,7 +209,9 @@ plugins:
 
   # Logging Plugin
   logging:
-    logLevel: INFO              # capture logs at this level and above
+    mdcKeys: traceId,spanId,method  # context keys mirrored into MDC / Log4j2 ThreadContext
+    baggageKeys: ""                 # extra ThreadContext keys to mirror as well (comma-separated)
+    enabled: true                   # false = register nothing
 
   # ExceptionMonitor Plugin (name() is "exception-monitor")
   exception-monitor:

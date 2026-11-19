@@ -37,6 +37,7 @@ class PrometheusExporterTest {
     com.github.cc11001100.weavergirl.api.observability.MetricProcessors.clear();
     com.github.cc11001100.weavergirl.api.event.EventTransformers.clear();
     com.github.cc11001100.weavergirl.api.tracing.TracingMetrics.reset();
+    com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerRegistry.setProvider(null);
   }
 
   @Test
@@ -1228,6 +1229,55 @@ class PrometheusExporterTest {
 
     String metrics = exporter.renderMetrics();
     assertTrue(metrics.contains("plugin=\"jdbc\\\"injection\""));
+  }
+
+  /** An OPEN breaker must be visible: a hook that stopped running is not otherwise obvious. */
+  @Test
+  void renderMetrics_reportsCircuitBreakerState() {
+    com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerRegistry.setProvider(
+        () ->
+            java.util.Collections.singletonList(
+                new com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerView() {
+                  public String getInterceptorName() {
+                    return "jdbc.execute";
+                  }
+
+                  public boolean isOpen() {
+                    return true;
+                  }
+
+                  public int getConsecutiveFailures() {
+                    return 5;
+                  }
+
+                  public int getConsecutiveSlow() {
+                    return 0;
+                  }
+
+                  public long getTimesTripped() {
+                    return 2;
+                  }
+                }));
+
+    String metrics = exporter.renderMetrics();
+
+    assertTrue(
+        metrics.contains("weavergirl_circuit_breaker_open{interceptor=\"jdbc.execute\"} 1"),
+        metrics);
+    assertTrue(
+        metrics.contains(
+            "weavergirl_circuit_breaker_consecutive_failures{interceptor=\"jdbc.execute\"} 5"),
+        metrics);
+    assertTrue(
+        metrics.contains("weavergirl_circuit_breaker_trips_total{interceptor=\"jdbc.execute\"} 2"),
+        metrics);
+  }
+
+  @Test
+  void renderMetrics_omitsCircuitBreakerFamilyBeforeAnyHookIsObserved() {
+    String metrics = exporter.renderMetrics();
+
+    assertFalse(metrics.contains("weavergirl_circuit_breaker_"), metrics);
   }
 
   /** A port the OS reports as free, so a parallel run on this machine cannot collide. */

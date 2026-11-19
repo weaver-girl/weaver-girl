@@ -26,6 +26,10 @@ public class AgentStatus implements AgentStatusView {
     // Publish the read-only view so modules that depend only on the API (metrics bridges,
     // exporters) can observe the same counters without a dependency on core.
     com.github.cc11001100.weavergirl.api.status.AgentStatusHolder.set(INSTANCE);
+    // Same for the circuit-breaker snapshots: the Prometheus exporter depends on the API only, so
+    // the breaker state has to cross the module boundary through an API-level registry.
+    com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerRegistry.setProvider(
+        com.github.cc11001100.weavergirl.core.InterceptorHolder::getBreakerSnapshots);
   }
 
   private final AtomicLong transformationCount = new AtomicLong(0);

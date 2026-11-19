@@ -170,6 +170,13 @@ the full list is the module directory itself.
 | `exception-monitor` | Any exception | `maxStackTraceLength` |
 | `logging` | SLF4J / Log4j2 | `logLevel` |
 
+## Examples
+
+[`weaver-girl-examples/`](weaver-girl-examples/) holds standalone projects that use the **released**
+artifacts — no reactor build, no weaver-girl dependency at compile time. Start with
+[`spring-boot-jdbc`](weaver-girl-examples/spring-boot-jdbc/): a Spring Boot 3.3 application over H2,
+attached with `-javaagent`, proving servlet / Spring MVC / JDBC interception end to end.
+
 ## Running the Sample
 
 ```bash

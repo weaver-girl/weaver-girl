@@ -68,6 +68,16 @@
                                 <copy todir="${project.build.directory}/resilience-plugin">
                                     <fileset dir="src/main/plugin-resources-resilience"/>
                                 </copy>
+
+                                <!-- The log-correlation demo plugin: bridges the trace context into the
+                                     MDC while TicketService.handleTicket runs (issue #45). -->
+                                <mkdir dir="${project.build.directory}/log-correlation-plugin"/>
+                                <copy todir="${project.build.directory}/log-correlation-plugin">
+                                    <fileset dir="${project.build.outputDirectory}" includes="com/github/cc11001100/weavergirl/sample/logcorrelation/LogCorrelationPlugin*.class"/>
+                                </copy>
+                                <copy todir="${project.build.directory}/log-correlation-plugin">
+                                    <fileset dir="src/main/plugin-resources-log-correlation"/>
+                                </copy>
                             </target>
                         </configuration>
                     </execution>
@@ -110,12 +120,23 @@
                             <classesDirectory>${project.build.directory}/resilience-plugin</classesDirectory>
                         </configuration>
                     </execution>
+                    <execution>
+                        <id>log-correlation-plugin-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>log-correlation-plugin</classifier>
+                            <classesDirectory>${project.build.directory}/log-correlation-plugin</classesDirectory>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
-                <version>3.1.0</version>
+                <version>3.6.4</version>
                 <configuration>
                     <mainClass>com.github.cc11001100.weavergirl.sample.app.SampleApplication</mainClass>
                 </configuration>
@@ -176,6 +197,15 @@
              (major 52, Build-Jdk 1.8; newer APIs live under META-INF/versions).
              2.3+ is class-file 55 and will not load on JDK 8, which this sample
              has to run on: it is the HTTP + JDBC attach proof for the agent. -->
+        <!-- Logback is the demo's logging backend: the log-correlation demo configures its pattern at
+             runtime so the %X{traceId} fields are actually printed. Compile scope because the demo
+             plugin puts trace fields into the MDC through SLF4J. -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <version>1.6.6</version>
+        </dependency>
+
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>

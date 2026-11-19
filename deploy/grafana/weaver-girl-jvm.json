@@ -1,5 +1,7 @@
 {
-  "annotations": { "list": [] },
+  "annotations": {
+    "list": []
+  },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -7,72 +9,252 @@
   "links": [],
   "panels": [
     {
-      "title": "JVM Heap Memory Usage",
+      "title": "JVM Heap Memory",
+      "description": "Source: weavergirl_jvm_memory_{used,committed,max}_bytes with area=\"heap\".",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
       "targets": [
-        { "expr": "jvm_memory_used_bytes{area=\"heap\"}", "legendFormat": "Used" },
-        { "expr": "jvm_memory_max_bytes{area=\"heap\"}", "legendFormat": "Max" },
-        { "expr": "jvm_memory_committed_bytes{area=\"heap\"}", "legendFormat": "Committed" }
+        {
+          "expr": "weavergirl_jvm_memory_used_bytes{area=\"heap\"}",
+          "legendFormat": "Used",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        },
+        {
+          "expr": "weavergirl_jvm_memory_max_bytes{area=\"heap\"}",
+          "legendFormat": "Max",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        },
+        {
+          "expr": "weavergirl_jvm_memory_committed_bytes{area=\"heap\"}",
+          "legendFormat": "Committed",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "bytes" },
+        "defaults": {
+          "unit": "bytes"
+        },
         "overrides": []
       }
     },
     {
       "title": "JVM Non-Heap Memory",
+      "description": "Source: weavergirl_jvm_memory_used_bytes with area=\"nonheap\".",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
       "targets": [
-        { "expr": "jvm_memory_used_bytes{area=\"nonheap\"}", "legendFormat": "Non-Heap Used" }
+        {
+          "expr": "weavergirl_jvm_memory_used_bytes{area=\"nonheap\"}",
+          "legendFormat": "Non-Heap Used",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        },
+        {
+          "expr": "weavergirl_jvm_memory_committed_bytes{area=\"nonheap\"}",
+          "legendFormat": "Non-Heap Committed",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "bytes" },
+        "defaults": {
+          "unit": "bytes"
+        },
         "overrides": []
       }
     },
     {
-      "title": "Active Threads",
+      "title": "Threads",
+      "description": "Source: weavergirl_jvm_threads_current and weavergirl_jvm_threads_peak. There is no daemon-thread counter in the exposition format, so peak stands in for it.",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
       "targets": [
-        { "expr": "jvm_threads_current", "legendFormat": "Current" },
-        { "expr": "jvm_threads_daemon", "legendFormat": "Daemon" }
+        {
+          "expr": "weavergirl_jvm_threads_current",
+          "legendFormat": "Current",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        },
+        {
+          "expr": "weavergirl_jvm_threads_peak",
+          "legendFormat": "Peak",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
       ]
     },
     {
-      "title": "GC Pause Time",
+      "title": "GC Time",
+      "description": "Wall-clock time spent in GC per second, by collector. Source: weavergirl_jvm_gc_collection_time_seconds_total (a cumulative counter, not a pause histogram).",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
       "targets": [
-        { "expr": "rate(jvm_gc_pause_seconds_sum[5m])", "legendFormat": "GC Rate" },
-        { "expr": "jvm_gc_pause_seconds_max", "legendFormat": "Max Pause" }
+        {
+          "expr": "sum by (gc) (rate(weavergirl_jvm_gc_collection_time_seconds_total[$__rate_interval]))",
+          "legendFormat": "{{gc}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "s" },
+        "defaults": {
+          "unit": "s"
+        },
         "overrides": []
       }
     },
     {
-      "title": "Memory Trend",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 16 },
+      "title": "GC Collections",
+      "description": "Collections per second, by collector. Source: weavergirl_jvm_gc_collection_count_total.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
       "targets": [
-        { "expr": "deriv(jvm_memory_used_bytes{area=\"heap\"}[1h])", "legendFormat": "Heap Trend" }
+        {
+          "expr": "sum by (gc) (rate(weavergirl_jvm_gc_collection_count_total[$__rate_interval]))",
+          "legendFormat": "{{gc}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "Bps" },
+        "defaults": {
+          "unit": "ops"
+        },
         "overrides": []
       }
+    },
+    {
+      "title": "Heap Trend",
+      "description": "Heap growth per second over the selected range.",
+      "type": "stat",
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "deriv(weavergirl_jvm_memory_used_bytes{area=\"heap\"}[$__rate_interval])",
+          "legendFormat": "Heap Trend",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Classes Loaded / Uptime",
+      "description": "Source: weavergirl_jvm_classes_loaded and weavergirl_jvm_uptime_seconds.",
+      "type": "stat",
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 18,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "weavergirl_jvm_classes_loaded",
+          "legendFormat": "Classes",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        },
+        {
+          "expr": "weavergirl_jvm_uptime_seconds",
+          "legendFormat": "Uptime",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
+      ]
     }
   ],
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["weaver-girl", "jvm"],
-  "templating": { "list": [] },
-  "time": { "from": "now-1h", "to": "now" },
+  "tags": [
+    "weaver-girl",
+    "jvm"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {
+          "selected": false,
+          "text": "Prometheus",
+          "value": "Prometheus"
+        }
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
   "title": "Weaver-Girl: JVM Metrics",
   "uid": "weaver-girl-jvm",
-  "version": 1
+  "version": 2
 }

@@ -783,6 +783,28 @@
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <!--
+                                Do not bundle a third-party library the host is likely to carry itself.
+                                -javaagent puts this jar on the application's class path, so every
+                                class in it is reachable parent-first from a framework class loader.
+                                Micrometer (pulled in by weaver-girl-bridge-micrometer) was the worst
+                                case: Spring Boot's actuator resolved
+                                io.micrometer...LogbackMetrics to the agent's copy, which cannot see
+                                the application's logback (it lives inside the fat jar's boot
+                                loader), and startup died with
+                                NoClassDefFoundError: ch/qos/logback/classic/spi/LoggerContextListener.
+                                Aopalliance has the same shape (Spring ships it too). The bridge
+                                classes stay; an application that wants MicrometerBridge adds
+                                weaver-girl-bridge-micrometer and its own micrometer, which is the
+                                only way the bridge can bind a host MeterRegistry anyway.
+                            -->
+                            <artifactSet>
+                                <excludes>
+                                    <exclude>io.micrometer:*</exclude>
+                                    <exclude>org.hdrhistogram:*</exclude>
+                                    <exclude>aopalliance:*</exclude>
+                                </excludes>
+                            </artifactSet>
+                            <!--
                                 Relocations: snakeyaml + slf4j + ByteBuddy.
                                 ByteBuddy is now relocated (net.bytebuddy -> shaded.net.bytebuddy).
                                 This previously broke bootstrap because the agent ran on the system
@@ -862,6 +884,38 @@
                  discovered from the plugins/ directory next to the jar, so shipping the jar alone
                  would attach an agent that instruments nothing. Bound after shade + copy-plugins
                  (declaration order within the same phase) so both inputs exist. -->
+            <!-- maven-shade-plugin rewrites relocated bytecode but not the *paths* of multi-release
+                 entries: a shaded dependency contributes META-INF/versions/9/org/yaml/... whose class
+                 file declares shaded.org.yaml.... The agent jar is appended to the bootstrap class
+                 loader (BootstrapInjection), so a host asking for org.yaml.snakeyaml.internal.Logger
+                 would be handed that entry and the JVM would reject it with
+                 "NoClassDefFoundError: ... (wrong name: shaded/...)". Spring Boot's YAML support
+                 tripped exactly that in the spring-boot-jdbc example. Move the versioned entries to
+                 the relocated path before they are packed. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.6.4</version>
+                <executions>
+                    <execution>
+                        <id>relocate-multi-release-entries</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>python3</executable>
+                            <arguments>
+                                <argument>${maven.multiModuleProjectDirectory}/scripts/relocate-multi-release.py</argument>
+                                <argument>${project.build.directory}/weaver-girl-agent-${project.version}.jar</argument>
+                                <argument>org/yaml/snakeyaml=shaded/org/yaml/snakeyaml</argument>
+                                <argument>org/slf4j=com/github/cc11001100/weavergirl/shade/org/slf4j</argument>
+                                <argument>net/bytebuddy=shaded/net/bytebuddy</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-assembly-plugin</artifactId>

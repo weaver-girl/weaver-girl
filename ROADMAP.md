@@ -48,8 +48,9 @@ it.
   Spring Boot, Kafka, IAST taint flow, RASP block — each depending on released
   artifacts, not the reactor. The in-tree `weaver-girl-sample` stays as an
   integration test.
-- **Compatibility matrix.** Generate a page from plugin metadata plus a smoke
-  job per framework, so “does it support Spring Boot 3.3?” has a tested answer.
+- **Compatibility matrix.** `docs/compatibility-matrix.md` now states what CI
+  actually proves per plugin. Still missing: a smoke application per major
+  framework row, so more than the `servlet` plugin has a tested answer.
 - **Versioned documentation site.** Publish the `docs/` tree with version
   switching; today the marketing site links into GitHub, which is fine for 1.0
   but does not scale.
@@ -66,8 +67,9 @@ The long tail is demand-driven. Known gaps worth tracking:
 - Armeria, Dubbo 3, SOFA RPC, Motan
 - Kafka Streams (beyond the consumer/producer hooks)
 - MongoDB async driver
-- Log4j2 / Logback MDC correlation (the logging plugin covers the event path,
-  not log-line injection)
+- ~~Log4j2 / Logback MDC correlation~~ — done: the `logging` plugin bridges
+  `traceId`/`spanId` into SLF4J MDC and Log4j2 `ThreadContext` while an
+  intercepted call runs (`scripts/run-log-correlation-demo.sh`).
 - SQL normalization and slow-query attribution across the JDBC family
 
 ### Operations
@@ -76,8 +78,9 @@ The long tail is demand-driven. Known gaps worth tracking:
   directory embedded and documented as a base image for application images.
 - **Helm chart** published as an OCI artifact; values verified against the
   released image tag.
-- **Dashboard packs** for Grafana, and an OpenTelemetry Collector example that
-  matches the exported metric/span names.
+- ~~Dashboard packs for Grafana~~ — done: `deploy/grafana/` carries operations,
+  interceptor and JVM dashboards plus a loader and a README. OpenTelemetry
+  Collector example still pending.
 - **Management endpoint hardening**: explicit bind address, optional bearer
   token, TLS termination guidance. Today operators must isolate the ports.
 - **Curated plugin bundles** (`web`, `data`, `messaging`, `security`) so a

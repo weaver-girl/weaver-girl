@@ -3,6 +3,7 @@ module com.github.cc11001100.weavergirl.api {
     exports com.github.cc11001100.weavergirl.api.alert;
     exports com.github.cc11001100.weavergirl.api.annotation;
     exports com.github.cc11001100.weavergirl.api.config;
+    exports com.github.cc11001100.weavergirl.api.circuit;
     exports com.github.cc11001100.weavergirl.api.context;
     exports com.github.cc11001100.weavergirl.api.event;
     exports com.github.cc11001100.weavergirl.api.exporter;

@@ -230,7 +230,8 @@ public class InterceptorCircuitBreaker {
   }
 
   /** Immutable view of one interceptor's circuit-breaker state at a point in time. */
-  public static final class BreakerSnapshot {
+  public static final class BreakerSnapshot
+      implements com.github.cc11001100.weavergirl.api.circuit.CircuitBreakerView {
     private final String name;
     private final boolean open;
     private final int consecutiveFailures;
@@ -254,18 +255,27 @@ public class InterceptorCircuitBreaker {
       return name;
     }
 
+    @Override
+    public String getInterceptorName() {
+      return name;
+    }
+
+    @Override
     public boolean isOpen() {
       return open;
     }
 
+    @Override
     public int getConsecutiveFailures() {
       return consecutiveFailures;
     }
 
+    @Override
     public int getConsecutiveSlow() {
       return consecutiveSlow;
     }
 
+    @Override
     public long getTimesTripped() {
       return timesTripped;
     }

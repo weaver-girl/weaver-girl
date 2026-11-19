@@ -80,12 +80,58 @@ class LoggingPluginTest {
     assertArrayEquals(new String[] {"trace-correlation"}, deps);
   }
 
+  /** With logback on the test classpath the plugin weaves the backend logger for MDC correlation. */
   @Test
-  void registerInterceptors_registersNothing() {
+  void registerInterceptors_weavesLogbackLoggerWhenPresent() {
+    plugin.init(context);
+    TestInterceptorRegistry registry = new TestInterceptorRegistry();
+    plugin.registerInterceptors(registry);
+    assertTrue(
+        registry.definitions.stream()
+            .anyMatch(d -> d.getPointcut().getClassMatcher().matches("ch.qos.logback.classic.Logger")),
+        "the logging plugin did not weave logback's logger");
+  }
+
+  /** Disabled means disabled: no pointcut is registered at all. */
+  @Test
+  void registerInterceptors_registersNothingWhenDisabled() {
+    context.config.put("enabled", "false");
     plugin.init(context);
     TestInterceptorRegistry registry = new TestInterceptorRegistry();
     plugin.registerInterceptors(registry);
     assertEquals(0, registry.definitions.size());
+  }
+
+  /** Baggage keys are mirrored into the injected entry map on top of the MDC keys. */
+  @Test
+  void activeContextEntries_includesConfiguredBaggageKeys() {
+    context.config.put("baggageKeys", "tenantId,region");
+    plugin.init(context);
+    ThreadContext.put("traceId", "t-1");
+    ThreadContext.put("tenantId", "acme");
+    ThreadContext.put("region", "");
+
+    java.util.Map<String, String> entries = plugin.activeContextEntries();
+
+    assertEquals("t-1", entries.get("traceId"));
+    assertEquals("acme", entries.get("tenantId"));
+    assertFalse(entries.containsKey("region"), "an empty baggage value should be skipped");
+  }
+
+  /** inject/restore is symmetric: a key that was absent is removed, not left behind. */
+  @Test
+  void correlation_injectThenRestore_leavesNoTraceIdBehind() {
+    plugin.init(context);
+    LogCorrelation correlation = new LogCorrelation(getClass().getClassLoader());
+    ThreadContext.put("traceId", "corr-1");
+
+    java.util.Map<String, String> previous = correlation.inject(plugin.activeContextEntries());
+    assertEquals("corr-1", MDC.get("traceId"));
+
+    correlation.restore(previous);
+    assertNull(MDC.get("traceId"), "the trace id leaked past the intercepted call");
+
+    ThreadContext.clear();
   }
 
   @Test

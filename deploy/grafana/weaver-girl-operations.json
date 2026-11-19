@@ -1,0 +1,615 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Request / Query Rate by Plugin",
+      "description": "Every interception event the agent delivered, split by plugin. This is the denominator for the slow-call and error ratios below. Source: weavergirl_events_total.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum by (plugin) (rate(weavergirl_events_total{plugin=~\"$plugin\"}[$__rate_interval]))",
+          "legendFormat": "{{plugin}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Event Types",
+      "description": "The type dimension distinguishes normal traffic from slow-* and *-error events. Source: weavergirl_events_total.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "sum by (type) (rate(weavergirl_events_total{plugin=~\"$plugin\"}[$__rate_interval]))",
+          "legendFormat": "{{type}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Slow-Call Ratio",
+      "description": "Share of an plugin's events that crossed its slow threshold (the plugin's own slowThreshold / slowQueryThreshold setting). Source: weavergirl_slow_operations_total / weavergirl_events_total.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (plugin) (rate(weavergirl_slow_operations_total{plugin=~\"$plugin\"}[$__rate_interval])) / sum by (plugin) (rate(weavergirl_events_total{plugin=~\"$plugin\"}[$__rate_interval]))",
+          "legendFormat": "{{plugin}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.05
+              },
+              {
+                "color": "red",
+                "value": 0.2
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Error Ratio",
+      "description": "Share of an plugin's events that ended in an error (a *-error event). Source: weavergirl_error_operations_total / weavergirl_events_total.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (plugin) (rate(weavergirl_error_operations_total{plugin=~\"$plugin\"}[$__rate_interval])) / sum by (plugin) (rate(weavergirl_events_total{plugin=~\"$plugin\"}[$__rate_interval]))",
+          "legendFormat": "{{plugin}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Overall Error Ratio",
+      "description": "All errors over all events across the selected plugins.",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(weavergirl_error_operations_total{plugin=~\"$plugin\"}[$__rate_interval])) / sum(rate(weavergirl_events_total{plugin=~\"$plugin\"}[$__rate_interval]))",
+          "legendFormat": "Error rate",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Interception Latency p95 / p99 by Interceptor",
+      "description": "Distribution of time spent inside interceptor callbacks, as recorded by the engine's own per-callback timer. Source: weavergirl_interceptor_duration_seconds_bucket.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, interceptor) (rate(weavergirl_interceptor_duration_seconds_bucket{interceptor=~\"$interceptor\"}[$__rate_interval])))",
+          "legendFormat": "p95 {{interceptor}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, interceptor) (rate(weavergirl_interceptor_duration_seconds_bucket{interceptor=~\"$interceptor\"}[$__rate_interval])))",
+          "legendFormat": "p99 {{interceptor}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Average Operation Duration by Plugin",
+      "description": "Cumulative operation duration divided by the number of timed operations, per plugin. This is the host workload's duration as seen by every plugin, not the hook's own cost. Source: weavergirl_operation_duration_ms_sum / _count.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "expr": "(sum by (plugin) (rate(weavergirl_operation_duration_ms_sum{plugin=~\"$plugin\"}[$__rate_interval])) / sum by (plugin) (rate(weavergirl_operation_duration_ms_count{plugin=~\"$plugin\"}[$__rate_interval])))",
+          "legendFormat": "{{plugin}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Plugin Health",
+      "description": "Last health status each plugin reported. A plugin that never reports has no series here; that is deliberate. Source: weavergirl_plugin_health.",
+      "type": "stat",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "max by (plugin, status) (weavergirl_plugin_health{plugin=~\"$plugin\"})",
+          "legendFormat": "{{plugin}} {{status}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "background"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*healthy"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*degraded"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*unhealthy"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "orientation": "horizontal",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "title": "Unhealthy Plugins",
+      "description": "Alert expression from docs/observability.md. Any non-zero value means a plugin reported degraded or unhealthy.",
+      "type": "stat",
+      "gridPos": {
+        "h": 6,
+        "w": 4,
+        "x": 8,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "count(weavergirl_plugin_health{status!=\"healthy\", plugin=~\"$plugin\"} == 1) or vector(0)",
+          "legendFormat": "Unhealthy",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Plugin Lifecycle State",
+      "description": "active means the plugin's interceptors are registered; disabled means it was turned off by config; states are absent when no PluginManager is installed. Source: weavergirl_plugin_state.",
+      "type": "table",
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "weavergirl_plugin_state{plugin=~\"$plugin\"}",
+          "format": "table",
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
+      ]
+    },
+    {
+      "title": "Circuit Breaker State",
+      "description": "An OPEN breaker means that interceptor has been skipped since it tripped: failures or consecutive slow calls crossed the threshold. The hook is silently not running until the cooldown expires. Source: weavergirl_circuit_breaker_open.",
+      "type": "table",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 30
+      },
+      "targets": [
+        {
+          "expr": "weavergirl_circuit_breaker_open{interceptor=~\"$interceptor\"}",
+          "format": "table",
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        },
+        {
+          "expr": "weavergirl_circuit_breaker_consecutive_failures{interceptor=~\"$interceptor\"}",
+          "format": "table",
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        },
+        {
+          "expr": "weavergirl_circuit_breaker_trips_total{interceptor=~\"$interceptor\"}",
+          "format": "table",
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        }
+      ]
+    },
+    {
+      "title": "Open Circuit Breakers",
+      "description": "Alert expression: any non-zero value means at least one hook has been disabled by its breaker.",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 30
+      },
+      "targets": [
+        {
+          "expr": "sum(weavergirl_circuit_breaker_open{interceptor=~\"$interceptor\"})",
+          "legendFormat": "Open breakers",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "title": "Registration Errors",
+      "description": "Interceptors that failed to register or were rejected. Source: weavergirl_agent_registered_interceptors and the transformation error counter.",
+      "type": "stat",
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 30
+      },
+      "targets": [
+        {
+          "expr": "weavergirl_agent_registered_interceptors",
+          "legendFormat": "Registered",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        },
+        {
+          "expr": "increase(weavergirl_agent_transformation_errors_total[$__range])",
+          "legendFormat": "Transform errors",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": [
+    "weaver-girl",
+    "operations"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {
+          "selected": false,
+          "text": "Prometheus",
+          "value": "Prometheus"
+        }
+      },
+      {
+        "name": "plugin",
+        "label": "Plugin",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$datasource"
+        },
+        "query": "label_values(weavergirl_events_total, plugin)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1
+      },
+      {
+        "name": "interceptor",
+        "label": "Interceptor",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "$datasource"
+        },
+        "query": "label_values(weavergirl_interceptor_invocations_total, interceptor)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "sort": 1
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "title": "Weaver-Girl: Operations",
+  "uid": "weaver-girl-operations",
+  "version": 1
+}

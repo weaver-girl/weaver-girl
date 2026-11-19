@@ -64,7 +64,17 @@ public class ServletPlugin extends AbstractPlugin {
 
   @Override
   public String instrumentedLibrary() {
-    return "javax.servlet.http.HttpServlet";
+    return HTTP_SERVLET;
+  }
+
+  /**
+   * Both servlet namespaces. A Spring Boot 3 application carries only {@code jakarta.servlet}, so
+   * declaring just the javax name deactivated the plugin for every Boot 3 deployment — the plugin
+   * registers both namespaces below, but it never got that far.
+   */
+  @Override
+  public String[] instrumentedLibraries() {
+    return new String[] {HTTP_SERVLET, JAKARTA_HTTP_SERVLET};
   }
 
   @Override

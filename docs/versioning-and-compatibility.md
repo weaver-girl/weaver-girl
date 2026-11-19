@@ -77,9 +77,12 @@ not evidence that the artifact runs on 8 — the packaged-agent smoke is.
 
 Support is per instrumentation plugin. A plugin declares the libraries it
 instruments, and is inactive when they are absent. The
-[plugin list](../README.md#features) names the supported families; version-level
-compatibility is validated by each plugin's tests and the agent smoke, not by an
-exhaustive matrix yet. The compatibility matrix is a 1.x roadmap item.
+[plugin list](../README.md#features) names the supported families.
+
+What CI actually proves, per plugin and per JDK, is recorded in the
+[compatibility matrix](compatibility-matrix.md). Read it before claiming a
+framework version is supported: only the `servlet` plugin has an end-to-end,
+interception-asserting job today, and the rest are marked best-effort there.
 
 Instrumentation is **best effort by design**: a framework upgrade may change a
 method signature and silently stop matching. Treat a missing interception as a

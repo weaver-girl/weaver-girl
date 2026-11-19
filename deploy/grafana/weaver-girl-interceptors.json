@@ -1,5 +1,7 @@
 {
-  "annotations": { "list": [] },
+  "annotations": {
+    "list": []
+  },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -9,92 +11,246 @@
     {
       "title": "Interception Rate",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
       "targets": [
-        { "expr": "sum(rate(weavergirl_interceptor_invocations_total[5m]))", "legendFormat": "Intercepts/sec" }
+        {
+          "expr": "sum(rate(weavergirl_interceptor_invocations_total[5m]))",
+          "legendFormat": "Intercepts/sec",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "reqps" },
+        "defaults": {
+          "unit": "reqps"
+        },
         "overrides": []
       }
     },
     {
       "title": "Interception Duration (p50/p95/p99)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
       "targets": [
-        { "expr": "histogram_quantile(0.5, sum by (le) (rate(weavergirl_interceptor_duration_seconds_bucket[5m])))", "legendFormat": "p50" },
-        { "expr": "histogram_quantile(0.95, sum by (le) (rate(weavergirl_interceptor_duration_seconds_bucket[5m])))", "legendFormat": "p95" },
-        { "expr": "histogram_quantile(0.99, sum by (le) (rate(weavergirl_interceptor_duration_seconds_bucket[5m])))", "legendFormat": "p99" }
+        {
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(weavergirl_interceptor_duration_seconds_bucket[5m])))",
+          "legendFormat": "p50",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(weavergirl_interceptor_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(weavergirl_interceptor_duration_seconds_bucket[5m])))",
+          "legendFormat": "p99",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "s" },
+        "defaults": {
+          "unit": "s"
+        },
         "overrides": []
       }
     },
     {
       "title": "Active Interceptors",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 8
+      },
       "targets": [
-        { "expr": "weavergirl_agent_registered_interceptors", "legendFormat": "Definitions" }
+        {
+          "expr": "weavergirl_agent_registered_interceptors",
+          "legendFormat": "Definitions",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
       ]
     },
     {
       "title": "Active Plugins",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 8
+      },
       "targets": [
-        { "expr": "count(count by (plugin) (weavergirl_plugin_state))", "legendFormat": "Plugins" }
+        {
+          "expr": "count(count by (plugin) (weavergirl_plugin_state))",
+          "legendFormat": "Plugins",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
       ]
     },
     {
       "title": "Transformed Classes",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 8 },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 8
+      },
       "targets": [
-        { "expr": "weavergirl_agent_transformations_total", "legendFormat": "Classes" }
+        {
+          "expr": "weavergirl_agent_transformations_total",
+          "legendFormat": "Classes",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
       ]
     },
     {
       "title": "Interception Errors",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 8 },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 8
+      },
       "targets": [
-        { "expr": "sum(weavergirl_interceptor_errors_total)", "legendFormat": "Errors" }
+        {
+          "expr": "sum(weavergirl_interceptor_errors_total)",
+          "legendFormat": "Errors",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "none", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } },
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
         "overrides": []
       }
     },
     {
       "title": "Slow Calls",
       "type": "stat",
-      "gridPos": { "h": 4, "w": 12, "x": 0, "y": 12 },
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
       "targets": [
-        { "expr": "sum by (interceptor) (weavergirl_interceptor_slow_calls_total)", "legendFormat": "{{interceptor}}" }
+        {
+          "expr": "sum by (interceptor) (weavergirl_interceptor_slow_calls_total)",
+          "legendFormat": "{{interceptor}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
       ]
     },
     {
       "title": "Top 10 Slowest Interceptors",
       "type": "barchart",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 12
+      },
       "targets": [
-        { "expr": "topk(10, sum by (interceptor) (weavergirl_interceptor_duration_seconds_sum) / sum by (interceptor) (weavergirl_interceptor_invocations_total))", "legendFormat": "{{interceptor}}" }
+        {
+          "expr": "topk(10, sum by (interceptor) (weavergirl_interceptor_duration_seconds_sum) / sum by (interceptor) (weavergirl_interceptor_invocations_total))",
+          "legendFormat": "{{interceptor}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "$datasource"
+          }
+        }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "s" },
+        "defaults": {
+          "unit": "s"
+        },
         "overrides": []
       }
     }
   ],
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["weaver-girl", "interceptors"],
-  "templating": { "list": [] },
-  "time": { "from": "now-1h", "to": "now" },
+  "tags": [
+    "weaver-girl",
+    "interceptors"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {
+          "selected": false,
+          "text": "Prometheus",
+          "value": "Prometheus"
+        }
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
   "title": "Weaver-Girl: Interceptor Performance",
   "uid": "weaver-girl-interceptors",
-  "version": 1
+  "version": 2
 }

@@ -4,6 +4,52 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## Unreleased — seeded issues and ecosystem fixes (2026-11-20)
+
+Work driven by the open issues and by running the agent against a real Spring Boot application.
+
+- **Log-to-trace correlation (issue #45).** The `logging` plugin now writes `traceId`/`spanId` (plus
+  any `mdcKeys`/`baggageKeys`) into the SLF4J MDC **and** Log4j2 `ThreadContext` for the duration of
+  every intercepted call, and restores the previous values on exit. Backends are resolved
+  reflectively, so neither is a dependency and the plugin is inert when both are absent.
+  `scripts/run-log-correlation-demo.sh` shows the same log line with and without the agent.
+- **Grafana dashboard pack (issue #44).** `deploy/grafana/` gains an operations dashboard
+  (request rate, slow-call and error ratios, p95/p99 interception latency, plugin health, lifecycle
+  state, circuit-breaker state) plus a README, a loader fix and a datasource variable on all three
+  dashboards. `weaver-girl-jvm.json` queried Micrometer-style names the exporter never emits; it now
+  uses the real `weavergirl_jvm_*` series.
+- **Circuit-breaker metrics.** The Prometheus exporter now emits
+  `weavergirl_circuit_breaker_{open,consecutive_failures,consecutive_slow,trips_total}`, fed from the
+  engine's breaker through a new API-level `CircuitBreakerRegistry`, so an OPEN breaker — a hook that
+  has stopped running — is visible instead of silent.
+- **Compatibility matrix (issue #43).** `docs/compatibility-matrix.md` records, per plugin and per
+  JDK, what CI actually proves, and marks everything else best-effort rather than implying support.
+- **Spring Boot examples project (issue #46).** `weaver-girl-examples/spring-boot-jdbc/` is a
+  standalone Spring Boot 3.3 + H2 application depending only on released artifacts, with a script
+  that downloads the agent distribution, attaches it and proves interception.
+
+Running that example surfaced four defects, all fixed here:
+
+- **Plugin activation in a Spring Boot fat jar.** `PluginContext.classPresent` only asked the class
+  loaders, which cannot see `BOOT-INF/classes/` or `BOOT-INF/lib/*.jar` before Spring Boot's loader
+  exists. Servlet, Spring MVC and Tomcat plugins therefore deactivated themselves in the most common
+  deployment shape. `ApplicationClasspath` now indexes the launch class path, including nested jars.
+- **`servlet` declared only the `javax` namespace**, so every Spring Boot 3 (`jakarta`) application
+  deactivated it; it now declares both.
+- **Multi-release entries of relocated packages kept their original paths.** The agent jar is
+  appended to the bootstrap search path, so a host asking for `org.yaml.snakeyaml.internal.Logger`
+  was handed the shaded-bytecode entry and the JVM rejected it
+  (`NoClassDefFoundError: ... (wrong name: shaded/...)`), breaking Spring Boot's YAML path.
+  `scripts/relocate-multi-release.py` rewrites those entry paths at build time.
+- **Micrometer and aopalliance were bundled unrelocated.** `-javaagent` puts the agent jar on the
+  application class path, so Spring Boot's actuator resolved `io.micrometer...LogbackMetrics` to the
+  agent's copy and died on `NoClassDefFoundError: ch/qos/logback/classic/spi/LoggerContextListener`.
+  Both are now excluded from the shaded jar.
+
+Dependency versions were also brought up to the point releases Dependabot proposed (surefire 3.6.1,
+antrun 3.2.0, mockito 5.24.0, spotbugs 4.10.5.0, central-publishing 0.12.0, exec-maven 3.6.4,
+shade 3.6.2, logback 1.6.6, Maven wrapper 3.10.0).
+
 ## Unreleased — release-readiness fixes (2026-11-19)
 
 Findings from the capability assessment in
