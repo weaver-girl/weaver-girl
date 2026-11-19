@@ -20,6 +20,8 @@ package com.github.cc11001100.weavergirl.api.event;
  *     .attribute("sql", "SELECT * FROM users WHERE id = ?")
  *     .build();
  * </pre>
+ *
+ * @since 1.0.0
  */
 public class InterceptorEvent {
 

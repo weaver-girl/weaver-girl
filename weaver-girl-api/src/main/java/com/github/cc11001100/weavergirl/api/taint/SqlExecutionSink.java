@@ -1,6 +1,10 @@
 package com.github.cc11001100.weavergirl.api.taint;
 
-/** SQL sink hook used by the JDBC execute interceptor. Does not open a connection. */
+/**
+ * SQL sink hook used by the JDBC execute interceptor. Does not open a connection.
+ *
+ * @since 1.0.0
+ */
 public final class SqlExecutionSink {
 
   static {

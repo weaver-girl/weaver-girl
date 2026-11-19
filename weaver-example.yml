@@ -36,6 +36,7 @@ interceptors:
   #   after: com.example.interceptor.GenericAfterAdvice
 
   # Example: intercept methods with a specific annotation
+  #   (omit `method` or use `methodPattern: ".*"`; `method: "*"` is a literal name and matches nothing)
   # - classAnnotation: org.springframework.web.bind.annotation.RestController
-  #   method: "*"
+  #   methodPattern: ".*"
   #   before: com.example.interceptor.RestControllerAdvice

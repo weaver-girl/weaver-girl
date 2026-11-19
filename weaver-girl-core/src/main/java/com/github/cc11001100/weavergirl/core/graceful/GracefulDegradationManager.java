@@ -58,6 +58,41 @@ public final class GracefulDegradationManager {
   }
 
   /**
+   * Leave emergency mode: turn interception back on and lift the sampling cap.
+   *
+   * <p>Emergency mode used to be a one-way door — {@code enterEmergencyMode} had no counterpart,
+   * so an operator whose backend recovered still had to restart the process. The REST
+   * {@code POST /agent/interception} toggle already turns interception back on; this is the
+   * matching exit for the degradation state itself, so the pressure logic resumes working too.
+   *
+   * @param reason short description of what cleared the condition, e.g. {@code "operator"} or
+   *     {@code "export-recovered"}
+   * @return true when the agent was in emergency mode and left it
+   */
+  public static boolean exitEmergencyMode(String reason) {
+    if (!emergencyMode) {
+      return false;
+    }
+    emergencyMode = false;
+    emergencyLogged = false;
+    log.info("[GracefulDegradation] Leaving emergency mode: reason={}", reason);
+    GlobalInterceptionSwitch.setEnabled(true, "graceful-degradation:reset:" + reason);
+    try {
+      SamplingController controller = SamplingController.getInstance();
+      controller.setSamplingRate(1);
+    } catch (Exception e) {
+      log.debug("[GracefulDegradation] Failed to reset sampling rate: {}", e.getMessage());
+    }
+    try {
+      InterceptorEventPublisher.getInstance()
+          .publish(LifecycleEvents.registry(LifecycleEvents.PHASE_EMERGENCY, reason, true, null));
+    } catch (Throwable t) {
+      log.debug("Lifecycle event publish failed: {}", t.getMessage());
+    }
+    return true;
+  }
+
+  /**
    * Update sampling pressure based on observed load. When the load factor is high, reduce sampling
    * rate to protect the host application.
    *

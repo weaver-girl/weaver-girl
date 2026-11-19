@@ -52,6 +52,12 @@ public class DefaultPluginContext implements PluginContext {
   /** The services this plugin published, so they can be withdrawn when the plugin goes away. */
   private final List<Object> publishedServices = new CopyOnWriteArrayList<>();
 
+  /**
+   * The instrumentation escape hatch, or null when the agent has no handle. Null is the honest
+   * answer for a test double and for a host that attaches without one.
+   */
+  private final InstrumentationHandleImpl instrumentationHandle;
+
   /** Observability extensions this plugin registered; withdrawn with the plugin. */
   private final List<SpanSink> spanSinks = new CopyOnWriteArrayList<>();
 
@@ -79,9 +85,23 @@ public class DefaultPluginContext implements PluginContext {
 
   public DefaultPluginContext(
       InterceptorRegistry registry, Map<String, String> config, String pluginName) {
+    this(registry, config, pluginName, null);
+  }
+
+  /**
+   * @param instrumentation the JVM handle to hand out to the plugin, or null when there is none;
+   *     a plugin that asks for a transformer then fails loudly instead of silently not weaving
+   */
+  public DefaultPluginContext(
+      InterceptorRegistry registry,
+      Map<String, String> config,
+      String pluginName,
+      java.lang.instrument.Instrumentation instrumentation) {
     this.registry = ValidationUtils.requireNonNull(registry, "registry");
     this.config = config != null ? config : Collections.emptyMap();
     this.pluginName = ValidationUtils.requireNonEmpty(pluginName, "pluginName");
+    this.instrumentationHandle =
+        instrumentation == null ? null : new InstrumentationHandleImpl(instrumentation);
   }
 
   @Override
@@ -269,6 +289,10 @@ public class DefaultPluginContext implements PluginContext {
    * contributed outlives it. Called when the plugin is unloaded or destroyed.
    */
   public void withdrawServices() {
+    // A product transformer is part of what this plugin installed, so it goes with everything else.
+    if (instrumentationHandle != null) {
+      instrumentationHandle.withdrawAll();
+    }
     for (Object service : publishedServices) {
       PluginServices.unregister(service);
     }
@@ -381,6 +405,22 @@ public class DefaultPluginContext implements PluginContext {
   }
 
   @Override
+  public java.lang.instrument.Instrumentation getInstrumentation() {
+    return instrumentationHandle == null ? null : instrumentationHandle.getInstrumentation();
+  }
+
+  @Override
+  public com.github.cc11001100.weavergirl.api.plugin.InstrumentationHandle.Retransformation
+      registerTransformer(java.lang.instrument.ClassFileTransformer transformer) {
+    if (instrumentationHandle == null) {
+      throw new IllegalStateException(
+          "Plugin '"
+              + pluginName
+              + "' cannot register a ClassFileTransformer: the agent has no Instrumentation handle");
+    }
+    return instrumentationHandle.registerTransformer(transformer);
+  }
+
   public InterceptorRegistry getRegistry() {
     return registry;
   }

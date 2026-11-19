@@ -18,6 +18,14 @@
 
     <build>
         <plugins>
+            <!-- The sample is a demo application, not a published library: a release must not
+                 push its coordinates (or its Jetty/H2 test dependencies) to Maven Central. -->
+            <plugin>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
             <!-- The audit plugin ships as its own jar, the way a third-party plugin does: its own
                  SPI entry and its own contract declaration, dropped into plugins/ next to the agent.
                  It carries only the plugin classes, not the payment service, or the plugin would bring

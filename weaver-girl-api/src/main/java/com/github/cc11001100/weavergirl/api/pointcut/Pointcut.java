@@ -64,7 +64,7 @@ public class Pointcut {
    * @param classMatcher matcher for selecting target classes
    * @param methodMatcher matcher for selecting target methods within matched classes
    * @param expression the optional runtime expression, may be null
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public Pointcut(
       ClassMatcher classMatcher,
@@ -80,7 +80,7 @@ public class Pointcut {
    * @param methodMatcher matcher for selecting target methods within matched classes
    * @param expression the optional runtime expression, may be null
    * @param instanceBound true if this pointcut is bound to a specific instance (pertarget/perthis)
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public Pointcut(
       ClassMatcher classMatcher,
@@ -97,7 +97,7 @@ public class Pointcut {
    * Returns the runtime expression associated with this pointcut, if any.
    *
    * @return the expression, or null if none
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression getExpression() {
     return expression;
@@ -106,8 +106,13 @@ public class Pointcut {
   /**
    * Returns whether this pointcut is instance-bound for pertarget/perthis advice.
    *
+   * <p>An instance-bound pointcut makes the engine attach a per-instance context to each target
+   * object, and the store holds that target strongly until the interceptor calls
+   * {@code PerInstanceStore.remove(target)}. Over short-lived objects, call it when the object is
+   * done: nothing else knows when that is.
+   *
    * @return true if this pointcut is bound to a specific instance
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public boolean isInstanceBound() {
     return instanceBound;
@@ -200,7 +205,7 @@ public class Pointcut {
    * @param returnValue the return value (may be null, e.g. on method entry)
    * @param throwable the thrown exception (may be null)
    * @return true if this pointcut matches the method and any runtime condition is satisfied
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public boolean matchRuntime(
       String className,
@@ -377,7 +382,7 @@ public class Pointcut {
    * Bind this pointcut to the target instance of the intercepted method.
    *
    * @return this pointcut, marked as instance-bound
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public Pointcut pertarget() {
     return new Pointcut(this.classMatcher, this.methodMatcher, this.expression, true);
@@ -387,7 +392,7 @@ public class Pointcut {
    * Bind this pointcut to the proxy instance of the intercepted method.
    *
    * @return this pointcut, marked as instance-bound
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public Pointcut perthis() {
     return new Pointcut(this.classMatcher, this.methodMatcher, this.expression, true);

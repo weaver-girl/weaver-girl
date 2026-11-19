@@ -1,0 +1,61 @@
+name: Release Gate
+
+# Runs the same script a maintainer runs before tagging (`scripts/release-check.sh`): the
+# quality-gated build, the publication artifacts, the agent manifest, and the distribution
+# archive. It lives in its own workflow because it is a full clean build (~9 minutes); the
+# per-push jobs stay fast, and a release candidate gets the exact check that gates the tag.
+#
+# Without this, the local gate and the CI path could drift: the release workflow deploys with
+# `-Pquality-gate,release` but never ran the script that verifies the artifacts a release is
+# expected to contain.
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'pom.xml'
+      - '**/pom.xml'
+      - 'weaver-girl-agent/**'
+      - 'scripts/release-check.sh'
+      - '.github/workflows/release-gate.yml'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: release-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Release check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v6
+        with:
+          # release-check.sh refuses to run on anything else: the release tooling and the
+          # javadoc/spotbugs plugins are pinned to it, while the compiler still targets 1.8.
+          java-version: 17
+          distribution: temurin
+
+      - name: Cache Maven packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-release-gate-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-release-gate-
+            ${{ runner.os }}-m2-
+
+      - name: Run the release gate
+        run: ./scripts/release-check.sh
+
+      - name: Upload the distribution archive
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-dist
+          path: weaver-girl-agent/target/*-dist.zip*
+          if-no-files-found: warn

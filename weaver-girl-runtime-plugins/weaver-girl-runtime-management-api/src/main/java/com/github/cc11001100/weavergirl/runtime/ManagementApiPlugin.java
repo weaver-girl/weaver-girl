@@ -38,7 +38,13 @@ public class ManagementApiPlugin implements WeaverPlugin {
       return;
     }
     try {
-      server = new AgentApiServer(port);
+      server =
+          new AgentApiServer(
+              port,
+              null,
+              context.getConfig("endpointBindAddress"),
+              0,
+              context.getConfig("endpointAuthToken"));
       server.start();
       log.info("Management API started on port {}", port);
     } catch (Exception e) {

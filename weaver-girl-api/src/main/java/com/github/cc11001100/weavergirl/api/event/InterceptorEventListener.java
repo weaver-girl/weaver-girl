@@ -18,6 +18,8 @@ package com.github.cc11001100.weavergirl.api.event;
  *     System.out.println(new ObjectMapper().writeValueAsString(event.toMap()));
  * });
  * </pre>
+ *
+ * @since 1.0.0
  */
 @FunctionalInterface
 public interface InterceptorEventListener {

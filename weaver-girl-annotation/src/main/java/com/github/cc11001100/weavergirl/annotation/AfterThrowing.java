@@ -35,7 +35,7 @@ import java.lang.annotation.Target;
  * @see Before
  * @see After
  * @see OnException
- * @since 2.0.0
+ * @since 1.0.0
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
@@ -53,7 +53,7 @@ public @interface AfterThrowing {
    * matches the method by name only.
    *
    * @return parameter type names, or empty array to match by name only
-   * @since 2.0.0
+   * @since 1.0.0
    */
   String[] parameterTypes() default {};
 
@@ -66,7 +66,7 @@ public @interface AfterThrowing {
    * subclasses.
    *
    * @return the exception type to filter by
-   * @since 2.0.0
+   * @since 1.0.0
    */
   Class<? extends Throwable> exceptionType() default Throwable.class;
 }

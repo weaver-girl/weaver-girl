@@ -13,8 +13,11 @@ before opening an issue for anything large.
 
 ## 1.0 — public launch
 
-The code and packaging are ready; see [`RELEASE_READINESS.md`](RELEASE_READINESS.md).
-What remains is launch hygiene, not engineering:
+The build, test and packaging chain is ready; see [`RELEASE_READINESS.md`](RELEASE_READINESS.md).
+The 2026-11-19 capability assessment ([`docs/release-assessment-2026-11-19.md`](docs/release-assessment-2026-11-19.md))
+added the engineering items below as 1.0 blockers — per-invocation overhead, runtime-added
+pointcuts, span nesting, the Instrumentation escape hatch and endpoint hardening. Launch hygiene
+comes after those:
 
 - [x] Maven Central metadata points at the organization, not a personal fork
 - [x] Release notes link to the correct repository and use the released version

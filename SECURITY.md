@@ -63,8 +63,14 @@ Out of scope:
 
 ## Hardening notes for operators
 
-- Bind health, metrics and management endpoints to localhost or a private
-  interface; they do not ship an authentication layer.
+- The endpoints bind `127.0.0.1` by default. Reach them over a private
+  interface only when you have set `endpointBindAddress`, and prefer setting
+  `endpointAuthToken` as well: the management API and the diagnostics endpoint
+  can flip the global interception switch (`POST /agent/interception`), which
+  turns instrumentation off for the whole JVM.
+- A registered `ClassFileTransformer` (`PluginContext.registerTransformer`) runs
+  inside the application JVM with no sandbox. Treat the agent API as privileged
+  code, the same way you treat `plugins/`.
 - Treat `weaver.yml` and the `plugins/` directory as privileged input: a plugin
   jar runs inside the application JVM.
 - Prefer `enabledPlugins` over loading every capability in sensitive

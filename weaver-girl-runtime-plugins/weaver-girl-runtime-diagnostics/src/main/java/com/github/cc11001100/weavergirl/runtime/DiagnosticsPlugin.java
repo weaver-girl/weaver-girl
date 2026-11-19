@@ -12,7 +12,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -61,7 +60,7 @@ public class DiagnosticsPlugin implements WeaverPlugin {
       return;
     }
     try {
-      server = start(port);
+      server = start(port, context.getConfig("endpointBindAddress"));
       log.info("Diagnostics endpoint enabled on port {}", port);
     } catch (IOException e) {
       log.warn("Failed to start diagnostics server: {}", e.getMessage());
@@ -81,12 +80,13 @@ public class DiagnosticsPlugin implements WeaverPlugin {
     }
   }
 
-  private static HttpServer start(int port) throws IOException {
-    HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
+  private static HttpServer start(int port, String bindAddress) throws IOException {
+    HttpServer server =
+        com.github.cc11001100.weavergirl.api.http.EndpointBinding.create(
+            bindAddress, port, 0);
     server.createContext("/agent/interception", DiagnosticsPlugin::interception);
     server.createContext("/stats", DiagnosticsPlugin::stats);
     server.createContext("/metrics", DiagnosticsPlugin::metrics);
-    server.setExecutor(null);
     server.start();
     return server;
   }
@@ -108,7 +108,25 @@ public class DiagnosticsPlugin implements WeaverPlugin {
       String body = new String(bos.toByteArray(), StandardCharsets.UTF_8);
       boolean desired = body.contains("\"enabled\":true") || body.contains("\"enabled\": true");
       InterceptorHolder.setInterceptionEnabled(desired, "rest:/agent/interception");
-      respond(exchange, 200, "application/json", "{\"enabled\":" + desired + "}");
+      // The toggle must also clear emergency mode, or the sampling-pressure logic stays dormant
+      // even though interception is back on. Previously the only exit from emergency mode was a
+      // process restart.
+      if (desired
+          && com.github.cc11001100.weavergirl.core.graceful.GracefulDegradationManager
+              .isEmergencyMode()) {
+        com.github.cc11001100.weavergirl.core.graceful.GracefulDegradationManager
+            .exitEmergencyMode("rest:/agent/interception");
+      }
+      respond(
+          exchange,
+          200,
+          "application/json",
+          "{\"enabled\":"
+              + desired
+              + ",\"emergencyMode\":"
+              + com.github.cc11001100.weavergirl.core.graceful.GracefulDegradationManager
+                  .isEmergencyMode()
+              + "}");
     } catch (RuntimeException e) {
       exchange.sendResponseHeaders(500, 0);
       exchange.getResponseBody().close();

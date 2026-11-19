@@ -51,6 +51,19 @@ public final class PluginOwnership {
     interceptorsByPlugin.computeIfAbsent(plugin, k -> ConcurrentHashMap.newKeySet()).add(definition);
   }
 
+  /**
+   * Forget everything {@code plugin} owns, because it was unloaded.
+   *
+   * <p>The map is keyed by the plugin instance, so an entry left behind keeps the plugin — and through
+   * it its class loader and jar — reachable for the life of the JVM. {@link #forget} only drops one
+   * name.
+   */
+  public void forgetPlugin(WeaverPlugin plugin) {
+    if (plugin != null) {
+      interceptorsByPlugin.remove(plugin);
+    }
+  }
+
   /** Forget that {@code plugin} owns {@code definition}, because it was unregistered. */
   public void forget(WeaverPlugin plugin, String definition) {
     Set<String> names = interceptorsByPlugin.get(plugin);

@@ -30,6 +30,21 @@ helm install weaver-girl ./deploy/helm/weaver-girl \
 | `config.healthPort` | `9401` | Health check port |
 | `config.samplingRate` | `1` | Interception sampling rate |
 | `config.disabledPlugins` | `""` | Comma-separated plugins to disable |
+| `config.diagnosticsPort` | `9402` | Diagnostics endpoint (`/stats`, `POST /agent/interception`) |
+| `config.endpointBindAddress` | `0.0.0.0` | Bind address for all three endpoints; the chart exposes them through its Service |
+| `config.endpointAuthToken` | `""` | Bearer token the endpoints require; pass it with `--set-string`, never in a committed file |
+| `config.endpointMaxThreads` | `16` | Request-thread ceiling per endpoint server |
+
+The token is rendered into the same argument string, which means it appears in the process
+command line (`ps`). That is the same exposure as any `-D` property; it is not worse than the
+image's own `JAVA_AGENT_OPTS`, but do not treat it as a secret at rest. A future release replaces
+the argument with a file-based option.
+
+The `config.*` values are rendered into an `agent-args` ConfigMap key by
+`templates/_helpers.tpl` (`weaver-girl.agentArgs`). They are **agent arguments**, not
+`weaver.yml` keys: the agent reads ports/binding/sampling from its argument list, and a value
+placed only in `weaver.yml` has no effect for those settings. The init container picks the
+string up from the ConfigMap — see the example below.
 | `serviceMonitor.enabled` | `false` | Enable Prometheus ServiceMonitor |
 | `yamlConfig` | `""` | Weaver-Girl YAML configuration |
 
@@ -51,14 +66,26 @@ initContainers:
 containers:
   - name: my-app
     env:
+      # Read the argument string the chart rendered from its values, so `--set config.metricsPort`
+      # and friends actually reach the agent instead of only changing an unused value.
+      - name: WEAVER_AGENT_ARGS
+        valueFrom:
+          configMapKeyRef:
+            name: <release>-weaver-girl-config
+            key: agent-args
       - name: JAVA_TOOL_OPTIONS
-        value: "-javaagent:/agent/weaver-girl-agent.jar=metricsPort=9400,healthPort=9401"
+        value: "-javaagent:/agent/weaver-girl-agent.jar=$(WEAVER_AGENT_ARGS)"
     volumeMounts:
       - name: agent-volume
         mountPath: /agent
+      - name: weaver-girl-config
+        mountPath: /opt/weaver-girl
 volumes:
   - name: agent-volume
     emptyDir: {}
+  - name: weaver-girl-config
+    configMap:
+      name: <release>-weaver-girl-config
 ```
 
 ## Health Checks
@@ -67,3 +94,13 @@ The chart configures Kubernetes liveness and readiness probes against the agent'
 
 - **Liveness**: `GET /health` — returns 200 when agent is running
 - **Readiness**: `GET /ready` — returns 200 when interceptors are registered
+
+`/ready` answers 503 until at least one interceptor is registered. That is the right signal for
+"instrumentation has taken effect", but it is the wrong probe for a pod that legitimately has no
+hooks (a sidecar-only deployment, or a profile where every capability jar is disabled): those pods
+never become Ready. In that case point the readiness probe at `/health` instead, which answers
+while the agent is up.
+
+The probes expect the target workload container to name its ports `metrics` and `health`
+(`ports: [{name: health, containerPort: 9401}, ...]`) — the chart's Service and the probe snippets
+use those names, and the chart does not create the workload itself.

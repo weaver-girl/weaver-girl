@@ -4,6 +4,51 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## Unreleased — release-readiness fixes (2026-11-19)
+
+Findings from the capability assessment in
+[`docs/release-assessment-2026-11-19.md`](docs/release-assessment-2026-11-19.md), and the fixes
+landed with them:
+
+- **Interception overhead.** Call-site capture (`getCallerClass()` and friends) is now opt-in per
+  definition (`InterceptorDefinition.withCallSiteTracking`, `AbstractPlugin`'s
+  `trackCallSite(boolean)`); it used to run a stack walk on every intercepted invocation.
+  `MdcInjector.isMdcAvailable()` caches its probe. Measured end-to-end on JDK 21: 2.1 µs → 0.67 µs
+  per intercepted call with one empty `before` hook.
+- **Runtime registration.** `WeaverTransformer` rebuilds its matcher chain when the registry
+  generation changes, so a definition registered after startup reaches already-loaded classes
+  (`WeaverGirl.reloadAndRetransform()`; config-watch, plugin-directory reload and dynamic refresh
+  all use it). Regression test: `PluginTestHarnessLateDefinitionTest`.
+- **Instrumentation escape hatch.** `PluginContext.getInstrumentation()` and
+  `registerTransformer(ClassFileTransformer)` give a product access to bytecode the declarative
+  registry cannot reach; the agent guards agent-owned classes and withdraws the transformer with
+  the plugin (`InstrumentationHandle`, `InstrumentationHandleImpl`).
+- **Nested spans.** `Tracer.endSpan` restores the parent span instead of clearing the thread's
+  span, so spans opened by different plugins nest correctly.
+- **Endpoint defaults.** Metrics/health/diagnostics/management endpoints bind `127.0.0.1` by
+  default (`endpointBindAddress` opts out), use a bounded daemon executor, and the management API
+  can require `endpointAuthToken`.
+- **Plugin contract.** `plugin.minimumAgentVersion` is enforced even when `plugin.apiVersion` is
+  absent; `@since` tags were aligned to `1.0.0`.
+- **Release chain.** Central publishing auto-publishes after validation; the workflow rejects
+  SNAPSHOT/mis-tagged versions, signs both the distribution archive and the bare agent jar, marks
+  propagations as pre-releases; `weaver-girl-sample` and the cross-plugin tests no longer deploy.
+- **Delivery artifacts.** Grafana dashboards use the metric names the exporter actually emits;
+  the Docker image enables the endpoints, runs non-root and has a health check; the Helm chart
+  renders `config.*` into an agent-argument string that the init container consumes.
+- **Config that was documented but inert.** `circuitBreakerThreshold` /
+  `circuitBreakerCooldownMs` now retune the live breaker (including at runtime), the
+  adaptive-sampling monitor is started (and `adaptiveSampling=false` turns it off), and
+  `stateFile` enables periodic state snapshots with a final one on shutdown
+  (`CoreConfigWiringTest`).
+- **Plugin unload.** `PluginClassLoader.close()` plus the four strong references around it are
+  cleared, so a hot-swapped plugin's loader, classes and jar handle become collectable.
+- **Docs.** README snippets and `run-sample.sh` are runnable again; `method: "*"` and the four
+  dead agent-level YAML keys are documented correctly; the plugin guide covers the escape hatch
+  and call-site tracking.
+
+---
+
 ## 1.0.0 — First release (2026-11-11)
 
 The first release-ready cut of Weaver-Girl. Highlights:

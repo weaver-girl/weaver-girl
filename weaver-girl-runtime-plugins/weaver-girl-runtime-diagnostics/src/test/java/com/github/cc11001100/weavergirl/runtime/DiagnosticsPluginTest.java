@@ -76,6 +76,21 @@ class DiagnosticsPluginTest {
 
       HttpURLConnection rejected = get("http://localhost:" + port + "/agent/interception");
       assertEquals(405, rejected.getResponseCode());
+
+      // Re-enabling must also clear emergency mode: before this branch existed, an operator whose
+      // backend recovered still needed a restart. The response reports both fields.
+      com.github.cc11001100.weavergirl.core.graceful.GracefulDegradationManager.enterEmergencyMode(
+          "test");
+      HttpURLConnection enable =
+          post("http://localhost:" + port + "/agent/interception", "{\"enabled\":true}");
+      assertEquals(200, enable.getResponseCode());
+      String enabledBody = read(enable.getInputStream());
+      assertTrue(enabledBody.contains("\"enabled\":true"), enabledBody);
+      assertTrue(enabledBody.contains("\"emergencyMode\":false"), enabledBody);
+      assertTrue(InterceptorHolder.isInterceptionEnabled());
+      assertFalse(
+          com.github.cc11001100.weavergirl.core.graceful.GracefulDegradationManager
+              .isEmergencyMode());
     } finally {
       plugin.destroy();
       InterceptorHolder.setInterceptionEnabled(before, "test");

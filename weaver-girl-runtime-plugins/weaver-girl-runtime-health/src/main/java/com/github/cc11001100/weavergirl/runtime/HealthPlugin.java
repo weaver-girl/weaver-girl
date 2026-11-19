@@ -11,7 +11,6 @@ import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -57,7 +56,7 @@ public class HealthPlugin implements WeaverPlugin {
       return;
     }
     try {
-      server = start(port);
+      server = start(port, context.getConfig("endpointBindAddress"));
       log.info("Health check endpoint enabled on port {}", port);
     } catch (IOException e) {
       log.warn("Failed to start health check server: {}", e.getMessage());
@@ -78,8 +77,10 @@ public class HealthPlugin implements WeaverPlugin {
   }
 
   /** Bind the probes to {@code port}. {@code /ready} counts the interceptors registered so far. */
-  private static HttpServer start(int port) throws IOException {
-    HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
+  private static HttpServer start(int port, String bindAddress) throws IOException {
+    HttpServer server =
+        com.github.cc11001100.weavergirl.api.http.EndpointBinding.create(
+            bindAddress, port, 0);
     server.createContext(
         "/health",
         exchange -> {
@@ -111,7 +112,6 @@ public class HealthPlugin implements WeaverPlugin {
             respond(exchange, 503, "{\"status\":\"NOT_READY\",\"interceptorCount\":0}");
           }
         });
-    server.setExecutor(null);
     server.start();
     return server;
   }

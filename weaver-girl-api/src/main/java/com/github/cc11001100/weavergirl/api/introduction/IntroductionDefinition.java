@@ -17,7 +17,7 @@ import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher;
  * com.github.cc11001100.weavergirl.api.matcher.ClassMatcher.MatchType#SUPER_CLASS}, and {@link
  * com.github.cc11001100.weavergirl.api.matcher.ClassMatcher.MatchType#INTERFACE} are supported.
  *
- * @since 2.0.0
+ * @since 1.0.0
  */
 public class IntroductionDefinition {
 

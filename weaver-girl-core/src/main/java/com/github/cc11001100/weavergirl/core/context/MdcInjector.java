@@ -115,8 +115,26 @@ public final class MdcInjector {
     }
   }
 
+  /**
+   * Cached result of the MDC probe. The probe loads a class, writes, reads and removes an MDC
+   * entry — roughly 160 ns — and the advice calls it on every intercepted invocation, so the
+   * answer is computed once. A binding cannot change after startup, so caching cannot go stale in
+   * a way that matters.
+   */
+  private static volatile Boolean mdcAvailable;
+
   /** Check whether SLF4J MDC is available and functional at runtime. */
   public static boolean isMdcAvailable() {
+    Boolean cached = mdcAvailable;
+    if (cached != null) {
+      return cached;
+    }
+    boolean available = probeMdc();
+    mdcAvailable = available;
+    return available;
+  }
+
+  private static boolean probeMdc() {
     try {
       Class<?> mdcClass = Class.forName("org.slf4j.MDC");
       if (!mdcClass.isAssignableFrom(org.slf4j.MDC.class)) {
@@ -133,5 +151,10 @@ public final class MdcInjector {
     } catch (Throwable e) {
       return false;
     }
+  }
+
+  /** Test hook: forget the cached probe result. */
+  static void resetMdcProbeForTest() {
+    mdcAvailable = null;
   }
 }

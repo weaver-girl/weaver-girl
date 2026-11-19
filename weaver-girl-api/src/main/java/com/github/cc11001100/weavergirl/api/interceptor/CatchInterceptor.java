@@ -9,10 +9,18 @@ import com.github.cc11001100.weavergirl.api.pointcut.CatchPointcut;
  * methods. A single implementation may target multiple catch blocks by returning catch pointcuts from
  * {@link #catchPointcuts()}.
  *
+ * <h3>What "catch" means here</h3>
+ *
+ * <p>The JVM offers no hook on a {@code catch} block, so the engine weaves the enclosing method and
+ * dispatches at its exception exit. A definition matches whenever the method throws, whether or not
+ * an inner block catches the throwable first. That is the right signal for "this call failed with
+ * X"; it is not the place to model the behaviour of one specific catch block.
+ *
  * <h3>Callback model</h3>
  *
  * <ul>
- *   <li>{@link #onCatch(CatchInvocation)} &mdash; called when a matched catch block is entered</li>
+ *   <li>{@link #onCatch(CatchInvocation)} &mdash; called when a matched <em>method</em> exits with
+ *       the exception</li>
  * </ul>
  *
  * <h3>Exception replacement / suppression</h3>

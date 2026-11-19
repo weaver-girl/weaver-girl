@@ -9,7 +9,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * <p>This is a simple in-memory registry. Thread-safe for concurrent registration and lookup.
  *
- * @since 2.0.0
+ * @since 1.0.0
  */
 public class IntroductionRegistry {
 

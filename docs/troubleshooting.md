@@ -112,7 +112,7 @@ Or in config: `logLevel: DEBUG`
 **Solutions:**
 1. Enable sampling: `samplingThreshold: 5000`
 2. Use `onlyInterceptPackages` to limit scope
-3. Disable unnecessary plugins: `disabledPlugins: [timing, logging]`
+3. Disable unnecessary plugins: `disabledPlugins: [method-timing, logging]`
 
 ### Slow startup after agent attach
 
@@ -129,7 +129,7 @@ Or in config: `logLevel: DEBUG`
 
 **Solutions:**
 1. Reduce interception scope with `onlyInterceptPackages`
-2. Disable heavy plugins: `disabledPlugins: [trace-correlation, timing]`
+2. Disable heavy plugins: `disabledPlugins: [trace-correlation, method-timing]`
 3. Enable sampling to reduce interceptor invocations
 
 ## Hot Reload Issues

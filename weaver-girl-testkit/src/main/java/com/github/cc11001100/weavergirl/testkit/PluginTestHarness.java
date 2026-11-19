@@ -200,7 +200,8 @@ public final class PluginTestHarness implements AutoCloseable {
           "Cannot install " + plugin.name() + " after weave() has run: the transformer is already "
               + "built from the definitions registered at that point. Install every plugin first.");
     }
-    DefaultPluginContext context = new DefaultPluginContext(registry, config, plugin.name());
+    DefaultPluginContext context =
+        new DefaultPluginContext(registry, config, plugin.name(), instrumentation);
     plugin.init(context);
 
     boolean isActive = plugin.isEnabled(context) && librariesPresent(plugin, context);
@@ -254,6 +255,9 @@ public final class PluginTestHarness implements AutoCloseable {
   public PluginTestHarness retransform(Class<?>... classes) {
     ensureOpen();
     ensureTransformer();
+    // Mirror the agent's reload path: a definition registered after the transformer was installed
+    // needs a rebuilt matcher chain, or the visit below cannot see it.
+    transformer.reinstallAndRetransform();
     try {
       instrumentation.retransformClasses(classes);
     } catch (java.lang.instrument.UnmodifiableClassException e) {

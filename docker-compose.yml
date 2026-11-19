@@ -1,3 +1,11 @@
+# Local run of the sample app behind the packaged agent.
+#
+#   ./run-sample.sh-like build first:  ./mvnw -B package -DskipTests
+#   docker compose up
+#
+# The app listens on 8080; the agent's endpoints are on 9400 (metrics), 9401 (health/ready) and
+# 9402 (diagnostics). They are published bound to loopback, which is what the agent defaults to
+# outside the image.
 version: "3.8"
 services:
   sample-app:
@@ -5,9 +13,13 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
+      # The image sets endpoint ports and endpointBindAddress=0.0.0.0 (a loopback-bound endpoint
+      # inside a container is unreachable from the node); the application image only names its jar.
       - APP_JAR=/opt/app/sample-app.jar
-      - JAVA_AGENT_OPTS=-javaagent:/opt/weaver-girl/weaver-girl-agent.jar=config=/opt/weaver-girl/weaver-example.yml
     volumes:
       - ./weaver-girl-sample/target/weaver-girl-sample-1.0.0-SNAPSHOT.jar:/opt/app/sample-app.jar:ro
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:9400:9400"
+      - "127.0.0.1:9401:9401"
+      - "127.0.0.1:9402:9402"

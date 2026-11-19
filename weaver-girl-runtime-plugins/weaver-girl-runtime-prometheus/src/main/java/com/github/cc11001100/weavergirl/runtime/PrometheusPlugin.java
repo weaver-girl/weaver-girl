@@ -44,7 +44,7 @@ public class PrometheusPlugin implements WeaverPlugin {
     try {
       exporter = new PrometheusExporter();
       InterceptorEventPublisher.getInstance().addListener(exporter);
-      exporter.start(port);
+      exporter.start(port, context.getConfig("endpointBindAddress"));
       log.info("Prometheus metrics endpoint enabled on port {}", port);
     } catch (Exception e) {
       log.warn("Failed to start Prometheus metrics server: {}", e.getMessage());

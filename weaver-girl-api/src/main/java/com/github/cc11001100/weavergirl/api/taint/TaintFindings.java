@@ -8,6 +8,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Publishes taint findings on the public {@link InterceptorEventPublisher} path (listeners and
  * active exporters). Subscribers see {@code source}, {@code sink}, {@code argument}, and the
  * half-open {@code start}/{@code end} of that slice inside the argument.
+ *
+ * @since 1.0.0
  */
 public final class TaintFindings {
 

@@ -30,8 +30,14 @@ public class InterceptorCircuitBreaker {
 
   private static final Logger log = LoggerFactory.getLogger(InterceptorCircuitBreaker.class);
 
-  private final int failureThreshold;
-  private final long cooldownMillis;
+  /**
+   * Consecutive failures that trip the breaker. Volatile so an operator can retune it at runtime
+   * from agent arguments; the value is read on every recorded outcome.
+   */
+  private volatile int failureThreshold;
+
+  /** OPEN-state cooldown before a half-open retry. Volatile for the same reason. */
+  private volatile long cooldownMillis;
 
   /**
    * A single interceptor callback whose duration exceeds this is a "slow call". When {@code
@@ -74,6 +80,37 @@ public class InterceptorCircuitBreaker {
     this.cooldownMillis = cooldownMillis;
     this.slowThresholdNanos = slowThresholdNanos;
     this.slowConsecutiveLimit = slowConsecutiveLimit;
+  }
+
+  /**
+   * Retune the breaker from agent configuration.
+   *
+   * <p>Called once at bootstrap and again when the dynamic config changes the same keys, so the
+   * documented {@code circuitBreakerThreshold} / {@code circuitBreakerCooldownMs} arguments do what
+   * they say instead of only being logged. Non-positive values are ignored: a zero threshold would
+   * trip on the first success.
+   *
+   * @param failureThreshold consecutive failures that trip the breaker, or {@code <= 0} to keep the
+   *     current value
+   * @param cooldownMillis cooldown before a retry, or {@code <= 0} to keep the current value
+   */
+  public void configure(int failureThreshold, long cooldownMillis) {
+    if (failureThreshold > 0) {
+      this.failureThreshold = failureThreshold;
+    }
+    if (cooldownMillis > 0) {
+      this.cooldownMillis = cooldownMillis;
+    }
+  }
+
+  /** @return the threshold currently in effect, for diagnostics. */
+  public int getFailureThreshold() {
+    return failureThreshold;
+  }
+
+  /** @return the cooldown currently in effect, for diagnostics. */
+  public long getCooldownMillis() {
+    return cooldownMillis;
   }
 
   /** Check if the interceptor with the given name should be invoked. */

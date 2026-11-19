@@ -29,6 +29,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *         .build()
  * );
  * </pre>
+ *
+ * @since 1.0.0
  */
 public class InterceptorEventPublisher {
 

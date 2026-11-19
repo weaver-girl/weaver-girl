@@ -628,7 +628,7 @@ public class MethodInvocation {
    * chain. Interceptors should not call this directly.
    *
    * @return the number of proceed calls so far in the current chain
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public int getProceedDepth() {
     return proceedDepth;
@@ -750,7 +750,7 @@ public class MethodInvocation {
    * framework method; interceptors should not call this.
    *
    * @param matched true if the condition matched
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public void setConditionMatched(boolean matched) {
     this.conditionMatched = matched;
@@ -761,7 +761,7 @@ public class MethodInvocation {
    * Returns whether the runtime condition (cflow/if) matched for this invocation.
    *
    * @return true if the condition matched
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public boolean isConditionMatched() {
     return conditionMatched;
@@ -771,7 +771,7 @@ public class MethodInvocation {
    * Returns whether the runtime condition has been evaluated for this invocation.
    *
    * @return true if the condition was evaluated
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public boolean isConditionEvaluated() {
     return conditionEvaluated;
@@ -785,7 +785,7 @@ public class MethodInvocation {
    * <p>This is an internal framework method; interceptors should not call this directly.</p>
    *
    * @param perInstance the instance-bound state object
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public void setPerInstance(Object perInstance) {
     this.perInstance = perInstance;
@@ -795,7 +795,7 @@ public class MethodInvocation {
    * Returns the per-instance context object for pertarget/perthis advice.
    *
    * @return the instance-bound state object, or null if none
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public Object getPerInstance() {
     return perInstance;
@@ -805,7 +805,7 @@ public class MethodInvocation {
    * Returns whether the per-instance context has been initialized for this invocation.
    *
    * @return true if per-instance state is present
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public boolean hasPerInstance() {
     return perInstance != null;

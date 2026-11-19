@@ -7,6 +7,8 @@ import java.util.Map;
 /**
  * Marks HTTP parameter and header values tainted. The servlet interceptor calls {@link
  * #captureRequest(Object)}; labels name the parameter or header the value came from.
+ *
+ * @since 1.0.0
  */
 public final class HttpSourceCapture {
 

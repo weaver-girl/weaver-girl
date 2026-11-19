@@ -563,6 +563,50 @@ public interface PluginContext {
    * @param allowedValues the set of valid values
    * @return the config value, or defaultValue if invalid or missing
    */
+  /**
+   * The instrumentation handle, for a plugin that has to weave classes the declarative registry
+   * cannot reach.
+   *
+   * <p>Most products never need this: {@link com.github.cc11001100.weavergirl.api.registry
+   * .InterceptorRegistry} covers methods, constructors, fields, catch blocks, static initializers
+   * and introductions. It is here for the escape-hatch cases — a {@code ClassFileTransformer} of the
+   * product's own, bytecode the base has no matcher for, or retransformation of classes loaded
+   * before attach. See {@link InstrumentationHandle} for the rules and limits.
+   *
+   * <p>The default implementation returns {@code null}: a test double of this interface, and any
+   * host that attaches without an {@code Instrumentation}, has no handle to give. The agent's
+   * implementation returns the real one.
+   *
+   * @return the handle, or null when the agent has none
+   * @since 1.0.1
+   */
+  default java.lang.instrument.Instrumentation getInstrumentation() {
+    return null;
+  }
+
+  /**
+   * Register a class file transformer whose lifecycle the agent manages.
+   *
+   * <p>The transformer is withdrawn when this plugin is disabled, unloaded or destroyed, and it
+   * never sees the agent's own classes. See {@link InstrumentationHandle} for the rules a
+   * transformer has to follow.
+   *
+   * <p>Implementations must throw {@link IllegalStateException} when {@link #getInstrumentation()}
+   * returned {@code null}. The default implementation does exactly that, so a plugin written against
+   * this method fails loudly instead of assuming the transformer ran.
+   *
+   * @param transformer the product's transformer
+   * @return a handle to retransform and to withdraw early
+   * @since 1.0.1
+   */
+  default InstrumentationHandle.Retransformation registerTransformer(
+      java.lang.instrument.ClassFileTransformer transformer) {
+    throw new IllegalStateException(
+        "Plugin '"
+            + getPluginName()
+            + "' cannot register a ClassFileTransformer: the agent has no Instrumentation handle");
+  }
+
   default String getConfigEnum(String key, String defaultValue, String... allowedValues) {
     String value = getConfig(key);
     if (value == null) return defaultValue;

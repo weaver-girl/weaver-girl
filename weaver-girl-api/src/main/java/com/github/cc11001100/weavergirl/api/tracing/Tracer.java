@@ -33,6 +33,18 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class Tracer {
 
   private static final ThreadLocal<SpanContext> CURRENT_SPAN = new ThreadLocal<>();
+
+  /**
+   * Parents of the spans created by {@link #startChildSpan} on this thread, so {@link #endSpan}
+   * can restore the parent instead of leaving the thread without one.
+   *
+   * <p>A single current-span slot cannot carry a nesting: an APM plugin opening a span inside a
+   * servlet span, or two plugins each opening one, would lose the outer span at the first
+   * {@code endSpan}. The stack is depth-aligned with {@link #CURRENT_SPAN}: every push pairs with
+   * exactly one pop in {@code endSpan}, so a thread's stack drains as its spans end.
+   */
+  private static final ThreadLocal<java.util.ArrayDeque<SpanContext>> PARENT_SPANS =
+      new ThreadLocal<>();
   private static final CompositeSpanCompletionListener completionListeners =
       new CompositeSpanCompletionListener();
   private static final String TRACE_ID_HEADER = "X-Trace-Id";
@@ -91,6 +103,33 @@ public final class Tracer {
     return CURRENT_SPAN.get();
   }
 
+  /** Record {@code parent} as the span to restore when the span now current ends. */
+  private static void pushParent(SpanContext parent) {
+    java.util.ArrayDeque<SpanContext> stack = PARENT_SPANS.get();
+    if (stack == null) {
+      stack = new java.util.ArrayDeque<>();
+      PARENT_SPANS.set(stack);
+    }
+    stack.push(parent);
+  }
+
+  /**
+   * Restore the span that was current before the one just ended, or clear the thread's span when
+   * there is no parent (the span was a root, or it was installed with {@link #setCurrentSpan}).
+   */
+  private static void restoreParentOrClear() {
+    java.util.ArrayDeque<SpanContext> stack = PARENT_SPANS.get();
+    SpanContext parent = stack == null ? null : stack.poll();
+    if (parent == null) {
+      CURRENT_SPAN.remove();
+      if (stack != null && stack.isEmpty()) {
+        PARENT_SPANS.remove();
+      }
+    } else {
+      CURRENT_SPAN.set(parent);
+    }
+  }
+
   /** Check if a span is active. */
   public static boolean hasCurrentSpan() {
     return CURRENT_SPAN.get() != null;
@@ -99,6 +138,7 @@ public final class Tracer {
   /** Clear the current span. Must be called in finally blocks. */
   public static void clearCurrentSpan() {
     CURRENT_SPAN.remove();
+    PARENT_SPANS.remove();
   }
 
   // ===== Span creation =====
@@ -157,6 +197,7 @@ public final class Tracer {
             .operationName(operationName)
             .build();
     TracingMetrics.recordSpanStarted();
+    pushParent(parent);
     CURRENT_SPAN.set(child);
     return child;
   }
@@ -204,7 +245,7 @@ public final class Tracer {
     }
 
     SpanContext finalSpan = builder.build();
-    CURRENT_SPAN.remove();
+    restoreParentOrClear();
 
     // Enrichment runs before governance, so a processor can redact or drop a tag an enricher added.
     SpanContext enriched = TagEnrichers.apply(finalSpan);

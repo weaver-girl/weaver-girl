@@ -45,7 +45,7 @@ import java.lang.annotation.Target;
  * @see Before
  * @see After
  * @see Around
- * @since 2.0.0
+ * @since 1.0.0
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)

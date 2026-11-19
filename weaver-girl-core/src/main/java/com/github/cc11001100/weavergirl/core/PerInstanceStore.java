@@ -14,7 +14,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * most application objects whose lifetimes are bounded by the request/thread scope. For long-lived
  * singletons, the per-instance overhead is negligible because there is only one entry.
  *
- * @since 2.0.0
+ * <p><strong>The store holds the target strongly</strong>, keyed by identity. A pointcut that is
+ * instance-bound (pertarget/perthis) over short-lived objects — one per request, one per message —
+ * therefore retains every one of them until {@link #remove(Object)} is called or the JVM exits.
+ * Call it from the interceptor that owns the object's lifetime; nothing in the framework can guess
+ * when a target is done.
+ *
+ * @since 1.0.0
  */
 public class PerInstanceStore {
 

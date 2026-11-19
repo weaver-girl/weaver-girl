@@ -1261,6 +1261,56 @@ public class PluginContractLoadingTest {
   }
 
   @Test
+  void aJarThatOnlyDeclaresAMinimumAgentVersionIsStillChecked() throws Exception {
+    // Only plugin.minimumAgentVersion, no plugin.apiVersion. The loader used to skip the whole
+    // compatibility check unless apiVersion was present, so this jar would have loaded silently.
+    java.io.File jar =
+        pluginJar(
+            "needs-newer-agent.jar",
+            "com.example.NeedsNewerAgent",
+            "needs-newer",
+            "new String[0]",
+            null);
+    // Add the minimumAgentVersion entry to the jar that already exists in tempDir. apiVersion stays
+    // absent, which is the case the loader used to skip.
+    java.nio.file.Path jarPath = jar.toPath();
+    java.util.Map<String, byte[]> entries = new java.util.LinkedHashMap<>();
+    try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(jar)) {
+      java.util.Enumeration<? extends java.util.zip.ZipEntry> e = zip.entries();
+      while (e.hasMoreElements()) {
+        java.util.zip.ZipEntry entry = e.nextElement();
+        byte[] content;
+        try (java.io.InputStream in = zip.getInputStream(entry)) {
+          content = readFully(in);
+        }
+        entries.put(entry.getName(), content);
+      }
+    }
+    entries.put(
+        "META-INF/weaver-girl-plugin.properties",
+        ("plugin.name=needs-newer\nplugin.version=1.0.0\nplugin.minimumAgentVersion=99.0.0\n")
+            .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    try (java.util.zip.ZipOutputStream out =
+        new java.util.zip.ZipOutputStream(java.nio.file.Files.newOutputStream(jarPath))) {
+      for (java.util.Map.Entry<String, byte[]> entry : entries.entrySet()) {
+        out.putNextEntry(new java.util.zip.ZipEntry(entry.getKey()));
+        out.write(entry.getValue());
+        out.closeEntry();
+      }
+    }
+
+    PluginLoadOrder.ORDER.clear();
+    PluginLoader loader = new PluginLoader();
+    List<WeaverPlugin> loaded =
+        loader.loadPluginsFromDirectory(
+            tempDir.toString(), new DefaultInterceptorRegistry(), Collections.emptyMap());
+
+    assertTrue(
+        loaded.isEmpty(),
+        "a jar that requires a newer agent must not be activated even without an apiVersion");
+  }
+
+  @Test
   void jarWithoutContractDeclarationStillLoads() throws Exception {
     pluginJar("plain.jar", "com.example.PlainPlugin", "plain", "new String[0]", null);
 

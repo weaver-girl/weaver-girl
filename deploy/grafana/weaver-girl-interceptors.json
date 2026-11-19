@@ -11,7 +11,7 @@
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
-        { "expr": "rate(weaver_girl_intercept_total[5m])", "legendFormat": "Intercepts/sec" }
+        { "expr": "sum(rate(weavergirl_interceptor_invocations_total[5m]))", "legendFormat": "Intercepts/sec" }
       ],
       "fieldConfig": {
         "defaults": { "unit": "reqps" },
@@ -23,12 +23,12 @@
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "targets": [
-        { "expr": "histogram_quantile(0.5, rate(weaver_girl_intercept_duration_bucket[5m]))", "legendFormat": "p50" },
-        { "expr": "histogram_quantile(0.95, rate(weaver_girl_intercept_duration_bucket[5m]))", "legendFormat": "p95" },
-        { "expr": "histogram_quantile(0.99, rate(weaver_girl_intercept_duration_bucket[5m]))", "legendFormat": "p99" }
+        { "expr": "histogram_quantile(0.5, sum by (le) (rate(weavergirl_interceptor_duration_seconds_bucket[5m])))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(weavergirl_interceptor_duration_seconds_bucket[5m])))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(weavergirl_interceptor_duration_seconds_bucket[5m])))", "legendFormat": "p99" }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "ms" },
+        "defaults": { "unit": "s" },
         "overrides": []
       }
     },
@@ -37,7 +37,7 @@
       "type": "stat",
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
       "targets": [
-        { "expr": "weaver_girl_interceptor_definitions", "legendFormat": "Definitions" }
+        { "expr": "weavergirl_agent_registered_interceptors", "legendFormat": "Definitions" }
       ]
     },
     {
@@ -45,7 +45,7 @@
       "type": "stat",
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
       "targets": [
-        { "expr": "weaver_girl_plugin_count", "legendFormat": "Plugins" }
+        { "expr": "count(count by (plugin) (weavergirl_plugin_state))", "legendFormat": "Plugins" }
       ]
     },
     {
@@ -53,45 +53,38 @@
       "type": "stat",
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 8 },
       "targets": [
-        { "expr": "weaver_girl_transformed_classes", "legendFormat": "Classes" }
+        { "expr": "weavergirl_agent_transformations_total", "legendFormat": "Classes" }
       ]
     },
     {
-      "title": "Sampling Rate",
-      "type": "gauge",
+      "title": "Interception Errors",
+      "type": "stat",
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 8 },
       "targets": [
-        { "expr": "weaver_girl_sampling_rate", "legendFormat": "Rate" }
+        { "expr": "sum(weavergirl_interceptor_errors_total)", "legendFormat": "Errors" }
       ],
       "fieldConfig": {
-        "defaults": { "min": 0, "max": 100, "unit": "none" },
+        "defaults": { "unit": "none", "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } },
         "overrides": []
       }
     },
     {
-      "title": "Circuit Breaker Status",
+      "title": "Slow Calls",
       "type": "stat",
       "gridPos": { "h": 4, "w": 12, "x": 0, "y": 12 },
       "targets": [
-        { "expr": "weaver_girl_circuit_breaker_open", "legendFormat": "{{interceptor}}" }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "mappings": [
-            { "type": "value", "options": { "0": { "text": "Closed", "color": "green" }, "1": { "text": "Open", "color": "red" } } }
-          ]
-        }
-      }
+        { "expr": "sum by (interceptor) (weavergirl_interceptor_slow_calls_total)", "legendFormat": "{{interceptor}}" }
+      ]
     },
     {
       "title": "Top 10 Slowest Interceptors",
       "type": "barchart",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "targets": [
-        { "expr": "topk(10, weaver_girl_intercept_duration_sum / weaver_girl_intercept_total)", "legendFormat": "{{interceptor}}" }
+        { "expr": "topk(10, sum by (interceptor) (weavergirl_interceptor_duration_seconds_sum) / sum by (interceptor) (weavergirl_interceptor_invocations_total))", "legendFormat": "{{interceptor}}" }
       ],
       "fieldConfig": {
-        "defaults": { "unit": "ms" },
+        "defaults": { "unit": "s" },
         "overrides": []
       }
     }

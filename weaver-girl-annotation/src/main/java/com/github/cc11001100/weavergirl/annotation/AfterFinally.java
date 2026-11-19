@@ -37,7 +37,7 @@ import java.lang.annotation.Target;
  * @see WeaveClass
  * @see After
  * @see OnException
- * @since 2.1.0
+ * @since 1.0.0
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)

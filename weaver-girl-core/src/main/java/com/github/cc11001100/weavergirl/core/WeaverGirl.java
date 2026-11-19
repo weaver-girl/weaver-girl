@@ -44,6 +44,17 @@ public class WeaverGirl {
   private final InterceptorRegistry registry;
   private final PluginLoader pluginLoader;
   private com.github.cc11001100.weavergirl.core.plugin.PluginDirectoryWatcher pluginDirectoryWatcher;
+  /**
+   * The adaptive-sampling monitor. It was written but never started, which made the documented
+   * "adaptive sampling" behaviour a no-op: nothing ever adjusted the rate under load.
+   */
+  private com.github.cc11001100.weavergirl.core.sampling.SamplingMonitor samplingMonitor;
+
+  /**
+   * Periodic state snapshot, or null when {@code stateFile} is not configured. The class existed
+   * with no production caller, so the documented "state persistence" capability never ran.
+   */
+  private com.github.cc11001100.weavergirl.core.persistence.AgentStatePersister statePersister;
   private final IntroductionRegistry introductionRegistry;
   private Instrumentation instrumentation;
   private WeaverTransformer transformer;
@@ -203,9 +214,35 @@ public class WeaverGirl {
       // Apply configuration to core components
       applyCoreConfig(pluginConfig);
 
+      // Adaptive sampling: the monitor is what actually raises the sampling rate under load
+      // (SamplingController.adaptRate had no caller before this). Off only when adaptiveAdapt=false.
+      if (!"false".equalsIgnoreCase(pluginConfig.get("adaptiveSampling"))) {
+        weaverGirl.samplingMonitor =
+            new com.github.cc11001100.weavergirl.core.sampling.SamplingMonitor(
+                SamplingController.getInstance());
+        String interval = pluginConfig.get("samplingCheckIntervalSeconds");
+        if (interval != null) {
+          try {
+            weaverGirl.samplingMonitor.setCheckIntervalSeconds(Long.parseLong(interval.trim()));
+          } catch (NumberFormatException notANumber) {
+            log.warn("Invalid samplingCheckIntervalSeconds '{}', using the default", interval);
+          }
+        }
+        weaverGirl.samplingMonitor.start();
+      }
+
       // Span export (otlpEndpoint / spanExport) and the version check (updateCheckEndpoint) are
       // runtime plugins. They start themselves when their config key is set and stop themselves in
       // destroy(), so starting them here too would run a second exporter and a second checker.
+
+      // State persistence: opt-in through stateFile, which names the snapshot directory. The
+      // snapshot records versions, counts and sampling rate so an operator can see what a
+      // previous run looked like; it is not replayed into the new run.
+      String stateFile = pluginConfig.get("stateFile");
+      if (stateFile != null && !stateFile.trim().isEmpty()) {
+        weaverGirl.startStatePersistence(
+            stateFile.trim(), parsePositiveLong(pluginConfig.get("statePersistIntervalMs"), 60_000L));
+      }
 
       // Initialize DynamicConfigManager with initial config and runtime listener
       weaverGirl.dynamicConfigManager.loadFromSource(pluginConfig, "bootstrap");
@@ -337,6 +374,14 @@ public class WeaverGirl {
     // The dynamic refresh scheduler stops with its plugin, inside destroyAll() below.
     if (pluginDirectoryWatcher != null) {
       pluginDirectoryWatcher.stop();
+    }
+    if (samplingMonitor != null) {
+      samplingMonitor.stop();
+    }
+    if (statePersister != null) {
+      // Take one last snapshot before the counters go away, then stop the scheduler.
+      statePersister.takeSnapshot();
+      statePersister.stop();
     }
     pluginLoader.destroyAll();
 
@@ -547,7 +592,9 @@ public class WeaverGirl {
         pluginLoader.unloadMissingJars(pluginDir);
     if (pluginLoader.getLoadedPlugins().size() != before || !removed.isEmpty()) {
       if (transformer != null) {
-        retransformLoadedClasses();
+        // A newly loaded plugin's definitions were registered after install, so the matcher chain
+        // has to be rebuilt before the retransform is worth anything.
+        transformer.reinstallAndRetransform();
       } else {
         Runnable retransform =
             com.github.cc11001100.weavergirl.core.InterceptorHolder.getRetransformHook();
@@ -572,7 +619,10 @@ public class WeaverGirl {
   public void refresh() {
     InterceptorHolder.invalidateSnapshot();
     if (transformer != null) {
-      retransformLoadedClasses();
+      // A definition registered since the last install needs a rebuilt matcher chain, not just a
+      // retransform: the installed chain cannot see it. reinstallAndRetransform() is a no-op
+      // rebuild when nothing changed.
+      transformer.reinstallAndRetransform();
     }
     log.info("Interceptor registry manually refreshed");
   }
@@ -594,6 +644,68 @@ public class WeaverGirl {
    *
    * @return the number of classes that were retransformed
    */
+  /**
+   * Rebuild the transform chain if definitions were added or removed since the last install, then
+   * retransform the already-loaded classes that now match.
+   *
+   * <p>This is what every reload path calls. A plain {@link #retransformLoadedClasses()} is only
+   * useful when the definition set is unchanged (dynamic attach), because the chain ByteBuddy
+   * installed fixes which classes it ever visits: a definition registered afterwards is invisible to
+   * it even though the advice would dispatch to it.
+   *
+   * @return the number of classes retransformed
+   */
+  public int reloadAndRetransform() {
+    if (transformer != null) {
+      return transformer.reinstallAndRetransform();
+    }
+    return 0;
+  }
+
+  /** Start periodic state snapshots into {@code directory}. Package-visible for tests. */
+  void startStatePersistence(String directory, long intervalMs) {
+    java.nio.file.Path dir;
+    try {
+      dir = java.nio.file.Paths.get(directory);
+    } catch (RuntimeException invalidPath) {
+      log.warn("Invalid stateFile '{}', state persistence stays off: {}", directory, invalidPath.getMessage());
+      return;
+    }
+    statePersister =
+        new com.github.cc11001100.weavergirl.core.persistence.AgentStatePersister(
+            this::captureStateSnapshot,
+            dir,
+            intervalMs);
+    statePersister.restore();
+    statePersister.start();
+    log.info("State persistence enabled: dir={}, intervalMs={}", directory, intervalMs);
+  }
+
+  /** The state recorded in a snapshot: versions, counts and the sampling/breaker settings. */
+  private com.github.cc11001100.weavergirl.core.persistence.AgentStateSnapshot captureStateSnapshot() {
+    com.github.cc11001100.weavergirl.core.status.AgentStatus status = AgentStatus.getInstance();
+    com.github.cc11001100.weavergirl.core.persistence.AgentStateSnapshot snapshot =
+        new com.github.cc11001100.weavergirl.core.persistence.AgentStateSnapshot();
+    snapshot
+        .setInterceptorCount(registry.getAllDefinitions().size())
+        .setTransformedClassCount(status.getTransformedClasses().size())
+        .setAgentUptimeMs(status.getUptimeSeconds() * 1000L)
+        .setSamplingRate(SamplingController.getInstance().getSamplingRate())
+        .setCircuitBreakerThreshold(InterceptorHolder.getCircuitBreakerFailureThreshold());
+    return snapshot;
+  }
+
+
+  /** Package-visible accessor so a test can prove the state persister was started. */
+  com.github.cc11001100.weavergirl.core.persistence.AgentStatePersister getStatePersisterForTest() {
+    return statePersister;
+  }
+
+  /** Package-visible accessor so a test can prove the adaptive-sampling monitor was started. */
+  com.github.cc11001100.weavergirl.core.sampling.SamplingMonitor getSamplingMonitorForTest() {
+    return samplingMonitor;
+  }
+
   public int retransformLoadedClasses() {
     if (transformer == null) {
       return 0;
@@ -928,14 +1040,48 @@ public class WeaverGirl {
       }
     }
 
-    // Circuit breaker configuration (via InterceptorHolder)
-    String cbThreshold = config.get("circuitBreakerThreshold");
-    if (cbThreshold != null) {
-      log.info("Config: circuitBreakerThreshold={} (applied to new instances)", cbThreshold);
+    // Circuit breaker configuration. The breaker is a static singleton (the inlined advice reaches
+    // it parent-first), so this retunes the live instance rather than "new instances" that never
+    // exist. Previously both values were only logged, which made the documented arguments inert.
+    applyCircuitBreakerConfig(config);
+  }
+
+  /** Retune the per-hook breaker from the two documented arguments. */
+  private static void applyCircuitBreakerConfig(java.util.Map<String, String> config) {
+    int threshold = parsePositiveInt(config.get("circuitBreakerThreshold"), 0);
+    long cooldown = parsePositiveLong(config.get("circuitBreakerCooldownMs"), 0L);
+    if (threshold > 0 || cooldown > 0) {
+      InterceptorHolder.configureCircuitBreaker(threshold, cooldown);
+      log.info(
+          "Config: circuitBreakerThreshold={}, circuitBreakerCooldownMs={}",
+          InterceptorHolder.getCircuitBreakerFailureThreshold(),
+          InterceptorHolder.getCircuitBreakerCooldownMillis());
     }
-    String cbCooldown = config.get("circuitBreakerCooldownMs");
-    if (cbCooldown != null) {
-      log.info("Config: circuitBreakerCooldownMs={} (applied to new instances)", cbCooldown);
+  }
+
+  private static int parsePositiveInt(String value, int fallback) {
+    if (value == null) {
+      return fallback;
+    }
+    try {
+      int parsed = Integer.parseInt(value.trim());
+      return parsed > 0 ? parsed : fallback;
+    } catch (NumberFormatException notANumber) {
+      log.warn("Invalid integer '{}', keeping the current value", value);
+      return fallback;
+    }
+  }
+
+  private static long parsePositiveLong(String value, long fallback) {
+    if (value == null) {
+      return fallback;
+    }
+    try {
+      long parsed = Long.parseLong(value.trim());
+      return parsed > 0 ? parsed : fallback;
+    } catch (NumberFormatException notANumber) {
+      log.warn("Invalid long '{}', keeping the current value", value);
+      return fallback;
     }
   }
 
@@ -983,6 +1129,20 @@ public class WeaverGirl {
           } catch (NumberFormatException e) {
             log.warn("[DynamicConfig] Invalid samplingThreshold '{}'", value);
           }
+          break;
+
+        case "circuitBreakerThreshold":
+          InterceptorHolder.configureCircuitBreaker(
+              parsePositiveInt(value, InterceptorHolder.getCircuitBreakerFailureThreshold()),
+              InterceptorHolder.getCircuitBreakerCooldownMillis());
+          log.info("[DynamicConfig] Applied: circuitBreakerThreshold={}", value);
+          break;
+
+        case "circuitBreakerCooldownMs":
+          InterceptorHolder.configureCircuitBreaker(
+              InterceptorHolder.getCircuitBreakerFailureThreshold(),
+              parsePositiveLong(value, InterceptorHolder.getCircuitBreakerCooldownMillis()));
+          log.info("[DynamicConfig] Applied: circuitBreakerCooldownMs={}", value);
           break;
 
         default:

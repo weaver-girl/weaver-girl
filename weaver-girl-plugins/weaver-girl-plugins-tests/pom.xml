@@ -708,6 +708,13 @@
                     </execution>
                 </executions>
             </plugin>
+            <!-- Cross-plugin regression tests only; nothing here is a library consumers use. -->
+            <plugin>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 

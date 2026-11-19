@@ -464,9 +464,66 @@ public class WeaverTransformer {
     }
 
     resettable = agentBuilder.installOn(instrumentation);
+    installedGeneration = registryGeneration();
     log.info(
         "WeaverTransformer installed with {} interceptor definitions",
         registry.getAllDefinitions().size());
+  }
+
+  /**
+   * Generation of the registry this transformer last installed its matchers for.
+   *
+   * <p>ByteBuddy fixes the set of type/method matchers when {@code installOn} runs, so a definition
+   * registered afterwards reaches no class the transformer had not already considered — the advice
+   * would find it, but only in classes that were being woven anyway. Rebuilding the chain is the
+   * only way a runtime registration can take effect on a class that was already loaded.
+   */
+  private volatile long installedGeneration = -1;
+
+  /** The generation of the registry, or a constant for implementations that do not expose one. */
+  private long registryGeneration() {
+    if (registry instanceof com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry) {
+      return ((com.github.cc11001100.weavergirl.core.registry.DefaultInterceptorRegistry) registry)
+          .getGeneration();
+    }
+    return -1;
+  }
+
+  /**
+   * Whether the registry has gained (or lost) definitions since the transformer last installed its
+   * matchers.
+   *
+   * @return true when the installed matcher set is stale
+   */
+  public boolean isStale() {
+    return registryGeneration() != installedGeneration;
+  }
+
+  /**
+   * Rebuild the matcher chain from the current registry, then retransform the already-loaded classes
+   * that now match.
+   *
+   * <p>Called by the reload paths (config watch, plugin directory, a plugin registering after
+   * startup). The previous chain is removed first so a class is not visited twice by two copies of
+   * the advice; the new chain is installed with the same options as the original.
+   *
+   * @return the number of classes retransformed after the rebuild
+   */
+  public int reinstallAndRetransform() {
+    if (instrumentation == null) {
+      return 0;
+    }
+    if (!isStale()) {
+      return retransformLoadedClasses();
+    }
+    if (resettable != null) {
+      // Drop the old chain without retransforming: the new chain installs next and retransforms
+      // below, so a plain reset would just make the JVM visit every class twice.
+      resettable.reset(instrumentation, AgentBuilder.RedefinitionStrategy.RETRANSFORMATION);
+      resettable = null;
+    }
+    install(instrumentation, false);
+    return retransformLoadedClasses();
   }
 
   /**

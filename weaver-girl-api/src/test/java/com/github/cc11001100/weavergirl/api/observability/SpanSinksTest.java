@@ -63,8 +63,8 @@ class SpanSinksTest {
     com.github.cc11001100.weavergirl.api.tracing.SpanContext parent = Tracer.startSpan("parent");
     Tracer.endSpan(null, "OK");
 
-    // endSpan clears the thread's span rather than restoring a stack, so set the parent back
-    // before creating the child under it.
+    // endSpan restores the span that was current before the one it ended; start the parent flow
+    // again so the child is created under it.
     Tracer.setCurrentSpan(parent);
     Tracer.startChildSpan("child");
     Tracer.endSpan(null, "OK");

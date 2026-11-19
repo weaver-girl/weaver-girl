@@ -57,10 +57,18 @@ public class InterceptorDefinition {
    * submitted to an {@code Executor}.
    */
   public enum AdviceMode {
+    /** Method advice; the interceptor may read/override the return value and exceptions. */
     STANDARD,
+    /**
+     * Method advice that binds the first eight arguments writably, for {@code setArgument}.
+     * Skipped for bootstrap-loaded classes, and indices beyond the method's arity are ignored.
+     */
     ARGUMENT_REWRITE,
+    /** Field advice on accessors; see {@link FieldInterceptor} for what it can and cannot see. */
     FIELD,
+    /** Method-exit advice carrying the throwable; see {@link CatchInterceptor} for the semantics. */
     CATCH,
+    /** Class-initializer advice: one invocation per class, cannot be skipped. */
     STATIC_INIT
   }
 
@@ -74,6 +82,18 @@ public class InterceptorDefinition {
   private final String catchExceptionTypeName;
   /** The fully-qualified aspect class name, used for {@code @DeclarePrecedence} resolution. */
   private final String aspectClassName;
+
+  /**
+   * Whether the woven advice should populate {@link MethodInvocation#getCallerClass()} and its
+   * siblings for this definition.
+   *
+   * <p>Off by default. Capturing the call site costs a stack walk ({@code new
+   * Throwable().getStackTrace()} plus a {@code Class.forName}) on <em>every</em> intercepted
+   * invocation — about 1 µs per call on a current JVM, which dwarfs the interception itself. Only a
+   * definition whose interceptor reads the caller pays that price; set it with {@link
+   * #withCallSiteTracking(boolean)} or {@code AbstractPlugin}'s builder when the hook needs it.
+   */
+  private volatile boolean callSiteTracking;
 
   /**
    * Creates a new interceptor definition with default priority (0).
@@ -188,7 +208,7 @@ public class InterceptorDefinition {
    * @param aspectClassName the fully-qualified aspect class name this definition was derived from,
    *     or null for programmatically registered definitions; drives {@code @DeclarePrecedence}
    *     resolution
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public InterceptorDefinition(
       String name,
@@ -221,6 +241,34 @@ public class InterceptorDefinition {
     this.fieldMatcher = fieldMatcher;
     this.catchExceptionTypeName = catchExceptionTypeName;
     this.aspectClassName = aspectClassName;
+    this.callSiteTracking = false;
+  }
+
+  /**
+   * Returns a copy of this definition that also populates the call-site fields ({@link
+   * MethodInvocation#getCallerClass()} and friends) on every invocation.
+   *
+   * <p>Use it only when the interceptor actually reads the caller: tracking costs a stack walk per
+   * intercepted call. The copy keeps every other field and name, so registering it replaces the
+   * original under the same name.
+   *
+   * @param enabled true to track the call site
+   * @return a definition with the requested tracking setting
+   * @since 1.0.1
+   */
+  public InterceptorDefinition withCallSiteTracking(boolean enabled) {
+    this.callSiteTracking = enabled;
+    return this;
+  }
+
+  /**
+   * Returns whether the advice should populate the call-site fields for this definition.
+   *
+   * @return true when call-site tracking was requested
+   * @since 1.0.1
+   */
+  public boolean isCallSiteTracking() {
+    return callSiteTracking;
   }
 
   /**
@@ -270,7 +318,7 @@ public class InterceptorDefinition {
    * registered definitions it falls back to the definition name.
    *
    * @return the aspect class name, or the definition name if not available
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public String getAspectClassName() {
     // Explicit FQN set by AnnotationPluginLoader at registration time. This is the only value

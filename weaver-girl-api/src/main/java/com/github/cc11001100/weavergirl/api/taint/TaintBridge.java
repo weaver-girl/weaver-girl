@@ -14,6 +14,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  *
  * <p>Tags live on a per-thread stack of request scopes. Capture copies that stack; restore installs
  * the copy; a later restore of the worker's previous snapshot puts the worker's own scopes back.
+ *
+ * @since 1.0.0
  */
 public final class TaintBridge {
 

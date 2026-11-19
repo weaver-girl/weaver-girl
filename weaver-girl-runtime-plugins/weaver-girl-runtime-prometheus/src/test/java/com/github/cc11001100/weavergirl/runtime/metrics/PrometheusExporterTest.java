@@ -160,10 +160,10 @@ class PrometheusExporterTest {
 
   @Test
   void startHttpServer_servesMetricsEndpoint() throws Exception {
-    // Use a high port to avoid conflicts
-    exporter.start(19400);
+    int port = freePort();
+    exporter.start(port);
 
-    URL url = new URL("http://localhost:19400/metrics");
+    URL url = new URL("http://localhost:" + port + "/metrics");
     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
     conn.setRequestMethod("GET");
 
@@ -1228,5 +1228,12 @@ class PrometheusExporterTest {
 
     String metrics = exporter.renderMetrics();
     assertTrue(metrics.contains("plugin=\"jdbc\\\"injection\""));
+  }
+
+  /** A port the OS reports as free, so a parallel run on this machine cannot collide. */
+  private static int freePort() throws java.io.IOException {
+    try (java.net.ServerSocket socket = new java.net.ServerSocket(0)) {
+      return socket.getLocalPort();
+    }
   }
 }

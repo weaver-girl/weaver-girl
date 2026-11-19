@@ -6,6 +6,8 @@ import java.util.List;
  * Command-execution sink hook used by {@code ProcessBuilder.start} and {@code Runtime.exec}
  * advice. Observes arguments and emits a finding only when one of them is tainted. Does not start
  * a process.
+ *
+ * @since 1.0.0
  */
 public final class CommandExecutionSink {
 

@@ -63,10 +63,10 @@ public class SampleApplication {
     System.out.println("  GET  /users?name=X     - Add a user named X");
     System.out.println("  GET  /users?slow=true  - Trigger a slow query");
     System.out.println();
-    System.out.println("Try: curl http://localhost:8080/users?name=Alice");
-    System.out.println("Try: curl http://localhost:8080/users?name=Bob");
-    System.out.println("Try: curl http://localhost:8080/users         (list all)");
-    System.out.println("Try: curl http://localhost:8080/users?slow=true (slow query)");
+    System.out.println("Try: curl http://localhost:" + PORT + "/users?name=Alice");
+    System.out.println("Try: curl http://localhost:" + PORT + "/users?name=Bob");
+    System.out.println("Try: curl http://localhost:" + PORT + "/users         (list all)");
+    System.out.println("Try: curl http://localhost:" + PORT + "/users?slow=true (slow query)");
     System.out.println();
 
     // Auto-demo: send some requests to show the agent working

@@ -1,6 +1,7 @@
 package com.github.cc11001100.weavergirl.core.plugin;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -121,6 +122,36 @@ class PluginLoaderBranchTest {
     }
     assertFalse(loader.unloadMissingJars(tempDir.toString()).isEmpty());
     assertEquals(0, loader.getLoadedPlugins().size());
+  }
+
+  @Test
+  void unloadingAJarClosesItsClassLoaderSoTheJvmCanCollectIt() throws Exception {
+    pluginJar("quiet.jar", "fixture.QuietPlugin", "quiet", "");
+
+    PluginLoader loader = new PluginLoader();
+    DefaultInterceptorRegistry registry = new DefaultInterceptorRegistry();
+    loader.loadPluginsFromDirectory(tempDir.toString(), registry, Collections.emptyMap());
+    assertEquals(1, loader.getLoadedPlugins().size());
+
+    // Hold only a weak reference: if anything still names the loader, the GC will not clear it.
+    java.lang.ref.WeakReference<java.lang.ClassLoader> loaderRef =
+        new java.lang.ref.WeakReference<>(
+            loader.getLoadedPlugins().get(0).getClass().getClassLoader());
+    for (File jar : tempDir.toFile().listFiles()) {
+      jar.delete();
+    }
+    assertFalse(loader.unloadMissingJars(tempDir.toString()).isEmpty());
+    // Drop the strong reference the test itself holds through the loaded list.
+    assertEquals(0, loader.getLoadedPlugins().size());
+    registry.clear();
+
+    for (int i = 0; i < 5 && loaderRef.get() != null; i++) {
+      System.gc();
+      Thread.sleep(20);
+    }
+    assertNull(
+        loaderRef.get(),
+        "the unloaded plugin's class loader is still reachable, so the jar and its classes leak");
   }
 
   @Test

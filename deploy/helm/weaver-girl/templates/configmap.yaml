@@ -8,4 +8,9 @@ metadata:
 data:
   weaver.yml: |
     {{- .Values.yamlConfig | default "# Empty configuration\n" | nindent 4 }}
+  # The agent reads these from agent arguments, not from weaver.yml (the YAML spellings of
+  # sampling/bind keys are not wired). The init container turns this file into
+  # -javaagent:...=metricsPort=...,healthPort=...,... so `--set config.metricsPort=` has an effect
+  # instead of only changing a value nothing reads.
+  agent-args: {{ include "weaver-girl.agentArgs" . | quote }}
 {{- end }}

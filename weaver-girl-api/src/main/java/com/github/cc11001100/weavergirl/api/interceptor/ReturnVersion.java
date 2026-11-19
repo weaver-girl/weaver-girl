@@ -77,7 +77,7 @@ public class ReturnVersion {
    * @param methodSignature the method or field signature (e.g. {@code "com.example.Service.process"})
    * @param snapshot the snapshot to publish, or null to leave the last snapshot in place
    * @see #latestSnapshot(String)
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public static void recordSnapshot(String methodSignature, ReturnSnapshot snapshot) {
     if (snapshot != null) {
@@ -95,7 +95,7 @@ public class ReturnVersion {
    * @param methodSignature the method or field signature
    * @return the last published snapshot, or null
    * @see #recordSnapshot(String, ReturnSnapshot)
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public static ReturnSnapshot latestSnapshot(String methodSignature) {
     return LATEST_SNAPSHOT.get(methodSignature);
@@ -107,7 +107,7 @@ public class ReturnVersion {
    * <p>This is primarily intended for testing.
    *
    * @param methodSignature the method or field signature
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public static void clearSnapshot(String methodSignature) {
     LATEST_SNAPSHOT.remove(methodSignature);

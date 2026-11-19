@@ -249,6 +249,11 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
           plugins = loader == null ? null : PLUGINS_BY_LOADER.get(loader);
       if (plugins != null) {
         plugins.remove(plugin);
+        // Drop the loader key with the plugin: an empty list keyed by the loader still pins that
+        // loader — and every class it defined — for the life of the JVM.
+        if (plugins.isEmpty()) {
+          PLUGINS_BY_LOADER.remove(loader, plugins);
+        }
       }
       for (java.util.concurrent.CopyOnWriteArrayList<
               com.github.cc11001100.weavergirl.api.plugin.WeaverPlugin>

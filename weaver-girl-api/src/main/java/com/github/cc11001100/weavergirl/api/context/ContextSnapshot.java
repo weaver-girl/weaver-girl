@@ -179,7 +179,7 @@ public final class ContextSnapshot {
    * the ThreadContext values. For other propagator types, the returned map may be empty.
    *
    * @return immutable map of context values
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public Map<String, Object> values() {
     Map<String, Object> threadContext = getThreadContext();

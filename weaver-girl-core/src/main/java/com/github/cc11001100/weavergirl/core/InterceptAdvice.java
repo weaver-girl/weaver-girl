@@ -74,11 +74,13 @@ public class InterceptAdvice {
       MethodInvocation invocation =
           MethodInvocationPool.acquire(targetClass, methodName, method, target, arguments);
 
-      // Capture caller information from the call stack.
-      // Delegated to InterceptorHolder to keep the advice class free of
-      // stack-walking code (ByteBuddy validates the entire advice class
-      // during inlining and rejects methods that reference getStackTrace).
-      InterceptorHolder.captureCaller(invocation);
+      // Call-site capture is opt-in per definition: a stack walk plus a Class.forName costs about
+      // 1 µs per call, so only a hook that actually reads getCallerClass() asks for it. Delegated to
+      // InterceptorHolder because ByteBuddy rejects an advice method that references
+      // getStackTrace.
+      if (InterceptorHolder.tracksCallSite(className)) {
+        InterceptorHolder.captureCaller(invocation);
+      }
 
       // cflow tracking: push current method onto the cflow stack before evaluating
       // runtime conditions, so nested cflow expressions can see this method in their

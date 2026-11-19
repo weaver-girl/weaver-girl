@@ -32,6 +32,27 @@ class GracefulDegradationManagerTest {
   }
 
   @Test
+  void emergencyModeCanBeLeftWithoutRestarting() {
+    com.github.cc11001100.weavergirl.core.switches.GlobalInterceptionSwitch.setEnabled(true, "test");
+    GracefulDegradationManager.enterEmergencyMode("test");
+    assertTrue(GracefulDegradationManager.isEmergencyMode());
+    assertFalse(
+        com.github.cc11001100.weavergirl.core.switches.GlobalInterceptionSwitch.isEnabled());
+
+    assertTrue(GracefulDegradationManager.exitEmergencyMode("operator"));
+    assertFalse(GracefulDegradationManager.isEmergencyMode());
+    assertTrue(
+        com.github.cc11001100.weavergirl.core.switches.GlobalInterceptionSwitch.isEnabled(),
+        "leaving emergency mode must turn interception back on");
+    assertEquals(1, com.github.cc11001100.weavergirl.core.sampling.SamplingController
+        .getInstance().getSamplingRate(), "the sampling cap must be lifted");
+
+    assertFalse(
+        GracefulDegradationManager.exitEmergencyMode("again"),
+        "leaving a mode the agent is not in is a no-op");
+  }
+
+  @Test
   void enterEmergencyMode_disablesInterception() {
     assertTrue(GlobalInterceptionSwitch.isEnabled());
     GracefulDegradationManager.enterEmergencyMode("test");

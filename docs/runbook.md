@@ -87,6 +87,9 @@ curl http://localhost:9401/ready
 - **503** = Agent 未就绪（拦截器数量为 0）
 - 用于 Kubernetes readinessProbe
 
+> 若该工作负载本来就不注册任何拦截器（只挂能力 jar、或全部插件被禁用），`/ready` 会一直
+> 503、Pod 永远不到 Ready。这类部署把 readiness 探针改到 `/health`。
+
 ### Kubernetes 示例
 
 ```yaml
@@ -226,16 +229,26 @@ jsonEvents=true \
 
 ## 8. 动态挂载（无需重启）
 
+agent jar 没有 `Main-Class`，不能用 `java -jar` 启动；`agentmain` 需要由 attach API 调用。
+
 ```bash
 # 查找目标 JVM PID
 jps -l
 
-# 动态挂载 Agent
-java -jar weaver-girl-agent.jar <pid> "config=/path/to/weaver.yml"
+# 方式一：JDK 自带的 jdk.attach（JDK 9+），或在代码里用
+#   com.sun.tools.attach.VirtualMachine.attach(pid).loadAgent("/path/to/weaver-girl-agent.jar",
+#       "config=/path/to/weaver.yml")
+# 方式二：ByteBuddy Agent 的 attach 入口
+#   net.bytebuddy.agent.ByteBuddyAgent.attach(new File("weaver-girl-agent.jar"), pid,
+#       "config=/path/to/weaver.yml")
 
-# 已转换的类需要 retransform
-# Agent 会自动执行 retransformLoadedClasses()
+# agentmain 挂上后会自行 retransformLoadedClasses()；JDK 21+ 默认禁止动态挂载，
+# 目标进程需要 -XX:+EnableDynamicAgentLoading，或改用启动期 -javaagent。
 ```
+
+> 注意两点：同一进程**重复 attach 会再装一层 transformer 并重复加载插件**（当前没有
+> 幂等守卫）；agent 也不提供 detach/反织入入口，卸载需要重启进程。详见
+> [`release-assessment-2026-11-19.md` §4.3](release-assessment-2026-11-19.md)。
 
 ## 9. 升级指南
 

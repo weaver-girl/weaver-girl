@@ -14,7 +14,7 @@ import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
  * <p>The start time is held in a {@link ThreadLocal}, so a call that begins on one thread and ends on
  * another records nothing rather than a wrong duration.
  *
- * @since 2.2.0
+ * @since 1.0.0
  */
 public class TimingInterceptor implements Interceptor {
 

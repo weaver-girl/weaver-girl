@@ -39,7 +39,7 @@ public class SpanLink {
    * Reference type for this link, e.g. {@link SpanReferenceType#CHILD_OF} or {@link
    * SpanReferenceType#FOLLOWS_FROM}.
    *
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public SpanReferenceType getReferenceType() {
     return referenceType;

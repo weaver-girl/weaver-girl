@@ -87,8 +87,8 @@ interceptors:
 - **Bootstrap Class Injection**: Intercept `java.*` and `javax.*` classes
 - **Dynamic Attach**: Runtime attachment via `agentmain` with retransformation
 - **Hot Reload**: YAML config changes applied without restart
-- **Circuit Breaker**: Automatic disable of failing interceptors (configurable threshold & cooldown)
-- **Adaptive Sampling**: Reduce overhead under high load (configurable rate & threshold)
+- **Circuit Breaker**: Automatic disable of failing (or consistently slow) interceptors; `circuitBreakerThreshold` / `circuitBreakerCooldownMs` retune the live breaker, including at runtime
+- **Adaptive Sampling**: A monitor raises the sampling rate when the invocation rate exceeds `samplingThreshold`; `adaptiveSampling=false` turns the thread off
 - **Advanced Sampling**: SPI strategy interface with fixed-rate and probabilistic strategies
 - **Dynamic Config Center**: Runtime config changes with listeners, snapshots, rollback, and audit trail
 - **Multi-tenant Isolation**: Per-tenant config, sampling, and context propagation
@@ -108,35 +108,37 @@ interceptors:
 - **W3C Trace Context**: Full traceparent/tracestate propagation across services
 - **Config Validation**: Schema-based config validation with error/warning reporting
 - **Plugin Health**: Runtime health monitoring for all loaded plugins
-- **State Persistence**: Agent state snapshot/restore across JVM restarts
+- **State Persistence**: Periodic agent-state snapshots to a directory (`stateFile`), with a final snapshot on shutdown; a snapshot from a previous run is logged at startup
 - **Quality Gates**: JaCoCo (≥80% instructions / ≥70% branches on the engine and runtime modules), SpotBugs (High), Checkstyle enforced in build
 
 ## Programmatic API
 
 ```java
-// Inside your own WeaverPlugin implementation:
+// Inside your own WeaverPlugin implementation (extends AbstractPlugin):
 @Override
 public void registerInterceptors(InterceptorRegistry registry) {
-    intercept("com.example.Service")
-        .method("process")
-        .before(inv -> log.debug("Before: {}", inv.getMethodName()))
-        .after(inv -> log.debug("After: {}", inv.getMethodName()))
-        .register(registry);
+    // The builder produces a definition; the registry is what registers it.
+    registry.register(
+        intercept("com.example.Service")
+            .method("process")
+            .before(inv -> log.debug("Before: {}", inv.getMethodName()))
+            .after(inv -> log.debug("After: {}", inv.getMethodName()))
+            .build());
 }
 ```
 
 ## Annotation Mode
 
 ```java
-@WeaveClass(className = "com.example.Service")
+@WeaveClass(target = "com.example.Service")
 public class MyInterceptor {
 
-    @Before(methodName = "process")
+    @Before(value = "process")
     public static void beforeProcess(MethodInvocation invocation) {
         // Called before Service.process()
     }
 
-    @After(methodName = "process")
+    @After(value = "process")
     public static void afterProcess(MethodInvocation invocation) {
         // Called after Service.process()
     }
@@ -163,9 +165,9 @@ the full list is the module directory itself.
 | `okhttp` | OkHttp 3.x/4.x | `slowThreshold` (ms), `trackConnectionPool` |
 | `rabbitmq` | RabbitMQ Client | `slowPublishThreshold` (ms), `slowConsumeThreshold` (ms) |
 | `elasticsearch` | ES REST/Java Client | `slowQueryThreshold` (ms), `trackBulkSize` |
-| `timing` | Any method | `slowThreshold` (ms) |
+| `method-timing` | Any method | `slowThreshold` (ms) |
 | `trace-correlation` | HTTP headers | `headerName` |
-| `exception` | Any exception | `maxStackTraceLength` |
+| `exception-monitor` | Any exception | `maxStackTraceLength` |
 | `logging` | SLF4J / Log4j2 | `logLevel` |
 
 ## Running the Sample

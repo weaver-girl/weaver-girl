@@ -156,8 +156,10 @@ public class WeaverGirlAgent {
       // hook. The plugin has no agent instance of its own, so the agent installs the callback here,
       // once the transformer exists. It goes on InterceptorHolder because that class is resolved
       // parent-first: the plugin, loaded inside the isolated loader, and this code see the same one.
+      // The hook rebuilds the matcher chain first: a reload can add definitions (YAML edit, a
+      // plugin registering at runtime), and the chain installed at startup cannot see them.
       com.github.cc11001100.weavergirl.core.InterceptorHolder.setRetransformHook(
-          () -> weaverGirl.retransformLoadedClasses());
+          () -> weaverGirl.reloadAndRetransform());
 
       // Now register interceptors from YAML config (registry is available)
       if (configPath != null) {

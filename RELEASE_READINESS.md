@@ -1,5 +1,11 @@
 # Weaver-Girl Release Readiness (verified 2026-11-11)
 
+> **Read this together with [`docs/release-assessment-2026-11-19.md`](docs/release-assessment-2026-11-19.md).**
+> This file proves the build, test and packaging chain is green. The 2026-11-19 assessment asks
+> the next question — whether the *capability surface* of a hook base is ready — and finds it is
+> not yet: per-invocation overhead is ~2 µs, runtime-added pointcuts never reach loaded classes,
+> and the management endpoints default to 0.0.0.0 without auth. Clear those before a 1.0.0 GA.
+
 Honest status of the quality gates and what stands between the current tree and a
 shippable release. Every row below is backed by a command run on this machine on
 2026-11-11, not by an older audit.

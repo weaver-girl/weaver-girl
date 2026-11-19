@@ -9,6 +9,14 @@ import com.github.cc11001100.weavergirl.api.pointcut.FieldPointcut;
  * A single implementation may target multiple fields by returning field pointcuts from {@link
  * #fieldPointcuts()}.
  *
+ * <h3>Only accessor methods are seen</h3>
+ *
+ * <p>The hook sits on the accessor — {@code getX()}, {@code isX()}, {@code setX()}, and the JDK's
+ * {@code access$X} bridges — because a raw {@code getfield}/{@code putfield} inside another method
+ * has no hook. A field written directly by, say, a constructor or a builder is therefore invisible,
+ * and a write of {@code null} cannot be distinguished from a read by the exit advice. To observe
+ * those, weave the declaring class's methods instead.
+ *
  * <h3>Callback model</h3>
  *
  * <ul>

@@ -185,6 +185,29 @@ public class InterceptorHolder {
     return circuitBreaker.shouldInvoke(interceptorName);
   }
 
+  /**
+   * Retune the per-hook circuit breaker from agent configuration.
+   *
+   * <p>The breaker is a static singleton because the inlined advice reaches it parent-first; this
+   * is the one seam that lets bootstrap and dynamic config change its thresholds.
+   *
+   * @param failureThreshold consecutive failures that trip a hook, {@code <= 0} keeps the current
+   * @param cooldownMillis cooldown before a retry, {@code <= 0} keeps the current
+   */
+  public static void configureCircuitBreaker(int failureThreshold, long cooldownMillis) {
+    circuitBreaker.configure(failureThreshold, cooldownMillis);
+  }
+
+  /** @return the breaker's current failure threshold, for diagnostics and tests. */
+  public static int getCircuitBreakerFailureThreshold() {
+    return circuitBreaker.getFailureThreshold();
+  }
+
+  /** @return the breaker's current cooldown in millis, for diagnostics and tests. */
+  public static long getCircuitBreakerCooldownMillis() {
+    return circuitBreaker.getCooldownMillis();
+  }
+
   public static void recordInterceptorSuccess(String interceptorName) {
     circuitBreaker.recordSuccess(interceptorName);
   }
@@ -272,6 +295,31 @@ public class InterceptorHolder {
    *
    * @param invocation the MethodInvocation to populate with caller info
    */
+  /**
+   * Whether any definition matching {@code className} asked for call-site tracking.
+   *
+   * <p>Cheap enough to run on every intercepted invocation: the class index lookup is the same one
+   * the dispatch loop needs next, and the check exits as soon as it sees a definition without
+   * tracking (the default). It lives here rather than in the advice because ByteBuddy rejects an
+   * advice method that references the registry lookup helpers.
+   *
+   * @param className the intercepted class
+   * @return true when at least one matching definition opted into call-site tracking
+   */
+  public static boolean tracksCallSite(String className) {
+    InterceptorRegistry reg = registry;
+    if (reg == null) {
+      return false;
+    }
+    java.util.List<InterceptorDefinition> defs = getInterceptorsForClassSnapshot(className);
+    for (InterceptorDefinition def : defs) {
+      if (def.isCallSiteTracking()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   public static void captureCaller(MethodInvocation invocation) {
     StackTraceElement[] stack = new Throwable().getStackTrace();
     // stack[0] = getStackTrace

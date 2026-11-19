@@ -6,6 +6,8 @@ package com.github.cc11001100.weavergirl.api.event;
  *
  * <p>Events are emitted synchronously on the calling thread; listeners should be fast and non-blocking.
  * Failures in listeners are caught by the publisher and do not affect the operation being observed.
+ *
+ * @since 1.0.0
  */
 public final class LifecycleEvents {
 

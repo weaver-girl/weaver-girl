@@ -63,10 +63,10 @@ public class ConstructorAdvice {
       MethodInvocation invocation =
           MethodInvocationPool.acquire(targetClass, methodName, constructor, target, arguments);
 
-      // Capture caller information from the call stack.
-      // Delegated to InterceptorHolder to keep the advice class free of
-      // stack-walking code (ByteBuddy validates the entire advice class).
-      InterceptorHolder.captureCaller(invocation);
+      // Opt-in per definition; see InterceptAdvice for why the stack walk is not unconditional.
+      if (InterceptorHolder.tracksCallSite(className)) {
+        InterceptorHolder.captureCaller(invocation);
+      }
 
       // cflow tracking: push current constructor onto the cflow stack before evaluating
       // runtime conditions. Pop on exit.

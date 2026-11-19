@@ -8,7 +8,9 @@
 <dependency>
     <groupId>io.github.cc11001100</groupId>
     <artifactId>weaver-girl-api</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <!-- The released version. While developing against this repository, use the snapshot the
+         reactor builds (1.0.0-SNAPSHOT) after `./mvnw install`. -->
+    <version>1.0.0</version>
     <scope>provided</scope>
 </dependency>
 ```
@@ -252,6 +254,19 @@ public void registerInterceptors(InterceptorRegistry registry) {
 
 Field selection happens inside the advice, through `FieldInterceptor.fieldPointcuts()`. The definition's method matcher only decides which classes get woven, which is why it matches every method of the target class.
 
+### What each join point can and cannot do
+
+These limits are the engine's, not bugs to work around. They are listed here because a hook
+written against the API without knowing them looks correct and silently behaves differently.
+
+| Join point | Limit | Why / what to do instead |
+|---|---|---|
+| Constructor | `skipMethod()` and `onException()` are not honoured, and `getMethod()` returns null with an empty `getParameterTypes()`. | The constructor advice binds `@Advice.Origin Constructor<?>`, has no return value to override and cannot suppress the allocation. Take the parameter types from your own matcher, and model failure with a try/catch in the code that calls the constructor. |
+| Field | Only accessor methods are seen: `getX()`, `isX()`, `setX()`, and the JDK's `access$X` bridges. A direct `getfield`/`putfield` inside another method is invisible, and a write of `null` cannot be told apart from a read. | The field advice sits on the accessor, because the JVM gives no hook on a raw field access. To see direct writes, weave the declaring class's methods (method interception) or use the instrumentation escape hatch. |
+| Catch | Fires when the method exits with the exception, not when a particular `catch` block is entered. | There is no bytecode hook for "entered the catch block"; `interceptCatch` observes the exit that carries the throwable. For "does this method throw X", that is exactly what you want; for block-level behaviour it is not. |
+| Static initializer | One invocation per class per JVM, and it cannot be skipped. | `<clinit>` runs once; the hook observes it and cannot change what happened. |
+| Argument rewrite | Needs `AdviceMode.ARGUMENT_REWRITE`, only covers the first 8 parameters, and is skipped for bootstrap-loaded classes. | See `RewriteArg` and `AsyncArgumentAdvice`; the default advice cannot write an argument back. |
+
 ### Reporting what you observed
 
 These services are static and live in `weaver-girl-api`, so a plugin can use them without holding any engine object. They are process-wide: every plugin reads and writes the same instances.
@@ -338,6 +353,45 @@ try {
 ```
 
 `TaintFindings.install()` publishes each finding as an `InterceptorEvent` of type `TaintFindings.EVENT_TYPE` (`"iast-finding"`), so the same listener and exporter path that carries everything else carries findings too. Call it once, at startup.
+
+### Weaving bytecode the registry cannot reach
+
+`InterceptorRegistry` covers methods, constructors, fields, catch blocks, static initializers and
+introductions. When a product needs bytecode the base has no matcher for — its own
+`ClassFileTransformer`, a lambda metafactory, a vendor's generated proxy — ask the context for
+the JVM handle:
+
+```java
+@Override
+public void init(PluginContext context) {
+    if (context.getInstrumentation() == null) {
+        context.getLogger().warn("no instrumentation handle; this host cannot weave");
+        return;
+    }
+    context.registerTransformer((loader, className, redefined, domain, bytes) -> {
+        // return null to decline; never throw (the JVM stops using a transformer that throws)
+        return myRewrite(bytes);
+    });
+}
+```
+
+`registerTransformer` returns a handle with `retransform(Class...)` and `close()`. The agent
+withdraws the transformer when the plugin is disabled or unloaded, and it never sees the agent's
+own classes (`com.github.cc11001100.weavergirl.*`, Byte Buddy, ASM). Two limits are the JVM's,
+not the agent's: `Instrumentation.isModifiableClass` refuses some classes loaded before
+instrumentation was available, and a retransform may not change a class's shape (no new fields or
+methods). The full rules and the usage contract are on the `InstrumentationHandle` Javadoc.
+
+When the hook reads the call site, ask for it explicitly — it is off by default because it walks
+the stack on every invocation:
+
+```java
+registry.register(
+    intercept("com.example.Audit").method("record")
+        .trackCallSite(true)              // populates inv.getCallerClass()/getCallerMethodName()
+        .before(inv -> audit.save(inv.getCallerClass(), inv.getMethodName()))
+        .build());
+```
 
 ### Platform lifecycle
 

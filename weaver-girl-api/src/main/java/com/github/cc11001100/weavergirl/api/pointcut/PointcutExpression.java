@@ -386,7 +386,7 @@ public class PointcutExpression {
    * @param methodPattern the method name pattern
    * @param paramPattern the parameter signature (retained for display only)
    * @return a CALL pointcut expression
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public static PointcutExpression call(
       String returnType, String classPattern, String methodPattern, String paramPattern) {
@@ -426,7 +426,7 @@ public class PointcutExpression {
    *
    * @param exceptionType the exception type (retained for display only)
    * @return a HANDLER pointcut expression
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public static PointcutExpression handler(String exceptionType) {
     return new PointcutExpression(
@@ -603,7 +603,7 @@ public class PointcutExpression {
    * @param returnValue the return value (may be null)
    * @param throwable the thrown exception (may be null)
    * @return true if the runtime condition matches
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public boolean evaluateRuntimeCondition(
       String className,
@@ -707,7 +707,7 @@ public class PointcutExpression {
    * pairs. For full AspectJ-compatible cflow, this would need to track the full call stack and
    * support intersection/union of cflow expressions.
    *
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public static final class CflowContext {
     private static final ThreadLocal<CflowContext> CURRENT = new ThreadLocal<>();

@@ -425,6 +425,8 @@ public class DefaultPluginManager implements PluginManager {
         entry.state = PluginState.UNLOADED;
         entry.lastStateChangedAt = System.currentTimeMillis();
         entry.interceptorCount = 0;
+        // The instance is gone; keeping the entry would pin it (and its loader) inside this map.
+        pluginEntries.remove(dependent);
       }
     }
 

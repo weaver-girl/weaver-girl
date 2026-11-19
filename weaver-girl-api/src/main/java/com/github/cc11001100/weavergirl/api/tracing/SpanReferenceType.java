@@ -10,7 +10,7 @@ package com.github.cc11001100.weavergirl.api.tracing;
  *   <li>{@link #FOLLOWS_FROM} — the linked span follows from the current span (e.g., in a pipeline)
  * </ul>
  *
- * @since 2.0.0
+ * @since 1.0.0
  */
 public enum SpanReferenceType {
 

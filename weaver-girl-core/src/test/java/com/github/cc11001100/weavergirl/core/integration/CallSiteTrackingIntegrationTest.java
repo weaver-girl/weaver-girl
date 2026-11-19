@@ -94,7 +94,7 @@ class CallSiteTrackingIntegrationTest {
         new InterceptorDefinition(
             "callsite-class",
             new Pointcut(ClassMatcher.byName(targetClassName), MethodMatcher.byName("process")),
-            interceptor));
+            interceptor).withCallSiteTracking(true));
 
     installTransformer();
 
@@ -125,7 +125,7 @@ class CallSiteTrackingIntegrationTest {
         new InterceptorDefinition(
             "callsite-method",
             new Pointcut(ClassMatcher.byName(targetClassName), MethodMatcher.byName("process")),
-            interceptor));
+            interceptor).withCallSiteTracking(true));
 
     installTransformer();
 
@@ -156,7 +156,7 @@ class CallSiteTrackingIntegrationTest {
         new InterceptorDefinition(
             "callsite-line",
             new Pointcut(ClassMatcher.byName(targetClassName), MethodMatcher.byName("process")),
-            interceptor));
+            interceptor).withCallSiteTracking(true));
 
     installTransformer();
 
@@ -189,7 +189,7 @@ class CallSiteTrackingIntegrationTest {
         new InterceptorDefinition(
             "callsite-has",
             new Pointcut(ClassMatcher.byName(targetClassName), MethodMatcher.byName("process")),
-            interceptor));
+            interceptor).withCallSiteTracking(true));
 
     installTransformer();
 

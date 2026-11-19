@@ -137,7 +137,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    *
    * @param classMatcher selects the target classes
    * @return a new builder with the given class matcher
-   * @since 2.2.0
+   * @since 1.0.0
    */
   public InterceptorDefinitionBuilder intercept(ClassMatcher classMatcher) {
     return new InterceptorDefinitionBuilder(this, classMatcher);
@@ -198,7 +198,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @param className the fully-qualified class name declaring the field
    * @param fieldName the exact field name
    * @return a new field builder
-   * @since 2.1.0
+   * @since 1.0.0
    */
   public FieldInterceptorDefinitionBuilder interceptField(String className, String fieldName) {
     return new FieldInterceptorDefinitionBuilder(
@@ -215,7 +215,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @param classMatcher selects the classes declaring the field
    * @param fieldName the exact field name
    * @return a new field builder
-   * @since 2.2.0
+   * @since 1.0.0
    */
   public FieldInterceptorDefinitionBuilder interceptField(
       ClassMatcher classMatcher, String fieldName) {
@@ -230,7 +230,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @param classMatcher selects the classes declaring the fields
    * @param fieldMatcher selects the fields
    * @return a new field builder
-   * @since 2.2.0
+   * @since 1.0.0
    */
   public FieldInterceptorDefinitionBuilder interceptField(
       ClassMatcher classMatcher, FieldMatcher fieldMatcher) {
@@ -245,7 +245,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @param fieldMatcher selects the fields, for example {@link FieldMatcher#byType(String)} or {@link
    *     FieldMatcher#byNamePattern(String)}
    * @return a new field builder
-   * @since 2.1.0
+   * @since 1.0.0
    */
   public FieldInterceptorDefinitionBuilder interceptField(
       String className, FieldMatcher fieldMatcher) {
@@ -264,7 +264,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @param exceptionTypeName the fully-qualified exception type name, for example {@code
    *     "java.io.IOException"}
    * @return a new catch builder
-   * @since 2.1.0
+   * @since 1.0.0
    */
   public CatchInterceptorDefinitionBuilder interceptCatch(
       String className, String exceptionTypeName) {
@@ -284,7 +284,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * @param exceptionTypeName the fully-qualified exception type name, for example {@code
    *     "java.io.IOException"}
    * @return a new catch builder
-   * @since 2.2.0
+   * @since 1.0.0
    */
   public CatchInterceptorDefinitionBuilder interceptCatch(
       ClassMatcher classMatcher, String exceptionTypeName) {
@@ -313,6 +313,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
     private AroundCallback aroundCallback;
     private int priority = 0;
     private String name;
+    private boolean callSiteTracking;
 
     InterceptorDefinitionBuilder(AbstractPlugin plugin, ClassMatcher classMatcher) {
       this.plugin = plugin;
@@ -511,6 +512,22 @@ public abstract class AbstractPlugin implements WeaverPlugin {
     }
 
     /**
+     * Ask the woven advice to populate {@link MethodInvocation#getCallerClass()} and its siblings.
+     *
+     * <p>Off by default because each capture walks the stack. Turn it on for the interceptor that
+     * actually reads the call site, for example an audit hook recording which class called a
+     * service.
+     *
+     * @param enabled true to capture the call site on every invocation of this hook
+     * @return this builder for chaining
+     * @since 1.0.1
+     */
+    public InterceptorDefinitionBuilder trackCallSite(boolean enabled) {
+      this.callSiteTracking = enabled;
+      return this;
+    }
+
+    /**
      * Build the interceptor definition from this builder's configuration.
      *
      * <p>The definition name is auto-generated from the plugin name, class matcher pattern, and
@@ -527,13 +544,15 @@ public abstract class AbstractPlugin implements WeaverPlugin {
           name != null
               ? name
               : plugin.name() + "-" + classMatcher.getPattern() + "-" + methodMatcher.getPattern();
-      return new InterceptorDefinition(
-          definitionName,
-          pointcut,
-          interceptor,
-          priority,
-          InterceptorDefinition.AdviceMode.STANDARD,
-          interceptor.hasAround());
+      InterceptorDefinition definition =
+          new InterceptorDefinition(
+              definitionName,
+              pointcut,
+              interceptor,
+              priority,
+              InterceptorDefinition.AdviceMode.STANDARD,
+              interceptor.hasAround());
+      return definition.withCallSiteTracking(callSiteTracking);
     }
   }
 
@@ -606,7 +625,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * interceptor implements {@link FieldInterceptor} with a {@link FieldPointcut} for the selected
    * field. Without that combination the field advice never runs and the callbacks are never called.
    *
-   * @since 2.1.0
+   * @since 1.0.0
    */
   public static class FieldInterceptorDefinitionBuilder {
     private final AbstractPlugin plugin;
@@ -670,7 +689,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
      *
      * @param name the definition name, unique within the registry
      * @return this builder for chaining
-     * @since 2.2.0
+     * @since 1.0.0
      */
     public FieldInterceptorDefinitionBuilder name(String name) {
       this.name = name;
@@ -764,7 +783,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * InterceptorDefinition.AdviceMode#CATCH} and an interceptor that implements {@link
    * CatchInterceptor}, which is the combination the transformer and the catch advice both require.
    *
-   * @since 2.1.0
+   * @since 1.0.0
    */
   public static class CatchInterceptorDefinitionBuilder {
     private final AbstractPlugin plugin;
@@ -812,7 +831,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
      *
      * @param name the definition name, unique within the registry
      * @return this builder for chaining
-     * @since 2.2.0
+     * @since 1.0.0
      */
     public CatchInterceptorDefinitionBuilder name(String name) {
       this.name = name;
@@ -950,7 +969,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * Callback for a field read. The {@code value} is what the field held; replace it with {@link
    * FieldInvocation#setReturnValue(Object)} to change what the reader observes.
    *
-   * @since 2.1.0
+   * @since 1.0.0
    */
   @FunctionalInterface
   public interface FieldGetCallback {
@@ -968,7 +987,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * {@link FieldInvocation#setWriteValue(Object)} or reject the write with {@link
    * FieldInvocation#skipWrite()}.
    *
-   * @since 2.1.0
+   * @since 1.0.0
    */
   @FunctionalInterface
   public interface FieldSetCallback {
@@ -986,7 +1005,7 @@ public abstract class AbstractPlugin implements WeaverPlugin {
    * Callback for a catch block. Suppress the block, replace the caught exception, or override the
    * value the block returns through the {@link CatchInvocation}.
    *
-   * @since 2.1.0
+   * @since 1.0.0
    */
   @FunctionalInterface
   public interface CatchCallback {

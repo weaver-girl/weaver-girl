@@ -40,7 +40,7 @@ import java.lang.annotation.Target;
  *
  * @see Order
  * @see WeaveClass
- * @since 2.0.0
+ * @since 1.0.0
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)

@@ -129,6 +129,7 @@ class MdcInjectorTest {
     setter.setAccessible(true);
     Object previous = MDC.getMDCAdapter();
     setter.invoke(null, new BrokenMdcAdapter());
+    MdcInjector.resetMdcProbeForTest();
     try {
       ThreadContext.put("traceId", "trace-123");
 
@@ -138,6 +139,7 @@ class MdcInjectorTest {
       assertFalse(MdcInjector.isMdcAvailable(), "a broken MDC was reported as usable");
     } finally {
       setter.invoke(null, previous);
+      MdcInjector.resetMdcProbeForTest();
     }
   }
 

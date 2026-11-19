@@ -7,6 +7,8 @@ import java.util.List;
 /**
  * Request-scoped taint tags. A value tagged in one scope is visible to code that captured that
  * scope, and is not tainted after the scope is closed or inside a newer scope.
+ *
+ * @since 1.0.0
  */
 public final class Taint {
 

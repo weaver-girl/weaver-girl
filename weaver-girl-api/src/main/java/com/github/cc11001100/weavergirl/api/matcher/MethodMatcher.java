@@ -199,7 +199,7 @@ public class MethodMatcher {
    *
    * @param fieldName the field name to match
    * @return a new MethodMatcher with {@link MatchType#CFIELD_GET}
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public static MethodMatcher byFieldGet(String fieldName) {
     return new MethodMatcher(
@@ -212,7 +212,7 @@ public class MethodMatcher {
    *
    * @param fieldName the field name to match
    * @return a new MethodMatcher with {@link MatchType#CFIELD_SET}
-   * @since 2.0.0
+   * @since 1.0.0
    */
   public static MethodMatcher byFieldSet(String fieldName) {
     return new MethodMatcher(

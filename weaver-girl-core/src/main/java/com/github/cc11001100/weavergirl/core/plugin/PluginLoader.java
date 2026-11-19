@@ -168,14 +168,23 @@ public class PluginLoader {
     for (LoadedJar loaded : loadedJars.values()) {
       loaded.plugins.remove(plugin);
     }
+    // Nothing else may still name this plugin's loader, or the loader, its classes and its open jar
+    // stay reachable for the life of the JVM.
+    ownership.forgetPlugin(plugin);
     log.info("Plugin {} unloaded because {}", plugin.name(), reason);
   }
 
   /** The context {@code plugin} is initialized with, remembered so its services can be withdrawn later. */
   private DefaultPluginContext contextFor(
       WeaverPlugin plugin, InterceptorRegistry registry, Map<String, String> config) {
+    // AgentInstrumentation is published before plugins load (WeaverGirl.bootstrap), so a plugin
+    // can obtain the handle in init() and weave what the declarative registry cannot reach.
     DefaultPluginContext context =
-        new DefaultPluginContext(registryFor(plugin, registry), config, plugin.name());
+        new DefaultPluginContext(
+            registryFor(plugin, registry),
+            config,
+            plugin.name(),
+            com.github.cc11001100.weavergirl.core.AgentInstrumentation.get());
     contexts.put(plugin, context);
     return context;
   }
@@ -482,7 +491,12 @@ public class PluginLoader {
     List<WeaverPlugin> compatible = new ArrayList<>();
     for (WeaverPlugin plugin : discovered) {
       PluginMetadata metadata = metadataFor(jars, plugin);
-      if (metadata != null && metadata.getApiVersion() != null) {
+      // Check whenever the jar declared anything the checker understands. Gating on apiVersion
+      // alone made a jar that only declares plugin.minimumAgentVersion load unchecked, while the
+      // plugin guide and the compatibility doc both promise both are enforced.
+      if (metadata != null
+          && (metadata.getApiVersion() != null
+              || metadata.getMinimumAgentVersion() != null)) {
         PluginCompatibilityChecker.CompatibilityReport report =
             compatibility.check(metadata.withName(plugin.name()), available);
         if (!report.isCompatible()) {
@@ -568,14 +582,47 @@ public class PluginLoader {
     if (loaded == null) {
       return removed;
     }
+    // Remember the loader before the plugins go: unloadOne drops the last reference to them.
+    java.lang.ClassLoader loader = loaded.plugins.isEmpty() ? null : loaded.plugins.get(0).getClass().getClassLoader();
     for (WeaverPlugin plugin : loaded.plugins) {
       unloadOne(plugin, reason);
       removed.add(plugin);
     }
+    // The jar is gone, so its loader has nothing left to define: close it before the replacement is
+    // loaded, or every hot swap keeps another URLClassLoader (and its jar handle) alive.
+    closeQuietly(loader);
+    // scannedJars is the last structure that still names a jar's loader; without dropping the entry
+    // the loader stays reachable even after it is closed.
+    forgetScannedJar(loader);
     // A plugin in another jar that required one of these can no longer run. It is removed here, before the
     // directory scan loads the replacement, so the replacement is what satisfies the requirement afterwards.
     removed.addAll(unloadDependentsOf(removed));
     return removed;
+  }
+
+  /** Drop the scan record of a jar whose loader is gone, so the loader is not pinned by the metadata. */
+  private void forgetScannedJar(java.lang.ClassLoader loader) {
+    if (loader == null) {
+      return;
+    }
+    java.util.List<PluginJarScanner.PluginJar> remaining = new java.util.ArrayList<>();
+    for (PluginJarScanner.PluginJar jar : scannedJars) {
+      if (jar.classLoader != loader) {
+        remaining.add(jar);
+      }
+    }
+    scannedJars = remaining;
+  }
+
+  /** Close a loader the loader no longer needs; a failure is logged, never thrown. */
+  private static void closeQuietly(java.lang.ClassLoader loader) {
+    if (loader instanceof java.io.Closeable) {
+      try {
+        ((java.io.Closeable) loader).close();
+      } catch (java.io.IOException failure) {
+        log.warn("Failed to close plugin class loader: {}", failure.getMessage());
+      }
+    }
   }
 
   /** Remove the interceptors {@code plugin} registered, however it registered them. */

@@ -41,7 +41,6 @@ import java.lang.management.MemoryMXBean;
 import java.lang.management.MemoryUsage;
 import java.lang.management.RuntimeMXBean;
 import java.lang.management.ThreadMXBean;
-import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -141,7 +140,20 @@ public class PrometheusExporter implements InterceptorEventListener {
    * @throws IOException if the server cannot bind
    */
   public void start(int port) throws IOException {
-    server = HttpServer.create(new InetSocketAddress(port), 0);
+    start(port, null);
+  }
+
+  /**
+   * Start the Prometheus metrics HTTP server on a specific bind address.
+   *
+   * @param port the port to listen on
+   * @param bindAddress the address to bind, or null for the loopback default
+   * @throws IOException if the server cannot bind
+   */
+  public void start(int port, String bindAddress) throws IOException {
+    server =
+        com.github.cc11001100.weavergirl.api.http.EndpointBinding.create(
+            bindAddress, port, 0);
     server.createContext(
         "/metrics",
         exchange -> {
@@ -155,7 +167,6 @@ public class PrometheusExporter implements InterceptorEventListener {
             os.write(bytes);
           }
         });
-    server.setExecutor(null);
     server.start();
   }
 

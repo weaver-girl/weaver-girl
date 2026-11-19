@@ -1288,6 +1288,13 @@
                         <configuration>
                             <publishingServerId>central</publishingServerId>
                             <tokenAuth>true</tokenAuth>
+                            <!-- Publish as soon as the deployment validates, so the GitHub
+                                 Release the workflow creates right afterwards points at coordinates
+                                 that actually resolve. Leave waitUntil at VALIDATED so a
+                                 validation error fails the build instead of publishing a broken
+                                 deployment. -->
+                            <autoPublish>true</autoPublish>
+                            <waitUntil>VALIDATED</waitUntil>
                         </configuration>
                     </plugin>
                 </plugins>

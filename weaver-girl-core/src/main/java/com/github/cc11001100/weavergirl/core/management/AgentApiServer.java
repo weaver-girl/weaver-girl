@@ -2,6 +2,7 @@ package com.github.cc11001100.weavergirl.core.management;
 
 import com.github.cc11001100.weavergirl.api.alert.AlertEngine;
 import com.github.cc11001100.weavergirl.api.context.ContextPropagatorRegistry;
+import com.github.cc11001100.weavergirl.api.http.EndpointBinding;
 import com.github.cc11001100.weavergirl.api.context.ContextSnapshot;
 import com.github.cc11001100.weavergirl.api.metrics.MetricRegistry;
 import com.github.cc11001100.weavergirl.api.plugin.PluginManager;
@@ -18,7 +19,6 @@ import java.lang.management.GarbageCollectorMXBean;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.lang.management.ThreadMXBean;
-import java.net.InetSocketAddress;
 import java.util.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,39 +56,85 @@ public class AgentApiServer {
   private HttpServer server;
   private final int port;
   private final DefaultAlertEngine alertEngine;
+  /** Bind address, null means loopback. */
+  private final String bindAddress;
+  /** Executor ceiling, 0 means the default. */
+  private final int maxThreads;
+  /** Bearer token the endpoints require, null means none. */
+  private final String authToken;
 
   public AgentApiServer(int port) {
     this(port, null);
   }
 
   public AgentApiServer(int port, DefaultAlertEngine alertEngine) {
+    this(port, alertEngine, null, 0, null);
+  }
+
+  /**
+   * @param bindAddress address to bind, or null for the loopback default
+   * @param maxThreads executor ceiling, or 0 for the default
+   * @param authToken bearer token the endpoints require, or null for none
+   */
+  public AgentApiServer(
+      int port,
+      DefaultAlertEngine alertEngine,
+      String bindAddress,
+      int maxThreads,
+      String authToken) {
     this.port = port;
     this.alertEngine = alertEngine;
+    this.bindAddress = bindAddress;
+    this.maxThreads = maxThreads;
+    this.authToken = authToken;
   }
 
   /** Start the API server. */
   public void start() throws IOException {
-    server = HttpServer.create(new InetSocketAddress(port), 0);
+    server = EndpointBinding.create(bindAddress, port, maxThreads);
 
-    server.createContext("/status", this::handleStatus);
-    server.createContext("/plugins", this::handlePlugins);
-    server.createContext("/topology", this::handleTopology);
-    server.createContext("/alerts", this::handleAlerts);
-    server.createContext("/metrics", this::handleMetrics);
-    server.createContext("/diagnostics", this::handleDiagnostics);
-    server.createContext("/diagnostics/faults", this::handleFaults);
-    server.createContext("/jvm", this::handleJvm);
-    server.createContext("/errors", this::handleErrors);
-    server.createContext("/traces", this::handleTraces);
-    server.createContext("/context/propagators", this::handleContextPropagators);
-    server.createContext("/events", this::handleEvents);
-    server.createContext("/audit", this::handleAudit);
-    server.createContext("/lifecycle", this::handleLifecycle);
-    server.createContext("/security/policy", this::handleSecurityPolicy);
+    server.createContext("/status", guarded(this::handleStatus));
+    server.createContext("/plugins", guarded(this::handlePlugins));
+    server.createContext("/topology", guarded(this::handleTopology));
+    server.createContext("/alerts", guarded(this::handleAlerts));
+    server.createContext("/metrics", guarded(this::handleMetrics));
+    server.createContext("/diagnostics", guarded(this::handleDiagnostics));
+    server.createContext("/diagnostics/faults", guarded(this::handleFaults));
+    server.createContext("/jvm", guarded(this::handleJvm));
+    server.createContext("/errors", guarded(this::handleErrors));
+    server.createContext("/traces", guarded(this::handleTraces));
+    server.createContext("/context/propagators", guarded(this::handleContextPropagators));
+    server.createContext("/events", guarded(this::handleEvents));
+    server.createContext("/audit", guarded(this::handleAudit));
+    server.createContext("/lifecycle", guarded(this::handleLifecycle));
+    server.createContext("/security/policy", guarded(this::handleSecurityPolicy));
 
-    server.setExecutor(null); // default executor
+
+
+    // The executor is set by EndpointBinding.create: bounded, daemon threads.
     server.start();
     log.info("[AgentApiServer] REST API started on port {}", port);
+  }
+
+  /**
+   * Wrap one handler with the token check.
+   *
+   * <p>{@code HttpServer} matches contexts by longest prefix, so a shared root handler would only
+   * see paths no other context claimed. Each endpoint therefore gets the check itself.
+   */
+  private com.sun.net.httpserver.HttpHandler guarded(
+      final com.sun.net.httpserver.HttpHandler handler) {
+    if (authToken == null || authToken.trim().isEmpty()) {
+      return handler;
+    }
+    return exchange -> {
+      if (!EndpointBinding.authorized(
+          exchange.getRequestHeaders().getFirst("Authorization"), authToken)) {
+        EndpointBinding.challenge(exchange);
+        return;
+      }
+      handler.handle(exchange);
+    };
   }
 
   /** Stop the API server. */

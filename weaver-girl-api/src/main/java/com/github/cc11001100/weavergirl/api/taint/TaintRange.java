@@ -1,6 +1,10 @@
 package com.github.cc11001100.weavergirl.api.taint;
 
-/** Half-open character range {@code [start, end)} inside a string, tied to one source label. */
+/**
+ * Half-open character range {@code [start, end)} inside a string, tied to one source label.
+ *
+ * @since 1.0.0
+ */
 public final class TaintRange {
 
   private final int start;

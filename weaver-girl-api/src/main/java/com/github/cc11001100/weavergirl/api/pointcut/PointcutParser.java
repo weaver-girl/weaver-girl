@@ -315,7 +315,7 @@ public class PointcutParser {
    *
    * @param expr the full expression including the {@code call(} prefix
    * @return a CALL PointcutExpression
-   * @since 2.0.0
+   * @since 1.0.0
    */
   private PointcutExpression parseCall(String expr) {
     String content = expr.substring("call(".length(), expr.length() - 1).trim();

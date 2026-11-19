@@ -68,6 +68,20 @@ jobs:
             TAG_VERSION="${GITHUB_REF_NAME#v}"
           fi
           test -n "$TAG_VERSION" || (echo "FAIL: no version" && exit 1)
+          # A SNAPSHOT is not accepted by Central, and a mistyped version burns the tag on a
+          # staging deployment nobody can publish. Reject both before touching anything.
+          if printf '%s' "$TAG_VERSION" | grep -qi 'SNAPSHOT'; then
+            echo "::error::$TAG_VERSION is a SNAPSHOT; only release versions can be published"
+            exit 1
+          fi
+          if ! printf '%s' "$TAG_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9.-]+)?$'; then
+            echo "::error::$TAG_VERSION is not a semantic version"
+            exit 1
+          fi
+          if [ "${{ github.event_name }}" = "push" ] && [ "${GITHUB_REF_NAME#v}" != "$TAG_VERSION" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match version $TAG_VERSION"
+            exit 1
+          fi
           echo "Setting Maven version to $TAG_VERSION"
           echo "VERSION=$TAG_VERSION" >> $GITHUB_ENV
           ./mvnw versions:set -DnewVersion=$TAG_VERSION -B
@@ -132,13 +146,18 @@ jobs:
           echo "=== Checksums ==="
           cat "$AGENT_JAR.sha256" "$DIST_ZIP.sha256"
 
-      - name: Sign the distribution archive
+      - name: Sign the distribution archive and the bare agent jar
         env:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
-            --armor --detach-sign "$DIST_ZIP"
-          gpg --verify "$DIST_ZIP.asc" "$DIST_ZIP"
+          # Both artifacts are published as assets and the docs tell users to verify with
+          # gpg, so both need a detached signature — the agent jar is what people attach
+          # when they already have a plugins/ directory.
+          for artifact in "$DIST_ZIP" "$AGENT_JAR"; do
+            gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
+              --armor --detach-sign "$artifact"
+            gpg --verify "$artifact.asc" "$artifact"
+          done
 
       - name: Upload release assets as a workflow artifact
         uses: actions/upload-artifact@v4
@@ -209,4 +228,5 @@ jobs:
             ${{ env.DIST_ZIP }}.sha256
             ${{ env.DIST_ZIP }}.asc
           draft: false
-          prerelease: false
+          # A 1.0.0-rc.1 tag must not be presented as the stable release.
+          prerelease: ${{ contains(env.VERSION, '-') }}

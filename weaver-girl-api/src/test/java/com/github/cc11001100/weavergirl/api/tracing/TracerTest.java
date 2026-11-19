@@ -92,6 +92,29 @@ class TracerTest {
     assertSame(child, Tracer.getCurrentSpan());
   }
 
+  /**
+   * Ending a child must put its parent back, not leave the thread with no span. This is what lets
+   * two plugins nest spans (a servlet span and a JDBC child, an APM span and a security one) without
+   * each of them having to save and restore the thread state by hand.
+   */
+  @Test
+  void endSpan_restoresTheParentSpan() {
+    SpanContext root = Tracer.startSpan("root");
+    Tracer.startChildSpan("child-1");
+
+    Tracer.endSpan(null, "OK");
+    assertSame(root, Tracer.getCurrentSpan(), "the root span must be current again");
+
+    SpanContext second = Tracer.startChildSpan("child-2");
+    assertEquals(root.getSpanId(), second.getParentSpanId(), "the restored span is the parent");
+
+    Tracer.endSpan(null, "OK");
+    assertSame(root, Tracer.getCurrentSpan());
+
+    Tracer.endSpan(null, "OK");
+    assertFalse(Tracer.hasCurrentSpan(), "ending the root must leave the thread clean");
+  }
+
   @Test
   void clearCurrentSpan_removesSpan() {
     Tracer.startSpan();

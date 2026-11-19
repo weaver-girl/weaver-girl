@@ -91,6 +91,24 @@ public class PluginClassLoader extends URLClassLoader {
     return exportedPackages.get(className.substring(0, dot));
   }
 
+  /**
+   * Close this loader and drop every cross-plugin reference it holds.
+   *
+   * <p>A class loader is only garbage once nothing can reach it: while an unloading plugin's loader is
+   * still named in a sibling's export map, the whole class graph — and the jar handle behind it — stays
+   * alive. Clearing the maps here is what lets the JVM collect it after the plugin is destroyed.
+   *
+   * <p>Closing twice is safe. Classes already loaded keep working, but anything the plugin wove into
+   * application classes has to stop resolving first (the registry and interceptor cleanup run before
+   * this call).
+   */
+  @Override
+  public void close() throws java.io.IOException {
+    exportedPackages.clear();
+    exportedClasses.clear();
+    super.close();
+  }
+
   @Override
   protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
     // Java 8 compatible: use synchronized(this) instead of getClassLoadingLock()

@@ -6,6 +6,8 @@ import java.util.List;
 /**
  * Propagation entry used by string and sink advice. Range math lives here so hooks and tests share
  * one implementation: concatenation, substring, and {@code StringBuilder} append / {@code toString}.
+ *
+ * @since 1.0.0
  */
 public final class TaintPropagation {
 

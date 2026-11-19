@@ -24,6 +24,19 @@ config:
   # Health check endpoint
   healthPort: 9401
 
+  # Diagnostics endpoint (/stats, /metrics, POST /agent/interception)
+  diagnosticsPort: 9402
+
+  # Where the endpoints bind. A loopback-bound endpoint in a pod is unreachable from the kubelet,
+  # so the chart defaults to all interfaces; the chart's Service is the only exposure, and the
+  # endpoints have no authentication unless endpointAuthToken is set.
+  endpointBindAddress: 0.0.0.0
+
+  # Bearer token the management API requires. The endpoints have no other authentication; set this
+  # when the Service is reachable by anything beyond your own scraper. Keep it in a Secret and pass
+  # it with --set-string, not in values.yaml committed to a repository.
+  endpointAuthToken: ""
+
   # Structured JSON event output
   jsonEvents: false
 

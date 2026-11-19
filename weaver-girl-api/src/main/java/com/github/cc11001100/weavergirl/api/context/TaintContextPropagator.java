@@ -5,6 +5,8 @@ import com.github.cc11001100.weavergirl.api.taint.TaintBridge;
 /**
  * Propagates the current thread's taint scope stack across async boundaries. Cleanup restores the
  * worker thread's previous scopes, including the case where the worker had none.
+ *
+ * @since 1.0.0
  */
 public final class TaintContextPropagator implements ContextPropagator {
 

@@ -14,14 +14,14 @@ java -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml -jar your-app.j
 
 All agent-level settings are optional. Defaults are shown below.
 
-```yaml
-# Sampling: when invocation rate exceeds threshold, reduce interception frequency
-samplingThreshold: 10000         # invocations/second threshold for adaptive sampling
-maxTransformations: 10000        # max classes to transform (increase for large apps)
+> **Sampling and circuit-breaker keys are read from agent arguments, not from this file.**
+> `samplingThreshold`, `circuitBreakerFailures`, `circuitBreakerCooldown` and `logLevel` are
+> parsed into the YAML model but nothing in the engine consumes them; the live keys are the
+> agent-argument names shown in the next section (and they now take effect, including at runtime
+> through the dynamic config). Setting the YAML spellings has no effect.
 
-# Circuit breaker: disable interceptors that fail repeatedly
-circuitBreakerFailures: 5        # consecutive failures before opening
-circuitBreakerCooldown: 60000    # cooldown in milliseconds (default: 60s)
+```yaml
+maxTransformations: 10000        # max classes to transform (increase for large apps)
 
 # Scope control
 excludedClasses:                 # class name patterns to exclude (regex)
@@ -35,12 +35,42 @@ disabledPlugins:                 # built-in plugins to skip (by name)
   - kafka
 # enabledPlugins:                # if set, ONLY these are loaded (ignores disabledPlugins)
 #   - jdbc
+```
 
-# Logging
-logLevel: INFO                   # TRACE, DEBUG, INFO, WARN, ERROR
+### Runtime settings that do work — agent arguments
 
-# Hot reload
-# Enable with: -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml,watch=true
+```bash
+# comma-separated key=value pairs after the agent jar path
+java -javaagent:weaver-girl-agent.jar=\
+samplingRate=1,samplingMaxRate=100,circuitBreakerThreshold=5,circuitBreakerCooldownMs=60000 \
+-jar your-app.jar
+```
+
+| Agent argument | Meaning | Default |
+|---|---|---|
+| `samplingRate` | Sample 1 in N invocations (1 = sample all) | `1` |
+| `samplingMaxRate` | Highest rate adaptive sampling may reach | `100` |
+| `circuitBreakerThreshold` | Consecutive failures before an interceptor is disabled | `5` |
+| `circuitBreakerCooldownMs` | Cooldown before retry | `60000` |
+| `adaptiveSampling` | Raise the sampling rate when the invocation rate exceeds `samplingThreshold`; `false` starts no monitor thread | `true` |
+| `samplingCheckIntervalSeconds` | How often the sampling monitor re-evaluates the rate | `5` |
+| `stateFile` | Directory for periodic agent-state snapshots (a final one is written on shutdown). Unset means no snapshot thread | unset |
+| `statePersistIntervalMs` | Snapshot interval | `60000` |
+| `emergencyDisable=true` | Start with interception disabled | off |
+| `maxTransformations` | Max classes to transform | `10000` |
+| `endpointBindAddress` | Bind address for the metrics/health/diagnostics/management endpoints | `127.0.0.1` |
+| `endpointMaxThreads` | Request-thread ceiling per endpoint server | `16` |
+| `endpointAuthToken` | Bearer token the management API requires; empty means no authentication | unset |
+
+The endpoint defaults are loopback-only because the endpoints have no authentication: anyone who
+can reach the port can read `/events`, `/traces`, `/audit` and flip the global interception
+switch with `POST /agent/interception`. Set `endpointBindAddress=0.0.0.0` only behind a firewall
+or a proxy, and set `endpointAuthToken` when you do.
+
+Opt into hot reload by adding `watch=true` to the same argument list:
+
+```bash
+java -javaagent:weaver-girl-agent.jar=config=/path/to/weaver.yml,watch=true -jar your-app.jar
 ```
 
 ### disabledPlugins — Built-in Plugin Names
@@ -83,8 +113,11 @@ Define custom interceptors via YAML. Advice classes must implement
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `method` | exact string | Exact method name (use `"*"` for all methods) |
+| `method` | exact string | Exact method name. Omit it (or set `methodPattern: ".*"`) to match every method — `"*"` is a literal name and matches nothing. |
 | `methodPattern` | regex | Regex pattern for method name |
+| `methodAnnotation` | FQN | Match methods carrying this annotation |
+| `methodSignature` | `name(param1,param2)` | Match name and parameter types together |
+| `pointcut` | pointcut expression | Full expression, e.g. `execution(* com.example..*(..))` or `cflow(...)` |
 
 ### Advice Callbacks
 
@@ -115,8 +148,9 @@ interceptors:
     after: com.example.interceptor.QueryTimingAdvice
 
   # Example 3: Intercept all methods on annotated classes
+  # (omit `method`, or use `methodPattern: ".*"` — `method: "*"` is a literal name)
   - classAnnotation: org.springframework.web.bind.annotation.RestController
-    method: "*"
+    methodPattern: ".*"
     around: com.example.interceptor.ApiMonitoringAdvice
 
   # Example 4: With priority ordering

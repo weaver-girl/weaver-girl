@@ -156,7 +156,9 @@ OTLP formatter 发送完整的 `ExportTraceServiceRequest`：
 ## 4. Metrics（Prometheus）
 
 配置 `metricsPort=9400` 后，`GET /metrics` 返回
-`text/plain; version=0.0.4; charset=utf-8`。每次抓取都会实时渲染以下内置指标组；此外插件还可以在
+`text/plain; version=0.0.4; charset=utf-8`。端点默认只绑 `127.0.0.1`（见
+`docs/yaml-config-reference.md` 的 `endpointBindAddress`）；Prometheus 在别的机器上抓取时，
+要么改绑定地址，要么经 sidecar/反向代理转发。每次抓取都会实时渲染以下内置指标组；此外插件还可以在
 抓取时动态贡献指标（见 4.5）。
 
 ### 4.1 拦截事件指标
