@@ -55,6 +55,9 @@ import org.slf4j.LoggerFactory;
  */
 public class WeaverTransformer {
 
+  /** The framework's own namespace. Application classes may share it; see {@link #isNeverRewritten}. */
+  static final String AGENT_PACKAGE_PREFIX = "com.github.cc11001100.weavergirl.";
+
   /** Test hook: transform of this class name throws instead of rewriting bytecode. */
   private static final ConcurrentHashMap<String, Throwable> FORCED_FAILURES =
       new ConcurrentHashMap<String, Throwable>();
@@ -90,6 +93,10 @@ public class WeaverTransformer {
    * Byte Buddy, ASM, the agent entry, and the shade prefix are never rewritten. Classes under
    * {@code weavergirl.core} stay eligible when {@link #setIgnoreAgentClasses(boolean)} is false,
    * because tests and application types live in that tree.
+   *
+   * <p>This is the unconditional part of the exclusion. The package-by-package framework list lives
+   * in {@link #ignoredTypes}, so the two paths that screen classes — the installed matcher and
+   * {@link #retransformLoadedClasses()} — cannot drift apart.
    */
   static boolean isNeverRewritten(String className) {
     if (className == null) {
@@ -119,8 +126,12 @@ public class WeaverTransformer {
     if (ignoreAgentClasses) {
       excludeMatcher =
           excludeMatcher
-              .or(nameStartsWith("com.github.cc11001100.weavergirl."))
-              .or(nameStartsWith("com.github.cc11001100.weavergirl.shade."));
+              .or(nameStartsWith(AGENT_PACKAGE_PREFIX + "core."))
+              .or(nameStartsWith(AGENT_PACKAGE_PREFIX + "agent."))
+              .or(nameStartsWith(AGENT_PACKAGE_PREFIX + "plugins."))
+              .or(nameStartsWith(AGENT_PACKAGE_PREFIX + "runtime."))
+              .or(nameStartsWith(AGENT_PACKAGE_PREFIX + "api."))
+              .or(nameStartsWith(AGENT_PACKAGE_PREFIX + "annotation."));
     }
     if (excludedClassPatterns != null) {
       for (String pattern : excludedClassPatterns) {
@@ -609,9 +620,13 @@ public class WeaverTransformer {
 
     for (Class<?> clazz : allLoaded) {
       String className = clazz.getName();
+      // Same exclusions the installed matcher applies, so a name the transform path would skip is
+      // not retransformed either. Going through the matcher keeps the two lists from drifting: an
+      // application class that happens to sit under the framework namespace is eligible on both.
       if (isNeverRewritten(className)
           || (ignoreAgentClasses
-              && className.startsWith("com.github.cc11001100.weavergirl."))
+              && ignoredTypes(true, Collections.<String>emptyList())
+                  .matches(TypeDescription.ForLoadedType.of(clazz)))
           || registry.getInterceptorsForClass(className).isEmpty()) {
         continue;
       }

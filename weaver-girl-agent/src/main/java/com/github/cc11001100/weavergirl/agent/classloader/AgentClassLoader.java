@@ -97,6 +97,13 @@ public final class AgentClassLoader extends URLClassLoader {
                 "com.github.cc11001100.weavergirl.shade.org.slf4j.",
                 // Public API — shared across the isolated/system boundary
                 "com.github.cc11001100.weavergirl.api.",
+                // Weave annotations — an application's @WeaveClass classes are loaded by the
+                // application loader and reflect on these annotation types. Letting the isolated
+                // loader define its own copy makes Class#isAnnotationPresent compare two different
+                // types and answer "absent", so annotation scanning found nothing whenever it ran
+                // under the agent. Parent-first keeps one copy on the system loader, which is also
+                // what the application class path resolves when it carries weaver-girl-annotation.
+                "com.github.cc11001100.weavergirl.annotation.",
                 // Advice-bridge packages (closed set: only reference each other + API + JDK)
                 "com.github.cc11001100.weavergirl.core.interceptor.",
                 "com.github.cc11001100.weavergirl.core.sampling.",

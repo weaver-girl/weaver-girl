@@ -321,7 +321,7 @@ kill-switch**，网络可达即可被关闭；JDK 默认 executor = 每请求一
 | 内置插件名不一致 | README 写 `timing`/`exception`，实际 `method-timing`/`exception-monitor` | **已修复**（README + `troubleshooting.md`） |
 | 版本号硬编码 SNAPSHOT | README、`plugin-developer-guide.md`、`CONTRIBUTING.md`、Dockerfile、`docker-compose.yml` | **未修**：发布时仍需在 `release.yml` 里同步改写，或改成占位符 |
 | `ConfigValidator` 不在启动路径 | 全仓 main 无引用；`versioning-and-compatibility.md:95` 承诺未知键会报 | **未修** |
-| docs/examples 未纳入编译 | 三个游离 `.java`，无 pom 引用 | **未修** |
+| ~~docs/examples 未纳入编译~~ | 三个游离 `.java`，无 pom 引用 | **已修**：`weaver-girl-sample` 用 `build-helper` 把 `docs/examples` 加为 test source，`mvn test` 会编译它们；`HookModeExamplesTest` 再钉住三份示例与三种接入方式的实现 |
 | runbook 的动态挂载命令会失败 | `java -jar weaver-girl-agent.jar <pid>`，但 jar 没有 `Main-Class` | **已修复**：改为 `VirtualMachine.attach` / `ByteBuddyAgent.attach`，并写明重复 attach 与无 detach 的限制 |
 
 ---

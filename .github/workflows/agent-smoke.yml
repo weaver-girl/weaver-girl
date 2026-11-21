@@ -191,11 +191,16 @@ jobs:
           AGENT_JAR=$(ls weaver-girl-agent/target/weaver-girl-agent-*.jar | grep -vE 'sources|javadoc' | head -1)
           test -n "$AGENT_JAR"
           CP="weaver-girl-sample/target/classes:weaver-girl-sample/target/sample-libs/*"
+          # The sample's own config turns on the annotation scan and the YAML interceptors;
+          # without it only the programmatic hook fires, which is the gap this job previously
+          # could not see. run-sample.sh passes the same file.
+          SAMPLE_CONFIG="weaver-girl-sample/src/main/resources/weaver-sample.yml"
+          APP_LOG=/tmp/sample-attach.log
           # Non-default ports so a stray local service can't shadow the sample.
           java -Dsample.port=18080 \
-               -javaagent:"$AGENT_JAR"=metricsPort=9400,healthPort=9401,diagnosticsPort=9402 \
+               -javaagent:"$AGENT_JAR"=metricsPort=9400,healthPort=9401,diagnosticsPort=9402,config="$SAMPLE_CONFIG" \
                -cp "$CP" \
-               com.github.cc11001100.weavergirl.sample.app.SampleApplication &
+               com.github.cc11001100.weavergirl.sample.app.SampleApplication >"$APP_LOG" 2>&1 &
           APP_PID=$!
           # 1) agent readiness (fires during premain, BEFORE the app binds Jetty)
           for i in $(seq 1 60); do
@@ -228,6 +233,14 @@ jobs:
           curl -sf http://localhost:9402/stats   | grep -q '"interceptorInvocationCount"'
           # ByteBuddy must resolve in the isolated AgentClassLoader, not the system loader.
           curl -sf http://localhost:9402/stats   | grep -q '"byteBuddyClassLoader":"AgentClassLoader"'
+          # 4) The three hook modes the sample advertises. Each prints its own marker on a call
+          #    to TargetService, made at startup before Jetty binds. A missing marker means a
+          #    mode silently did nothing — the failure a plain "HTTP 200" cannot show, and one
+          #    that an ignore-prefix or annotation-identity regression reintroduces.
+          grep -q '\[LOG\] Before greet' "$APP_LOG"
+          grep -q '\[YAML\] Before greet' "$APP_LOG"
+          grep -q '\[ANNOTATION\] Before greet' "$APP_LOG"
+          echo "Hook modes verified: programmatic, annotation and YAML all fired."
           echo "Interception verified: servlet events recorded, invocation count advancing."
           kill "$APP_PID" 2>/dev/null || true
           wait "$APP_PID" 2>/dev/null || true

@@ -26,6 +26,31 @@
                     <skip>true</skip>
                 </configuration>
             </plugin>
+            <!-- docs/examples holds the plugin examples the developer guide links to. They are
+                 sources, not a module, so nothing used to compile them and one could rot for a
+                 release without anyone noticing. Compiling them as test sources of this module
+                 gets them onto the plugin API's class path and makes `mvn test` fail on a broken
+                 example. This module is never deployed, so the extra classes stay out of any
+                 published artifact. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.6.2</version>
+                <executions>
+                    <execution>
+                        <id>compile-docs-examples</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>add-test-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${project.basedir}/../docs/examples</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <!-- The audit plugin ships as its own jar, the way a third-party plugin does: its own
                  SPI entry and its own contract declaration, dropped into plugins/ next to the agent.
                  It carries only the plugin classes, not the payment service, or the plugin would bring

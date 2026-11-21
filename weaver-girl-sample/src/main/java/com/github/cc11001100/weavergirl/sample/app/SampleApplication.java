@@ -36,6 +36,16 @@ public class SampleApplication {
   private static final int PORT = Integer.getInteger("sample.port", 8080);
   private static final String DB_URL = "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1";
 
+  /**
+   * The class the three hook modes are demonstrated on. Programmatic registration (LoggingPlugin),
+   * the annotation mode (AnnotationInterceptor) and the YAML mode (SampleYamlInterceptor) all target
+   * it, but only when the agent is started with the sample's config. It is called from
+   * {@link #runHookDemo()}, so a default {@code run-sample.sh} shows the hooks firing rather than
+   * requiring a manual request against a class nothing in the program touches.
+   */
+  private static final String HOOK_TARGET =
+      "com.github.cc11001100.weavergirl.sample.app.TargetService";
+
   public static void main(String[] args) throws Exception {
     System.out.println("╔══════════════════════════════════════════════════════╗");
     System.out.println("║     Weaver-Girl Sample Application                  ║");
@@ -45,6 +55,9 @@ public class SampleApplication {
     // Initialize H2 database
     initDatabase();
     System.out.println("[DB] H2 database initialized with 'users' table\n");
+
+    // The hook demo comes before Jetty so it runs even when the port is already taken.
+    runHookDemo();
 
     // Start Jetty server
     Server server = new Server(PORT);
@@ -75,6 +88,35 @@ public class SampleApplication {
     }
 
     server.join();
+  }
+
+  /**
+   * Exercise {@link #HOOK_TARGET} so the three hook modes the sample advertises actually run.
+   *
+   * <p>The target is loaded and invoked here rather than through a servlet request, because a
+   * program whose default run never touches the class proves nothing about weaving. The plugins
+   * that hook it are the programmatic one in this sample, the annotation interceptor and the YAML
+   * interceptor; all three print a line, so their absence is visible too.
+   */
+  private static void runHookDemo() {
+    try {
+      Class<?> target = Class.forName(HOOK_TARGET);
+      Object instance = target.getDeclaredConstructor().newInstance();
+      System.out.println("\n--- hook demo: calling " + HOOK_TARGET + " ---");
+      System.out.println(
+          "greet result: " + target.getMethod("greet", String.class).invoke(instance, "hooks"));
+      System.out.println(
+          "calculate result: "
+              + target.getMethod("calculate", int.class, int.class).invoke(instance, 2, 3));
+      try {
+        target.getMethod("riskyOperation").invoke(instance);
+      } catch (java.lang.reflect.InvocationTargetException expected) {
+        System.out.println("riskyOperation threw: " + expected.getCause().getMessage());
+      }
+    } catch (ReflectiveOperationException | RuntimeException unavailable) {
+      // A demo hook must never stop the sample from starting; report it and move on.
+      System.out.println("hook demo skipped: " + unavailable);
+    }
   }
 
   private static void initDatabase() throws SQLException {

@@ -1,8 +1,20 @@
-# Example YAML-based hook configuration
+# The sample application's own agent config, used by run-sample.sh.
+#
+# It turns on the two hook modes that are not expressed in Java code the application can register
+# itself: the @WeaveClass annotation scan and the YAML-defined interceptors. The programmatic mode
+# comes from the plugin in META-INF/services that ships inside the sample jar, so it needs nothing
+# here. Together the three are what the sample's README line "all three hook modes" refers to.
+#
+# The annotation scan is package-scoped: give it the package that holds the @WeaveClass
+# interceptors, and it reads each class file's attribute before loading anything.
+annotationPackages: com.github.cc11001100.weavergirl.sample.interceptor
+
 interceptors:
   - className: "com.github.cc11001100.weavergirl.sample.app.TargetService"
     method: "greet"
     before: "com.github.cc11001100.weavergirl.sample.interceptor.SampleYamlInterceptor"
+    after: "com.github.cc11001100.weavergirl.sample.interceptor.SampleYamlInterceptor"
   - className: "com.github.cc11001100.weavergirl.sample.app.TargetService"
     methodPattern: "calc.*"
+    before: "com.github.cc11001100.weavergirl.sample.interceptor.SampleYamlInterceptor"
     after: "com.github.cc11001100.weavergirl.sample.interceptor.SampleYamlInterceptor"

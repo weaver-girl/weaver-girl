@@ -32,9 +32,17 @@ fi
 echo "Resolving the sample's runtime dependencies..."
 ./mvnw -B -q -pl weaver-girl-sample dependency:copy-dependencies -DoutputDirectory=target/dependency
 
+# The sample's own config turns on the annotation scan and the YAML-defined interceptors, so the
+# three hook modes the sample advertises all run here. The file travels with the module's classes.
+SAMPLE_CONFIG="weaver-girl-sample/src/main/resources/weaver-sample.yml"
+if [ ! -f "$SAMPLE_CONFIG" ]; then
+    echo "ERROR: $SAMPLE_CONFIG not found"
+    exit 1
+fi
+
 echo "Running sample with agent: $AGENT_JAR (port $PORT)"
 exec java \
-    -javaagent:"$AGENT_JAR"=plugins="$PLUGIN_DIR" \
+    -javaagent:"$AGENT_JAR"=plugins="$PLUGIN_DIR",config="$SAMPLE_CONFIG" \
     -Dsample.port="$PORT" \
     -cp "weaver-girl-sample/target/classes:weaver-girl-sample/target/dependency/*" \
     com.github.cc11001100.weavergirl.sample.app.SampleApplication

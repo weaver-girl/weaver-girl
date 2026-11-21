@@ -470,9 +470,17 @@ public class PluginLoader {
         }
         continue;
       }
+      // Only the plugins this jar itself defines. A per-jar loader also answers the service file of
+      // its parent — the application class path — so without this filter a plugin the application
+      // ships is reported once per capability jar (141 copies for a one-plugin application, each
+      // owning its own copy of the interceptors). A plugin the jar defined is one whose class was
+      // loaded by this loader, which is exactly what the child-first delegation guarantees for a
+      // provider named in the jar's own service file.
       for (WeaverPlugin plugin : discover(jar.classLoader)) {
-        discovered.add(plugin);
-        pluginJars.put(plugin, path);
+        if (plugin.getClass().getClassLoader() == jar.classLoader) {
+          discovered.add(plugin);
+          pluginJars.put(plugin, path);
+        }
       }
       loadedJars.put(path, new LoadedJar(fingerprint));
     }
@@ -666,10 +674,29 @@ public class PluginLoader {
   List<WeaverPlugin> discover(ClassLoader classLoader) {
     ServiceLoader<WeaverPlugin> serviceLoader = ServiceLoader.load(WeaverPlugin.class, classLoader);
     List<WeaverPlugin> discovered = new ArrayList<>();
+    // One plugin class is discovered once, even when two places on the class path declare it.
+    // ServiceLoader does not de-duplicate by provider name: with {@code plugins/} active, the
+    // agent's own loader and the per-jar PluginClassLoaders all answer the same service file, so
+    // the same provider was instantiated once per jar (141 times for a one-plugin application).
+    // Each instance registered its own copy of the interceptors and had to be destroyed separately.
+    // A provider class this scan already produced is skipped; a class that fails to instantiate is
+    // not remembered, so a later jar may still supply a working one.
+    java.util.Set<String> seen = new java.util.HashSet<>();
     java.util.Iterator<WeaverPlugin> providers = serviceLoader.iterator();
     while (providers.hasNext()) {
       try {
-        discovered.add(providers.next());
+        WeaverPlugin plugin = providers.next();
+        ClassLoader definitionLoader = plugin.getClass().getClassLoader();
+        // Keyed on the defining loader as well as the name: two jars that each ship a class of the
+        // same name are two plugins (a drop-in replacing a built-in), while one class reached
+        // through the same loader more than once is one plugin.
+        String key =
+            (definitionLoader == null ? "-" : System.identityHashCode(definitionLoader))
+                + ":"
+                + plugin.getClass().getName();
+        if (seen.add(key)) {
+          discovered.add(plugin);
+        }
       } catch (Throwable t) {
         Throwable cause = t.getCause() != null ? t.getCause() : t;
         log.error("Plugin provider could not be instantiated: {}", cause.toString());

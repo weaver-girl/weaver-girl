@@ -183,7 +183,20 @@ attached with `-javaagent`, proving servlet / Spring MVC / JDBC interception end
 ./run-sample.sh
 ```
 
-The sample demonstrates all three hook modes: Programmatic, Annotation, and YAML.
+The sample demonstrates all three hook modes on one call — Programmatic, Annotation, and YAML —
+and prints a `--- hook demo ---` block at startup proving it:
+
+```
+--- hook demo: calling com.github.cc11001100.weavergirl.sample.app.TargetService ---
+[LOG] Before greet: [hooks]            # plugin in META-INF/services (programmatic)
+[YAML] Before greet args=[hooks]       # weaver-sample.yml
+[ANNOTATION] Before greet: [hooks]     # @WeaveClass interceptor, found by annotationPackages
+```
+
+`run-sample.sh` passes the sample's `weaver-sample.yml`, which is what turns on the annotation
+scan and the YAML interceptors; the programmatic plugin ships inside the sample jar and needs no
+config. Without that file only the programmatic hook fires, so the three lines together are the
+check.
 
 ### Drop-in plugin demo
 
