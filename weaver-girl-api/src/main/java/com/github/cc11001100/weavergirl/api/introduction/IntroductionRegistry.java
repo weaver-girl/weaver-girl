@@ -26,6 +26,9 @@ public class IntroductionRegistry {
     if (definition == null) {
       throw new IllegalArgumentException("IntroductionDefinition must not be null");
     }
+    // One definition per name: a plugin re-initialised after a reload must replace its earlier
+    // definition, not stack a duplicate that would add the interface twice.
+    definitions.removeIf(existing -> existing.getName().equals(definition.getName()));
     definitions.add(definition);
   }
 

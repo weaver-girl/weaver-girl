@@ -157,6 +157,12 @@ public class WeaverTransformer {
    * restore already-woven classes to their original bytecode.
    */
   private volatile net.bytebuddy.agent.builder.ResettableClassFileTransformer resettable;
+
+  /**
+   * The introduction chain installed by the last {@link #install}, removed before the next one, so a
+   * reinstall cannot give a type the same interface twice.
+   */
+  private volatile net.bytebuddy.agent.builder.ResettableClassFileTransformer introductionTransformers;
   /**
    * Class names this transformer actually wove, recorded by the transformation listener. Scoped to
    * this transformer (unlike the global {@code AgentStatus} transformed list) so {@link #unweave()}
@@ -474,11 +480,123 @@ public class WeaverTransformer {
       }
     }
 
+    // Introductions go on their own chain, installed un-resettably and applied when a type is first
+    // defined. The interceptor chain above is retransform-only and calls disableClassFormatChanges(),
+    // which forbids shaping a class's interface list; an introduction needs exactly that, and the
+    // JVM refuses to add interfaces to a type it has already loaded or frozen. A type that is
+    // already loaded therefore gets no introduction — that is a JVM limit, not a bug here, and the
+    // class has to be reached before it loads for the mixin to take.
+    installIntroductionChain(instrumentation, excludeMatcher);
+
     resettable = agentBuilder.installOn(instrumentation);
     installedGeneration = registryGeneration();
     log.info(
-        "WeaverTransformer installed with {} interceptor definitions",
-        registry.getAllDefinitions().size());
+        "WeaverTransformer installed with {} interceptor definitions and {} introductions",
+        registry.getAllDefinitions().size(),
+        introductionRegistry == null ? 0 : introductionRegistry.getAllDefinitions().size());
+  }
+
+  /**
+   * Install the introduction chain: for each registered introduction, a type transformer that makes
+   * the target implement the interface and routes its methods to the delegate.
+   *
+   * <p>Kept separate from the interceptor chain for two reasons. It must not call
+   * {@code disableClassFormatChanges()} (the mixin adds an interface and methods), and it must not
+   * be retransform-driven (an interface cannot be added to a frozen type). It is re-installed on
+   * every {@link #install} so an introduction registered later reaches types defined after that.
+   *
+   * @param instrumentation the JVM handle
+   * @param ignoreMatcher the same ignore rule the interceptor chain uses, so a framework class is
+   *     never mixin'd
+   */
+  private void installIntroductionChain(
+      Instrumentation instrumentation,
+      net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> ignoreMatcher) {
+    if (introductionRegistry == null || introductionRegistry.getAllDefinitions().isEmpty()) {
+      return;
+    }
+    // Drop the chain installed by an earlier call, or every install would stack another one and
+    // a type would gain the interface twice.
+    if (introductionTransformers != null) {
+      introductionTransformers.reset(instrumentation, AgentBuilder.RedefinitionStrategy.RETRANSFORMATION);
+      introductionTransformers = null;
+    }
+    AgentBuilder introBuilder =
+        new AgentBuilder.Default()
+            .ignore(ignoreMatcher)
+            .with(
+                new AgentBuilder.InjectionStrategy.UsingInstrumentation(
+                    instrumentation, new java.io.File(System.getProperty("java.io.tmpdir"))));
+    introBuilder = buildIntroductionTransformers(introBuilder);
+    // A plain transformer (no redefinition strategy): it acts when the JVM defines a type and is
+    // never asked to retransform one.
+    introductionTransformers = introBuilder.installOn(instrumentation);
+  }
+
+  /**
+   * Append one type transformer per registered introduction to {@code agentBuilder}.
+   *
+   * @param agentBuilder the chain to extend
+   * @return the chain with the introductions appended
+   */
+  private AgentBuilder buildIntroductionTransformers(AgentBuilder agentBuilder) {
+    TypeExistenceChecker checker = new TypeExistenceChecker(instrumentation);
+    for (com.github.cc11001100.weavergirl.api.introduction.IntroductionDefinition definition :
+        introductionRegistry.getAllDefinitions()) {
+      com.github.cc11001100.weavergirl.api.matcher.ClassMatcher classMatcher =
+          definition.getClassMatcher();
+      if (classMatcher.getMatchType() == com.github.cc11001100.weavergirl.api.matcher.ClassMatcher.MatchType.EXACT_NAME
+          && !checker.exists(classMatcher.getPattern())) {
+        log.info(
+            "Skipping introduction '{}': target class '{}' not found on classpath",
+            definition.getName(),
+            classMatcher.getPattern());
+        continue;
+      }
+      final Class<?> introductionType = definition.getIntroductionType();
+      // Only the methods the delegate actually answers; a missing one would throw at call time.
+      final java.util.Set<String> names =
+          com.github.cc11001100.weavergirl.core.introduction.IntroductionAdvice
+              .delegatableMethodNames(definition);
+      if (names.isEmpty()) {
+        log.warn(
+            "Introduction '{}' contributes no method: delegate {} answers none of {}",
+            definition.getName(),
+            definition.getDelegate().getClass().getName(),
+            introductionType.getName());
+        continue;
+      }
+      agentBuilder =
+          agentBuilder
+              .type(buildTypeMatcher(classMatcher))
+              .transform(
+                  (builder, typeDescription, classLoader, module, protectionDomain) -> {
+                    if (classLoader == null) {
+                      // A bootstrap type cannot see the helper classes; leave it alone rather than
+                      // produce a class that fails to link.
+                      return builder;
+                    }
+                    // Bound by NAME, never by Class: looking the target up here — while it is being
+                    // defined — loads a second copy and freezes the type, so the interface can no
+                    // longer be added. The name is resolved when an introduced method is called.
+                    com.github.cc11001100.weavergirl.core.introduction.IntroductionStore
+                        .bindClassName(typeDescription.getName(), definition.getDelegate());
+                    // Every method of the added interface routes to the one delegate entry point.
+                    return builder
+                        .implement(introductionType)
+                        .intercept(
+                            net.bytebuddy.implementation.MethodDelegation.to(
+                                com.github.cc11001100.weavergirl.core.introduction
+                                    .IntroductionDelegate.class));
+                  });
+      log.info(
+          "Introduction '{}' installed: {} -> {} ({})",
+          definition.getName(),
+          classMatcher.getPattern(),
+          introductionType.getName(),
+          names);
+    }
+    return agentBuilder;
   }
 
   /**
@@ -525,6 +643,16 @@ public class WeaverTransformer {
       return 0;
     }
     if (!isStale()) {
+      // The interceptor set is unchanged, but an introduction may be new: it is not part of the
+      // interceptor registry, so isStale() cannot see it. Reinstall when one is registered, or the
+      // interface would be added to classes loaded after install and never to the ones before.
+      if (hasIntroductions()) {
+        if (resettable != null) {
+          resettable.reset(instrumentation, AgentBuilder.RedefinitionStrategy.RETRANSFORMATION);
+          resettable = null;
+        }
+        install(instrumentation, false);
+      }
       return retransformLoadedClasses();
     }
     if (resettable != null) {
@@ -535,6 +663,29 @@ public class WeaverTransformer {
     }
     install(instrumentation, false);
     return retransformLoadedClasses();
+  }
+
+  /**
+   * The registry the introductions are registered in, or {@code null} when this transformer was
+   * built without one (unit tests that only weave interceptors).
+   *
+   * <p>Set by the engine after construction. Reading it here, rather than passing definitions at
+   * install time, lets an introduction registered later — the usual case, a plugin doing it in
+   * {@code init} — reach a reinstall via {@link #reinstallAndRetransform}.
+   *
+   * @param registry the introduction registry to install from
+   */
+  public void setIntroductionRegistry(IntroductionRegistry registry) {
+    this.introductionRegistry = registry;
+  }
+
+  /**
+   * Whether any introduction is registered, so a reinstall is worth its cost.
+   *
+   * @return true when at least one introduction would be installed
+   */
+  public boolean hasIntroductions() {
+    return introductionRegistry != null && !introductionRegistry.getAllDefinitions().isEmpty();
   }
 
   /**
@@ -567,6 +718,10 @@ public class WeaverTransformer {
     registry.clear();
     if (introductionRegistry != null) {
       introductionRegistry.clear();
+    }
+    if (introductionTransformers != null) {
+      introductionTransformers.reset(instrumentation, AgentBuilder.RedefinitionStrategy.RETRANSFORMATION);
+      introductionTransformers = null;
     }
     com.github.cc11001100.weavergirl.core.InterceptorHolder.invalidateSnapshot();
     int woven = wovenClasses.size();

@@ -110,6 +110,11 @@ public final class AgentClassLoader extends URLClassLoader {
                 "com.github.cc11001100.weavergirl.core.status.",
                 "com.github.cc11001100.weavergirl.core.switches.",
                 "com.github.cc11001100.weavergirl.core.circuit.",
+                // The introduction delegate/store is inlined into the application's class, so it
+                // resolves through the application loader. The engine registers delegates in the
+                // isolated loader's copy; without parent-first there would be two stores and the
+                // woven method would find no delegate.
+                "com.github.cc11001100.weavergirl.core.introduction.",
                 "com.github.cc11001100.weavergirl.core.management."));
     PARENT_FIRST_PREFIXES = Collections.unmodifiableSet(set);
   }

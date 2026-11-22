@@ -74,16 +74,18 @@ public class FieldAdvice {
         // Not an accessor of a woven field; nothing to intercept at this join point.
         return null;
       }
-      Object originalWriteValue = writeValue;
       FieldInvocation invocation = dispatchEnter(targetClass, field, target, writeValue);
       if (invocation != null) {
         invocation.setAttachment(FIELD_ORIGIN_ATTACHMENT, field);
         // dispatchEnter mutates a copy of the argument, so apply what the interceptor decided to the
         // bound @Advice.Argument(0, readOnly = false) variable here: only a reassignment performed in
         // this advice method body is written back into the woven call.
-        if (originalWriteValue != null) {
+        if (writeValue != null) {
           if (invocation.isWriteSkipped()) {
-            writeValue = originalWriteValue;
+            // Rejecting the write means the field keeps what it already holds. Assigning the value
+            // being written back would be a no-op and the rejection would silently do nothing.
+            // The field's current value is the only thing that expresses "do not write".
+            writeValue = readFieldValue(field, target);
           } else if (invocation.isWriteOverridden()) {
             writeValue = invocation.getWriteValue();
           }
@@ -145,6 +147,36 @@ public class FieldAdvice {
     char[] chars = s.toCharArray();
     chars[0] = Character.toLowerCase(chars[0]);
     return new String(chars);
+  }
+
+  /**
+   * The current value of {@code field} on {@code target}, for an {@code onFieldGet} callback.
+   *
+   * <p>Boxed through reflection so it matches the callback's {@code Object} parameter for primitive
+   * fields as well. An unreadable field (a private field of a class in a module that does not open
+   * its package, for instance) yields {@code null} — the callback still runs, it just sees no
+   * value, which is the only failure mode that cannot be avoided here.
+   *
+   * <p>Public and static for the same reason as {@link #resolveFieldForAccessor}: the call site is
+   * inlined advice running in the application's package.
+   *
+   * @param field the field being read
+   * @param target the owning instance, or {@code null} for a static field
+   * @return the value read, or {@code null} when it could not be read
+   */
+  public static Object readFieldValue(Field field, Object target) {
+    if (field == null) {
+      return null;
+    }
+    try {
+      // The resolved Field comes from getDeclaredField, so a private field needs opening first.
+      if (!field.isAccessible()) {
+        field.setAccessible(true);
+      }
+      return field.get(target);
+    } catch (Throwable unreadable) {
+      return null;
+    }
   }
 
   /**
@@ -223,8 +255,16 @@ public class FieldAdvice {
                   invocation.setAttachment("__field_write_skipped__", Boolean.TRUE);
                 }
               } else {
-                // getfield access: invoke onFieldGet
-                fieldInterceptor.onFieldGet(invocation, null);
+                // getfield access: invoke onFieldGet with the value actually read.
+                //
+                // The advice runs at the accessor's entry, which is before the field is read, so the
+                // value is taken directly from the field here. A direct read makes the interception
+                // pass-through: the callbacks observe and may replace the return value, but reading
+                // the field for the callback does not itself change what the woven method returns.
+                // Passing null instead — which is what this did before — makes the documented
+                // "originalValue is the value read from the field" contract false for every
+                // interceptor that wants to inspect it.
+                fieldInterceptor.onFieldGet(invocation, readFieldValue(field, target));
               }
               long hookNanos = System.nanoTime() - hookStart;
               InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);

@@ -176,7 +176,8 @@ class FieldAdviceTest {
           @Override
           public void onFieldGet(FieldInvocation invocation, Object originalValue) {
             getCalled[0] = true;
-            assertNull(originalValue, "onFieldGet is always invoked with a null placeholder value");
+            assertEquals(
+                "initial", originalValue, "onFieldGet receives the value read from the field");
             invocation.setReturnValue("overridden");
           }
 
@@ -253,6 +254,17 @@ class FieldAdviceTest {
     assertNotNull(result);
     assertTrue(result.isWriteSkipped());
     assertEquals(Boolean.TRUE, result.getAttachment("__field_write_skipped__"));
+
+    // The rejection is only real if the woven setter no longer stores the new value. dispatchEnter
+    // handles the direct path; the value the field keeps is what a skipped write must restore.
+    SampleClass instance = new SampleClass();
+    FieldInvocation skipped =
+        FieldAdvice.onWovenEnter(SampleClass.class, "setValue", instance, "x");
+    assertTrue(skipped.isWriteSkipped());
+    assertEquals(
+        "initial",
+        instance.value,
+        "a skipped write must leave the field holding its previous value");
   }
 
   @Test

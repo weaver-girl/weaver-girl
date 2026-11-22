@@ -208,12 +208,20 @@ matcher（`:461`）。之后 `registry.register()` 只让 `InterceptorHolder` �
   不可见，写 null 与读无法区分。
 - `InterceptorDefinition.AdviceMode` 每个枚举值补上能力与限制。
 - `docs/plugin-developer-guide.md` 新增 "What each join point can and cannot do" 对照表。
+- **字段钩子两处契约缺陷已修**（写案例时实测发现）：`onFieldGet(inv, originalValue)` 原先恒传
+  `null`，与 Javadoc「值从字段读出」矛盾——现在传入真实值（`FieldAdvice.readFieldValue`）；
+  `skipWrite()` 原先把正在写入的值写回（等于没拒绝），现在写回字段当前值，写入真的被挡下。
+  回归测试：`FieldAdviceOriginalValueTest`。案例：`scripts/run-field-catch-demo.sh`。
 
 ### 3.4 其他死 API（P2）
 
-- `api/introduction` 公开且标了版本，但 `IntroductionAdvice` **从未被 `Advice.to(...)`
-  织入**（`WeaverTransformer.java` 只 `Advice.to(adviceClass)`），`PluginContext` 也没有
-  注册入口 → mixin 能力不可用。**未修**。
+- ~~`api/introduction` 公开且标了版本，但 `IntroductionAdvice` **从未被 `Advice.to(...)`
+  织入**，`PluginContext` 也没有注册入口 → mixin 能力不可用。~~ **已修**：`WeaverTransformer`
+  增加独立的引介链（`implement(interface).intercept(MethodDelegation)`，不复用
+  `disableClassFormatChanges()` 的拦截器链）；`IntroductionRegistrarHolder` +
+  `IntroductionRegistrar` 给插件一个跨加载器注册入口；委托支持"首参接收目标实例"。
+  已知边界：接口只能在目标类**首次定义**时加上，已加载的类 JVM 不允许再加接口。
+  案例：`scripts/run-introduction-demo.sh`。
 - ~~`minimumAgentVersion` 只在同时声明 `plugin.apiVersion` 时才检查~~ **已修**
   （`PluginLoader`）：只要 jar 声明了任一受检字段就检查；补了
   `aJarThatOnlyDeclaresAMinimumAgentVersionIsStillChecked` 回归测试。

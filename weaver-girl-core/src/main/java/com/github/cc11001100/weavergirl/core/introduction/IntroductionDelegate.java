@@ -35,14 +35,14 @@ public class IntroductionDelegate {
       @Origin Method method,
       @AllArguments Object[] args) {
     try {
-      Object delegate = IntroductionStore.getDelegate(target);
+      Object delegate = IntroductionStore.resolveWithName(target);
       if (delegate == null) {
         log.warn("No delegate found for target instance in introduction");
         return null;
       }
 
       // Find the corresponding method on the delegate
-      Method delegateMethod = findDelegateMethod(delegate.getClass(), method);
+      Method delegateMethod = findDelegateMethod(delegate, method);
       if (delegateMethod == null) {
         log.warn(
             "No matching method found on delegate for {}",
@@ -51,6 +51,13 @@ public class IntroductionDelegate {
       }
 
       // Invoke the delegate method
+      if (IntroductionDelegate.methodTakesTarget(delegateMethod, method)) {
+        // A delegate that only implements the interface cannot see the object it is answering
+        // for, which limits it to constants. Such a delegate asks for the target by declaring it
+        // as the first parameter instead.
+        Object[] withTarget = prepend(target, args);
+        return delegateMethod.invoke(delegate, withTarget);
+      }
       if (args == null || args.length == 0) {
         return delegateMethod.invoke(delegate);
       } else {
@@ -70,21 +77,73 @@ public class IntroductionDelegate {
     }
   }
 
-  private static Method findDelegateMethod(Class<?> delegateClass, Method interfaceMethod) {
+  /**
+   * The delegate's method for an interface method: either the plain interface method, or the same
+   * method with the target object as an extra first parameter.
+   *
+   * <p>The second shape is what lets a delegate read the object it is answering for. It is tried
+   * second so an existing delegate that happens to be assignable from the interface keeps working
+   * unchanged.
+   *
+   * @param delegate the delegate instance
+   * @param interfaceMethod the interface method being called
+   * @return the method to invoke, or {@code null} when the delegate answers neither shape
+   */
+  public static Method findDelegateMethod(Object delegate, Method interfaceMethod) {
+    Class<?> delegateClass = delegate.getClass();
     String methodName = interfaceMethod.getName();
     Class<?>[] paramTypes = interfaceMethod.getParameterTypes();
-
     try {
       return delegateClass.getMethod(methodName, paramTypes);
-    } catch (NoSuchMethodException e) {
-      // Try to find a method with compatible parameter types
-      for (Method method : delegateClass.getMethods()) {
-        if (method.getName().equals(methodName)
-            && java.util.Arrays.equals(method.getParameterTypes(), paramTypes)) {
+    } catch (NoSuchMethodException plainMissing) {
+      // Fall through to the target-taking shape.
+    }
+    // The target-taking shape is matched by structure, not by exact types: a delegate may declare
+    // the concrete class or Object for the first parameter, and neither is the interface's own type.
+    for (Method method : delegateClass.getMethods()) {
+      if (!method.getName().equals(methodName)) {
+        continue;
+      }
+      Class<?>[] params = method.getParameterTypes();
+      if (java.util.Arrays.equals(params, paramTypes)) {
+        return method;
+      }
+      if (params.length == paramTypes.length + 1
+          && params[0].isAssignableFrom(interfaceMethod.getDeclaringClass())) {
+        boolean sameTail = true;
+        for (int i = 0; i < paramTypes.length; i++) {
+          if (!params[i + 1].equals(paramTypes[i])) {
+            sameTail = false;
+            break;
+          }
+        }
+        if (sameTail) {
           return method;
         }
       }
-      return null;
     }
+    return null;
+  }
+
+  /**
+   * Whether {@code delegateMethod} answers an interface method by taking the target as an extra
+   * first parameter.
+   *
+   * @param delegateMethod the method found on the delegate
+   * @param interfaceMethod the interface method being called
+   * @return true when the target has to be prepended to the arguments
+   */
+  public static boolean methodTakesTarget(Method delegateMethod, Method interfaceMethod) {
+    return delegateMethod.getParameterCount() == interfaceMethod.getParameterCount() + 1;
+  }
+
+  private static Object[] prepend(Object target, Object[] args) {
+    int extra = args == null ? 0 : args.length;
+    Object[] all = new Object[extra + 1];
+    all[0] = target;
+    if (extra > 0) {
+      System.arraycopy(args, 0, all, 1, extra);
+    }
+    return all;
   }
 }

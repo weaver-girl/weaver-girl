@@ -221,6 +221,26 @@ Both exit 0 under the agent and 2 without it.
 scripts/run-scenario-demos.sh
 ```
 
+### Join points a method interceptor cannot express
+
+Three more demos cover the hook types beyond method entry/exit. Each runs the same program twice:
+with the agent it exits 0, without it exits 2.
+
+| Demo | What it exercises | Without the plugin | With it |
+|---|---|---|---|
+| `scripts/run-field-catch-demo.sh` | Field read/write hooks and a failed-exit (catch) hook | `describe()` prints `alice/hunter2`, an empty `setPassword("")` wipes the field, and the export throws | Every password read comes back `alice/********`, the empty write is rejected and the old value stays, and the failed export returns `unavailable: …` |
+| `scripts/run-introduction-demo.sh` | Introduction (mixin): add an interface to a class the plugin does not own | `getInterfaces()` is `[]` and `instanceof InvoiceCsv` is false | The class implements `InvoiceCsv` and `toCsvRow()` renders `alice,2599` through the plugin's delegate |
+| `scripts/run-taint-demo.sh` | Call-site tracking plus taint (IAST) | The query is concatenated from the raw parameter and nothing reports it | The call site (`InjectionDemo.main:41`) is recorded, and the SQL sink reports the finding with source `http.parameter:q` |
+
+An introduction is applied when the target type is **first defined**; the JVM does not let an
+already-loaded class gain an interface, so the demo asks the object before using it.
+
+```bash
+scripts/run-field-catch-demo.sh
+scripts/run-introduction-demo.sh
+scripts/run-taint-demo.sh
+```
+
 ## Observability
 
 ```bash

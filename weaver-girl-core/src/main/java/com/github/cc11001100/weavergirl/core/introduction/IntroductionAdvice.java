@@ -35,6 +35,29 @@ public class IntroductionAdvice {
     return INTRODUCTION_REGISTRY;
   }
 
+  /**
+   * The delegate methods an introduction contributes, as the method names to delegate.
+   *
+   * <p>Read by the transformer when it installs the introduction: it implements the interface on
+   * the target and routes each of these methods through {@link IntroductionDelegate#intercept}. A
+   * definition whose delegate lacks a method simply omits it, which is what the runtime advice does
+   * too.
+   *
+   * @param definition the introduction to install
+   * @return the interface methods the delegate can answer, never null
+   */
+  public static java.util.Set<String> delegatableMethodNames(IntroductionDefinition definition) {
+    java.util.Set<String> names = new java.util.LinkedHashSet<String>();
+    for (java.lang.reflect.Method contract : definition.getIntroductionType().getMethods()) {
+      if (IntroductionDelegate.findDelegateMethod(definition.getDelegate(), contract) != null) {
+        names.add(contract.getName());
+      }
+      // Otherwise the delegate does not answer this one; the woven method would throw at call
+      // time, so it is left out of the interface rather than made to fail.
+    }
+    return names;
+  }
+
   @Advice.OnMethodEnter
   public static Object onMethodEnter(
       @Advice.Origin Class<?> targetClass,
@@ -58,7 +81,7 @@ public class IntroductionAdvice {
       IntroductionDefinition matchingDef = matchingDefs.get(0);
 
       // Get the delegate for this target instance
-      Object delegate = IntroductionStore.getDelegate(target);
+      Object delegate = IntroductionStore.resolveWithName(target);
       if (delegate == null) {
         log.warn(
             "No delegate found for target class {} in introduction {}",
@@ -68,7 +91,7 @@ public class IntroductionAdvice {
       }
 
       // Find the corresponding method on the delegate
-      Method delegateMethod = findDelegateMethod(matchingDef, method);
+      Method delegateMethod = IntroductionDelegate.findDelegateMethod(delegate, method);
       if (delegateMethod == null) {
         log.warn(
             "No matching method found on delegate for {}#{}",
@@ -78,7 +101,7 @@ public class IntroductionAdvice {
       }
 
       // Return a DelegateInvocation that carries the delegate, method, and call arguments
-      return new DelegateInvocation(delegate, delegateMethod, arguments);
+      return new DelegateInvocation(delegate, delegateMethod, method, target, arguments);
     } catch (Throwable e) {
       log.warn("Introduction advice failed for {}#{}: {}", targetClass.getName(), method.getName(), e.getMessage());
       return null;
@@ -96,6 +119,14 @@ public class IntroductionAdvice {
         Method delegateMethod = invocation.getDelegateMethod();
         Object delegate = invocation.getDelegate();
         Object[] args = invocation.getArguments();
+        if (IntroductionDelegate.methodTakesTarget(delegateMethod, methodOf(invocation))) {
+          Object[] all = new Object[(args == null ? 0 : args.length) + 1];
+          all[0] = invocation.getTarget();
+          if (args != null && args.length > 0) {
+            System.arraycopy(args, 0, all, 1, args.length);
+          }
+          args = all;
+        }
         Object result;
         if (args == null || args.length == 0) {
           result = delegateMethod.invoke(delegate);
@@ -116,36 +147,40 @@ public class IntroductionAdvice {
     }
   }
 
-  private static Method findDelegateMethod(IntroductionDefinition def, Method method) {
-    // Find the method on the delegate that matches the interface method
-    Class<?> delegateClass = def.getDelegate().getClass();
-    String methodName = method.getName();
-    Class<?>[] paramTypes = method.getParameterTypes();
 
-    try {
-      return delegateClass.getMethod(methodName, paramTypes);
-    } catch (NoSuchMethodException e) {
-      // Try to find a method with compatible parameter types
-      for (Method m : delegateClass.getMethods()) {
-        if (m.getName().equals(methodName)
-            && java.util.Arrays.equals(m.getParameterTypes(), paramTypes)) {
-          return m;
-        }
-      }
-      return null;
-    }
+
+  /** The interface method this invocation answers, so the target-taking shape can be detected. */
+  private static Method methodOf(DelegateInvocation invocation) {
+    return invocation.getInterfaceMethod();
   }
 
   // Simple holder for delegate invocation state
   private static class DelegateInvocation {
     private final Object delegate;
     private final Method delegateMethod;
+    private final Method interfaceMethod;
     private final Object[] arguments;
+    private final Object target;
 
-    DelegateInvocation(Object delegate, Method delegateMethod, Object... arguments) {
+    DelegateInvocation(
+        Object delegate,
+        Method delegateMethod,
+        Method interfaceMethod,
+        Object target,
+        Object[] arguments) {
       this.delegate = delegate;
       this.delegateMethod = delegateMethod;
+      this.interfaceMethod = interfaceMethod;
       this.arguments = arguments;
+      this.target = target;
+    }
+
+    Object getTarget() {
+      return target;
+    }
+
+    Method getInterfaceMethod() {
+      return interfaceMethod;
     }
 
     Object getDelegate() {

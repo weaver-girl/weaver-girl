@@ -103,6 +103,35 @@
                                 <copy todir="${project.build.directory}/log-correlation-plugin">
                                     <fileset dir="src/main/plugin-resources-log-correlation"/>
                                 </copy>
+
+                                <!-- The account guard: field read/write hooks plus a catch hook, the
+                                     three join points a method interceptor cannot express. -->
+                                <mkdir dir="${project.build.directory}/account-guard-plugin"/>
+                                <copy todir="${project.build.directory}/account-guard-plugin">
+                                    <fileset dir="${project.build.outputDirectory}" includes="com/github/cc11001100/weavergirl/sample/account/AccountGuardPlugin*.class"/>
+                                </copy>
+                                <copy todir="${project.build.directory}/account-guard-plugin">
+                                    <fileset dir="src/main/plugin-resources-account"/>
+                                </copy>
+
+                                <!-- CSV export as an introduction (mixin): adds an interface to a
+                                     class instead of intercepting a method. -->
+                                <mkdir dir="${project.build.directory}/csv-export-plugin"/>
+                                <copy todir="${project.build.directory}/csv-export-plugin">
+                                    <fileset dir="${project.build.outputDirectory}" includes="com/github/cc11001100/weavergirl/sample/billing/CsvExportPlugin*.class"/>
+                                </copy>
+                                <copy todir="${project.build.directory}/csv-export-plugin">
+                                    <fileset dir="src/main/plugin-resources-billing"/>
+                                </copy>
+
+                                <!-- Call-site tracing: records who called a shared service. -->
+                                <mkdir dir="${project.build.directory}/callsite-trace-plugin"/>
+                                <copy todir="${project.build.directory}/callsite-trace-plugin">
+                                    <fileset dir="${project.build.outputDirectory}" includes="com/github/cc11001100/weavergirl/sample/search/CallsiteTracePlugin*.class"/>
+                                </copy>
+                                <copy todir="${project.build.directory}/callsite-trace-plugin">
+                                    <fileset dir="src/main/plugin-resources-search"/>
+                                </copy>
                             </target>
                         </configuration>
                     </execution>
@@ -154,6 +183,39 @@
                         <configuration>
                             <classifier>log-correlation-plugin</classifier>
                             <classesDirectory>${project.build.directory}/log-correlation-plugin</classesDirectory>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>account-guard-plugin-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>account-guard-plugin</classifier>
+                            <classesDirectory>${project.build.directory}/account-guard-plugin</classesDirectory>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>csv-export-plugin-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>csv-export-plugin</classifier>
+                            <classesDirectory>${project.build.directory}/csv-export-plugin</classesDirectory>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>callsite-trace-plugin-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                            <classifier>callsite-trace-plugin</classifier>
+                            <classesDirectory>${project.build.directory}/callsite-trace-plugin</classesDirectory>
                         </configuration>
                     </execution>
                 </executions>

@@ -131,6 +131,11 @@ public class WeaverGirl {
 
       java.util.Map<String, String> pluginConfig = mergePluginConfig(config, weaverConfig);
 
+      // Before any plugin runs init(): a plugin registers its introduction there, and it reaches
+      // the engine through this registrar. Publishing after the load would make every introduction
+      // registered in init() fall into the "no registrar published" branch.
+      publishIntroductionRegistrar(weaverGirl);
+
       long pluginLoadStart = System.nanoTime();
       // The loader that defined this class, not the thread context loader. Under the isolated
       // AgentClassLoader the context loader is the system loader, which cannot see the capability
@@ -188,6 +193,9 @@ public class WeaverGirl {
 
       long transformerStart = System.nanoTime();
       WeaverTransformer transformer = new WeaverTransformer(weaverGirl.registry);
+      // Introductions are installed from this registry, and a plugin registers one in init(), which
+      // runs before the first install — so it is wired here rather than at the register call.
+      transformer.setIntroductionRegistry(weaverGirl.introductionRegistry);
 
       if (weaverConfig != null && weaverConfig.getExcludedClasses() != null) {
         transformer.setExcludedClassPatterns(weaverConfig.getExcludedClasses());
@@ -527,6 +535,12 @@ public class WeaverGirl {
         delegate
     );
     introductionRegistry.register(def);
+    // The installed chain does not know about a definition added after install, so a class that
+    // loads from here on would never receive the interface. Reinstall when the transformer is
+    // already live; at boot this happens before install and the first install picks it up.
+    if (transformer != null) {
+      transformer.reinstallAndRetransform();
+    }
     return name;
   }
 
@@ -575,6 +589,47 @@ public class WeaverGirl {
   }
 
   // --- P103: Dynamic refresh support -----------------------------------------------
+
+  /**
+   * Publish the introduction registrar to plugins. Addressed through a parent-first holder class, so
+   * a plugin in a child loader reaches the same field.
+   *
+   * @param agent the engine whose registry backs the registrar
+   */
+  private static void publishIntroductionRegistrar(final WeaverGirl agent) {
+    com.github.cc11001100.weavergirl.api.introduction.IntroductionRegistrarHolder.set(
+        new com.github.cc11001100.weavergirl.api.introduction.IntroductionRegistrar() {
+          @Override
+          public String register(
+              com.github.cc11001100.weavergirl.api.introduction.IntroductionDefinition definition) {
+            agent.introductionRegistry.register(definition);
+            // Bind the delegate by target name here, not in the transform callback: the callback
+            // only runs for a type the chain actually visits, and an exclusive-name matcher that
+            // runs after another chain has already shaped the type would never see it. The name is
+            // what the call-time lookup uses, so binding now is enough.
+            if (definition.getClassMatcher().getMatchType()
+                == com.github.cc11001100.weavergirl.api.matcher.ClassMatcher.MatchType.EXACT_NAME) {
+              com.github.cc11001100.weavergirl.core.introduction.IntroductionStore.bindClassName(
+                  definition.getClassMatcher().getPattern(), definition.getDelegate());
+            }
+            if (agent.transformer != null) {
+              // The installed chain predates this definition, so a class loading from now on would
+              // never be given the interface.
+              agent.transformer.reinstallAndRetransform();
+            }
+            return definition.getName();
+          }
+
+          @Override
+          public boolean unregister(String name) {
+            boolean removed = agent.introductionRegistry.unregister(name);
+            if (agent.transformer != null) {
+              agent.transformer.reinstallAndRetransform();
+            }
+            return removed;
+          }
+        });
+  }
 
   /**
    * Load jars added to the plugin directory since the last scan, reload a jar whose content changed,
