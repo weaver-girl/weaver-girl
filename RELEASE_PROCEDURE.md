@@ -69,11 +69,14 @@ gpg --verify artifact.jar.asc artifact.jar
 
 ## Cutting a release
 
-1. **Ensure `main` is green.** Run the gate on JDK 17 (the CI compatibility matrix
-   separately verifies the packaged agent on JDK 8/11/17/21):
+1. **Ensure `main` is green.** CI (`ci.yml`) is what gates the tag: the two
+   `Build & Test` jobs plus the quality gate must pass on the commit you tag, and
+   `agent-smoke.yml` must pass its six jobs. Locally, the same gate is:
    ```bash
-   ./scripts/release-check.sh
+   JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./scripts/release-check.sh
    ```
+   (The CI compatibility matrix separately verifies the packaged agent on
+   JDK 8/11/17/21.)
 2. **Confirm the bench guard passes** (no overhead regression):
    ```bash
    ./scripts/verify-benchmarks.sh
