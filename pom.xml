@@ -1062,7 +1062,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
-                <version>3.4.2</version>
+                <version>3.5.1</version>
                 <configuration>
                     <!-- Marks jars that carry a JDK 9+ module-info under META-INF/versions/9 as
                          multi-release, so JDK 9+ loads the descriptor and JDK 8 ignores it. -->
