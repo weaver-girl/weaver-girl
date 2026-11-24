@@ -36,6 +36,15 @@ class CoreConfigWiringTest {
   void restore() {
     InterceptorHolder.configureCircuitBreaker(originalThreshold, originalCooldown);
     SamplingController.getInstance().setSamplingRate(originalSamplingRate);
+    // applyCoreConfig is a process-wide side-effect path. A config with
+    // weavergirl.emergency.disable=true enters emergency mode (kill-switch off), and a config with
+    // telemetry/returnSnapshot/mdc/pluginMetrics/circuitBreaker=false leaves those switches off.
+    // Either one would leak into every later weaving test in the same surefire fork, so every test
+    // in this class resets it — not only the one that passes a config map, because a test that
+    // asserts the switch stayed on still needs the next test to start from defaults.
+    com.github.cc11001100.weavergirl.core.testsupport.ProcessWideState.restore();
+    InterceptorHolder.configureCircuitBreaker(originalThreshold, originalCooldown);
+    SamplingController.getInstance().setSamplingRate(originalSamplingRate);
   }
 
   @Test
@@ -239,16 +248,7 @@ class CoreConfigWiringTest {
     Method method =
         WeaverGirl.class.getDeclaredMethod("applyCoreConfig", Map.class);
     method.setAccessible(true);
-    try {
-      method.invoke(null, config);
-    } finally {
-      // applyCoreConfig is a process-wide side-effect path: a config with
-      // weavergirl.emergency.disable=true enters emergency mode, which turns the global
-      // interception kill-switch off and caps the sampling rate. Left in place that leaks into
-      // every later test in the same surefire fork (the integration tests then see a disabled
-      // kill-switch and report "before() should have been called" failures).
-      com.github.cc11001100.weavergirl.core.testsupport.ProcessWideState.restore();
-    }
+    method.invoke(null, config);
   }
 
   private static ConfigChangeListener dynamicCoreConfigListener() throws Exception {

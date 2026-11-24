@@ -1,5 +1,6 @@
 package com.github.cc11001100.weavergirl.core.testsupport;
 
+import com.github.cc11001100.weavergirl.api.config.PerformanceSwitches;
 import com.github.cc11001100.weavergirl.core.InterceptorHolder;
 import com.github.cc11001100.weavergirl.core.graceful.GracefulDegradationManager;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
@@ -21,10 +22,18 @@ public final class ProcessWideState {
 
   private ProcessWideState() {}
 
-  /** Put emergency mode, the kill-switch and the sampling controller back to their defaults. */
+  /**
+   * Put emergency mode, the kill-switch, the sampling controller and the per-call performance
+   * switches back to their defaults.
+   *
+   * <p>The switches belong here too: a test that applies {@code returnSnapshot=false} through a
+   * config map leaves every later weaving test without a return snapshot, so a hook that reads the
+   * called method's return value (durable-registry snapshot, annotation advice) sees {@code null}.
+   */
   public static void restore() {
     GracefulDegradationManager.resetForTest();
     InterceptorHolder.setInterceptionEnabled(true, "test-cleanup");
+    PerformanceSwitches.resetForTest();
     SamplingController controller = SamplingController.getInstance();
     controller.setSamplingRate(1);
     controller.setMaxRate(100);
