@@ -29,7 +29,7 @@ import java.util.Map;
  *
  * <p>Defaults are all {@code true}, so an agent that configures nothing behaves exactly as before.
  *
- * @since 2.0.0
+ * @since 1.0.0
  */
 public final class PerformanceSwitches {
 

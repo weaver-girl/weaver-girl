@@ -111,7 +111,7 @@ public class PointcutExpression {
    * read, cheap enough for the per-invocation path.
    *
    * @return true when some cflow expression exists and call-stack tracking is needed
-   * @since 1.7.0
+   * @since 1.0.0
    */
   public static boolean isCflowTrackingRequired() {
     return cflowTrackingRequired;

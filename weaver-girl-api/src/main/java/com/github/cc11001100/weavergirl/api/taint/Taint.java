@@ -40,7 +40,7 @@ public final class Taint {
    * the signal a task wrapper uses to decide whether a hand-off needs to carry anything.
    *
    * @return true when at least one scope is open on this thread
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static boolean hasScope() {
     return TaintBridge.hasScope();
@@ -61,7 +61,7 @@ public final class Taint {
    *
    * @param value the value to clean, usually the sanitised function's return value
    * @return true when at least one mark was removed
-   * @since 1.5.0
+   * @since 1.0.0
    */
   public static boolean untaint(Object value) {
     return TaintBridge.clear(value);
@@ -74,7 +74,7 @@ public final class Taint {
    * @param value the value to clean
    * @param sourceLabel the source to forget, for example {@code "http.parameter:q"}
    * @return true when at least one mark was removed
-   * @since 1.5.0
+   * @since 1.0.0
    */
   public static boolean untaint(Object value, String sourceLabel) {
     return TaintBridge.clear(value, sourceLabel);
@@ -86,7 +86,7 @@ public final class Taint {
    *
    * @param values the values to clean
    * @return the number of values that carried at least one mark
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static int untaintAll(Object... values) {
     if (values == null) {
@@ -107,7 +107,7 @@ public final class Taint {
    * (a custom thread, a third-party callback).
    *
    * @return an immutable snapshot; never null
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static Object captureContext() {
     return TaintBridge.capture();
@@ -117,7 +117,7 @@ public final class Taint {
    * Install a snapshot captured by {@link #captureContext()} on this thread, replacing its scopes.
    *
    * @param snapshot a snapshot from {@link #captureContext()}; anything else clears the scopes
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static void restoreContext(Object snapshot) {
     TaintBridge.restore(snapshot);
@@ -130,7 +130,7 @@ public final class Taint {
    *
    * @param task the task to wrap
    * @return the context-carrying task
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static Runnable wrap(Runnable task) {
     return TaintBridge.wrap(task);
@@ -142,7 +142,7 @@ public final class Taint {
    * @param task the task to wrap
    * @param <V> the result type
    * @return the context-carrying task
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static <V> Callable<V> wrap(Callable<V> task) {
     return TaintBridge.wrap(task);
@@ -155,7 +155,7 @@ public final class Taint {
    *
    * @param source the value whose labels are copied
    * @param target the value that becomes tainted
-   * @since 1.5.0
+   * @since 1.0.0
    */
   public static void propagate(Object source, Object target) {
     TaintPropagation.propagate(source, target);
@@ -168,7 +168,7 @@ public final class Taint {
    * @param sinkKind the sink label recorded in the finding, for example {@code "template"}
    * @param values the values that reach the sink
    * @return true when at least one value was tainted
-   * @since 1.5.0
+   * @since 1.0.0
    */
   public static boolean sink(String sinkKind, Object... values) {
     return TaintPropagation.observeSink(sinkKind, values);

@@ -30,7 +30,7 @@ import com.github.cc11001100.weavergirl.core.InterceptorHolder;
  * {@link #record(String, boolean, long)} so a deployment that switches telemetry off stops paying
  * for it everywhere, not just on the method path.
  *
- * @since 2.0.0
+ * @since 1.0.0
  */
 public final class HookTelemetry {
 

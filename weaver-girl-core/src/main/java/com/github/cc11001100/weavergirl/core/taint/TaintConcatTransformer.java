@@ -27,7 +27,7 @@ import net.bytebuddy.jar.asm.Type;
  * <p>The transformation is idempotent: a class already carrying the helper reference is returned
  * unchanged, which matters because the agent retransforms classes.
  *
- * @since 1.5.0
+ * @since 1.0.0
  */
 public final class TaintConcatTransformer implements ClassFileTransformer {
 

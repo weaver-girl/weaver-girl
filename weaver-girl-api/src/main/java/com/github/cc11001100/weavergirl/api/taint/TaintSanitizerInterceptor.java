@@ -23,7 +23,7 @@ import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
  *
  * @see Taint#untaint(Object)
  * @see Taint#untaintAll(Object...)
- * @since 1.6.0
+ * @since 1.0.0
  */
 public final class TaintSanitizerInterceptor implements Interceptor {
 

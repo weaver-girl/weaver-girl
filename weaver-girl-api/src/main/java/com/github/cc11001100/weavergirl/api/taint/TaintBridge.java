@@ -453,7 +453,7 @@ public final class TaintBridge {
    *
    * @param task the task to wrap
    * @return the wrapping task, or the original when no wrap is needed
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static Runnable wrap(Runnable task) {
     if (task == null || !hasScope() || task instanceof WrappedRunnable) {
@@ -473,7 +473,7 @@ public final class TaintBridge {
    * @param task the task to wrap
    * @param <V> the result type
    * @return the wrapping task, or the original when no wrap is needed
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static <V> Callable<V> wrap(Callable<V> task) {
     if (task == null || !hasScope() || task instanceof WrappedCallable) {

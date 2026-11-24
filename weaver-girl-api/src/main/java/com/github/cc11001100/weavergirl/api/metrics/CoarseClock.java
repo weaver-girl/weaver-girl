@@ -17,7 +17,7 @@ package com.github.cc11001100.weavergirl.api.metrics;
  * <p>The updater thread is started on first use and is a daemon, so it never keeps the JVM alive
  * and costs one sleeping thread.
  *
- * @since 2.0.0
+ * @since 1.0.0
  */
 public final class CoarseClock {
 

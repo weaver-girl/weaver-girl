@@ -75,7 +75,7 @@ public final class TaintPropagation {
    * @param appended the appended value, possibly not a {@link CharSequence}
    * @param offset the builder length before the append
    * @param appendedLength how many characters the append added
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static void propagateAppendObject(
       CharSequence builder, Object appended, int offset, int appendedLength) {
@@ -101,7 +101,7 @@ public final class TaintPropagation {
    * @param offset the builder length before the append
    * @param arrayOffset first copied index of the array
    * @param count copied characters
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static void propagateAppendArray(
       CharSequence builder, Object array, int offset, int arrayOffset, int count) {
@@ -121,7 +121,7 @@ public final class TaintPropagation {
    *
    * @param result the new character array
    * @param source the string it was copied from
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static void propagateToCharArray(char[] result, CharSequence source) {
     if (result == null || source == null) {
@@ -142,7 +142,7 @@ public final class TaintPropagation {
    * @param srcBegin first copied index of the source
    * @param srcEnd one past the last copied source index
    * @param destOffset first written index of the destination
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static void propagateToCharArray(
       char[] dest, CharSequence source, int srcBegin, int srcEnd, int destOffset) {
@@ -179,7 +179,7 @@ public final class TaintPropagation {
    * @param source the character array
    * @param offset first copied index
    * @param count copied characters
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static void propagateFromCharArray(String result, char[] source, int offset, int count) {
     if (result == null || source == null) {
@@ -200,7 +200,7 @@ public final class TaintPropagation {
    *
    * @param result the new string
    * @param args the constructor arguments as seen by the advice
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static void propagateFromArray(String result, Object[] args) {
     if (result == null || args == null || args.length == 0) {
@@ -229,7 +229,7 @@ public final class TaintPropagation {
    *
    * @param builder the mutated builder
    * @param index the replaced index
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static void propagateSetCharAt(CharSequence builder, int index) {
     if (builder == null || index < 0 || index >= builder.length()) {
@@ -271,7 +271,7 @@ public final class TaintPropagation {
    *
    * @param source the value whose labels are copied
    * @param target the value that becomes tainted
-   * @since 1.5.0
+   * @since 1.0.0
    */
   public static void propagate(Object source, Object target) {
     if (source == null || target == null) {
@@ -290,7 +290,7 @@ public final class TaintPropagation {
    *
    * @param result the new value
    * @param sources the receiver and arguments
-   * @since 1.5.0
+   * @since 1.0.0
    */
   public static void propagateTransform(CharSequence result, Object... sources) {
     if (result == null) {
@@ -312,7 +312,7 @@ public final class TaintPropagation {
    *
    * @param result the joined value
    * @param parts delimiter and parts, possibly nested one level
-   * @since 1.5.0
+   * @since 1.0.0
    */
   public static void propagateJoin(CharSequence result, Object... parts) {
     if (result == null || parts == null) {
@@ -331,7 +331,7 @@ public final class TaintPropagation {
    * builder length captured before the mutation; ranges after {@code end} move left by the actual
    * removed length and a range straddling the cut is split, so no stale slice survives.
    *
-   * @since 1.5.0
+   * @since 1.0.0
    */
   public static void propagateDelete(CharSequence builder, int start, int end, int before) {
     if (builder == null || start < 0 || end <= start) {
@@ -351,7 +351,7 @@ public final class TaintPropagation {
    * {@code StringBuilder.insert(int, String)} / {@code insert(int, CharSequence)}. {@code before}
    * is the builder length captured before the mutation.
    *
-   * @since 1.5.0
+   * @since 1.0.0
    */
   public static void propagateInsert(
       CharSequence builder, int offset, CharSequence inserted, int before) {
@@ -366,7 +366,7 @@ public final class TaintPropagation {
    * @param offset where the value was inserted
    * @param inserted the inserted value, possibly not a {@link CharSequence}
    * @param before the builder length captured before the mutation
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static void propagateInsertValue(
       CharSequence builder, int offset, Object inserted, int before) {
@@ -402,7 +402,7 @@ public final class TaintPropagation {
    * @param start first copied index of the array
    * @param count copied characters
    * @param before the builder length captured before the mutation
-   * @since 1.6.0
+   * @since 1.0.0
    */
   public static void propagateInsertArray(
       CharSequence builder, int offset, char[] inserted, int start, int count, int before) {
@@ -425,7 +425,7 @@ public final class TaintPropagation {
    * {@code StringBuilder.replace(int, int, String)}. {@code before} is the builder length captured
    * before the mutation.
    *
-   * @since 1.5.0
+   * @since 1.0.0
    */
   public static void propagateReplace(
       CharSequence builder, int start, int end, CharSequence inserted, int before) {
@@ -446,7 +446,7 @@ public final class TaintPropagation {
   /**
    * {@code StringBuilder.setLength(int)}: ranges are clipped to the new length.
    *
-   * @since 1.5.0
+   * @since 1.0.0
    */
   public static void propagateSetLength(CharSequence builder, int newLength) {
     if (builder == null || newLength < 0) {
@@ -468,7 +468,7 @@ public final class TaintPropagation {
   /**
    * {@code StringBuilder.reverse()}: each range is mirrored inside the unchanged length.
    *
-   * @since 1.5.0
+   * @since 1.0.0
    */
   public static void propagateReverse(CharSequence builder) {
     if (builder == null) {
@@ -497,7 +497,7 @@ public final class TaintPropagation {
    * @param sinkKind the sink label carried in the finding
    * @param values the values reaching the sink
    * @return true when at least one value was tainted
-   * @since 1.5.0
+   * @since 1.0.0
    */
   public static boolean observeSink(String sinkKind, Object... values) {
     if (sinkKind == null || values == null) {
