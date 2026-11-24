@@ -1,9 +1,15 @@
 # Release Procedure
 
-Cutting a release of Weaver-Girl publishes artifacts to Maven Central and attaches
-the distribution archive (agent jar + `plugins/`) to a GitHub Release. The whole
-flow is automated by the `.github/workflows/release.yml` workflow, triggered by
-pushing a `v*` tag.
+Cutting a release of Weaver-Girl attaches the distribution archive (agent jar +
+`plugins/`) to a GitHub Release, and — when Central is configured — publishes the
+artifacts to Maven Central. The flow is automated by the
+`.github/workflows/release.yml` workflow, triggered by pushing a `v*` tag.
+
+The two halves are independent jobs. A GitHub Release does **not** require Central
+credentials: the release job verifies and signs the archive and publishes it, while
+the Central job is skipped with a warning when `CENTRAL_USERNAME`/`CENTRAL_TOKEN`
+are absent. That is deliberate — the archive is what users download, and it should
+not be hostage to a publishing account you may not have set up yet.
 
 ## Prerequisites (one-time repo setup)
 
@@ -78,17 +84,26 @@ gpg --verify artifact.jar.asc artifact.jar
    git tag v1.0.0
    git push origin v1.0.0
    ```
-5. The `release.yml` workflow now runs automatically:
-   - Sets the Maven version from the tag (`v1.0.0` → `1.0.0`).
-   - Runs `clean deploy -Pquality-gate,release` — the same quality gate as a pull
-     request, then attaches `*-sources.jar` + `*-javadoc.jar`, signs them with GPG,
-     and uploads them to the Central Publishing Portal into a **staging** deployment.
-   - Packages the agent jar and the `plugins/` directory into
-     `weaver-girl-agent-<version>-dist.zip`, verifies both artifacts, and creates the
-     GitHub Release with the archive, the bare jar, and their SHA-256 files.
-6. **Publish from staging.** Log into <https://central.sonatype.com>, find the new
-   deployment, and click **Publish**. Until you do this the artifacts are not visible
-   on Maven Central. (Auto-publish can be configured on the Portal if you prefer.)
+5. The `release.yml` workflow now runs automatically, in three jobs:
+   - **Preflight** validates the version (`v1.0.0` → `1.0.0`, rejects SNAPSHOT and
+     malformed versions, checks the tag matches) and reports whether Central is
+     configured. It has to be its own job because `secrets` cannot be read in a
+     job-level `if`.
+   - **Build & Publish GitHub Release** sets the Maven version, runs
+     `clean verify -Pquality-gate...` (tests are skipped — the tag only exists for a
+     commit whose CI gate is already green), attaches `*-sources.jar` +
+     `*-javadoc.jar`, signs everything with GPG, packages the agent jar and the
+     `plugins/` directory into `weaver-girl-agent-<version>-dist.zip`, verifies the
+     manifest and the archive contents, and creates the GitHub Release with the
+     archive, the bare jar, and their SHA-256 and `.asc` files.
+   - **Publish to Maven Central** runs `-Pquality-gate,release clean deploy` into a
+     **staging** deployment. It is skipped when the Central secrets are absent, and
+     it runs after the release exists.
+6. **Publish from staging** (only when the Central job ran). Log into
+   <https://central.sonatype.com>, find the new deployment, and click **Publish**.
+   With `autoPublish` configured in the POM deployment, publication usually completes
+   without a click; check the Portal either way. Until it is published the artifacts
+   are not visible on Maven Central.
 7. Verify on Central (may take ~15–30 min to propagate after publishing):
    `https://central.sonatype.com/artifact/io.github.cc11001100/weaver-girl-core`
 
@@ -100,6 +115,9 @@ gpg --verify artifact.jar.asc artifact.jar
 - `quality-gate` is **enabled** during `deploy` (`-Pquality-gate,release`): a release
   must pass the same gate as a pull request. Tags only ever point at a commit whose
   gate is green.
-- If the Central deploy fails, the GitHub Release is **not** created (the agent-jar
-  verification + release steps come after deploy). Fix the issue, delete the tag
-  locally and remotely, re-tag, and push again.
+- A GitHub Release is published even when the Central job is skipped or fails. The
+  release notes say to check the `maven-central` job before pointing a build at the
+  coordinates, rather than implying Central is live.
+- If you need to re-cut a release, delete the tag locally and remotely, fix what
+  failed, re-tag, and push again. `softprops/action-gh-release` updates an existing
+  release for the same tag rather than creating a duplicate.
