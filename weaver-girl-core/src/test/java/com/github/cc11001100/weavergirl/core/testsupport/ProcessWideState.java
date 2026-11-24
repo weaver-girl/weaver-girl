@@ -4,6 +4,8 @@ import com.github.cc11001100.weavergirl.api.config.PerformanceSwitches;
 import com.github.cc11001100.weavergirl.core.InterceptorHolder;
 import com.github.cc11001100.weavergirl.core.graceful.GracefulDegradationManager;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
+import com.github.cc11001100.weavergirl.core.sampling.SamplingMonitor;
+import com.github.cc11001100.weavergirl.core.status.AgentStatus;
 
 /**
  * Restores the process-wide singletons a test may have changed.
@@ -20,6 +22,11 @@ import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
  */
 public final class ProcessWideState {
 
+  /** {@code InterceptorCircuitBreaker()}'s no-arg defaults, which the engine starts with. */
+  private static final int DEFAULT_FAILURE_THRESHOLD = 5;
+
+  private static final long DEFAULT_COOLDOWN_MILLIS = 60_000L;
+
   private ProcessWideState() {}
 
   /**
@@ -34,9 +41,18 @@ public final class ProcessWideState {
     GracefulDegradationManager.resetForTest();
     InterceptorHolder.setInterceptionEnabled(true, "test-cleanup");
     PerformanceSwitches.resetForTest();
+    // The breaker is process-wide too: a test that retunes the threshold (HookTelemetryTest uses 2
+    // and then 1) or trips a hook leaves every later hook tripping after one failure.
+    InterceptorHolder.resetCircuitBreakerForTest();
     SamplingController controller = SamplingController.getInstance();
     controller.setSamplingRate(1);
     controller.setMaxRate(100);
     controller.setThresholdInvocationsPerSecond(10000);
+    // A leftover sampling monitor is the worst of these: it is a live thread that re-raises the
+    // sampling rate every second from stale AgentStatus counts, so it re-breaks tests after this
+    // method has already put the rate back. The engine only runs monitors a test itself started,
+    // so stop them here and clear the counters they read.
+    SamplingMonitor.stopAllForTest();
+    AgentStatus.getInstance().reset();
   }
 }

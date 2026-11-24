@@ -390,16 +390,24 @@ class WeaverGirlBootstrapTest {
   void dynamicConfigChangesReachTheSamplingController() {
     // The listener is attached during bootstrap, so a plain instance never hears config changes.
     WeaverGirl agent = WeaverGirl.bootstrap(instrumentation());
-    com.github.cc11001100.weavergirl.api.config.DynamicConfigManager manager =
-        agent.getDynamicConfigManager();
-    // Valid values are applied; unparseable ones are warned about; an unknown key is ignored; a key
-    // removed (null value) keeps the current setting.
-    assertDoesNotThrow(() -> manager.set("samplingRate", "25", "test"));
-    assertDoesNotThrow(() -> manager.set("samplingMaxRate", "lots", "test"));
-    assertDoesNotThrow(() -> manager.set("samplingThreshold", "soon", "test"));
-    assertDoesNotThrow(() -> manager.set("not.a.core.key", "x", "test"));
-    // A removed key arrives with a null value, which the listener leaves untouched.
-    assertDoesNotThrow(() -> manager.remove("samplingRate", "test"));
+    try {
+      com.github.cc11001100.weavergirl.api.config.DynamicConfigManager manager =
+          agent.getDynamicConfigManager();
+      // Valid values are applied; unparseable ones are warned about; an unknown key is ignored; a
+      // key removed (null value) keeps the current setting.
+      assertDoesNotThrow(() -> manager.set("samplingRate", "25", "test"));
+      assertDoesNotThrow(() -> manager.set("samplingMaxRate", "lots", "test"));
+      assertDoesNotThrow(() -> manager.set("samplingThreshold", "soon", "test"));
+      assertDoesNotThrow(() -> manager.set("not.a.core.key", "x", "test"));
+      // A removed key arrives with a null value, which the listener leaves untouched.
+      assertDoesNotThrow(() -> manager.remove("samplingRate", "test"));
+    } finally {
+      // Bootstrap starts the adaptive-sampling monitor thread. Without this shutdown it outlives
+      // the test — every other bootstrap test here shuts its agent down — and keeps raising the
+      // sampling rate from the AgentStatus counters other tests leave behind, so a later weaving
+      // test's before() silently stops firing.
+      agent.shutdown();
+    }
   }
 
 }

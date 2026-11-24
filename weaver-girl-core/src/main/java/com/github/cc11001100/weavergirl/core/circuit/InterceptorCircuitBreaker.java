@@ -113,6 +113,18 @@ public class InterceptorCircuitBreaker {
     return cooldownMillis;
   }
 
+  /**
+   * Drop every per-interceptor state and return to the constructor defaults. For test cleanup
+   * only: a test that trips a hook leaves that hook OPEN for its cooldown, so a later test that
+   * happens to use the same interceptor name starts disabled — the same class of order-dependent
+   * failure as the sampling and kill-switch leaks.
+   */
+  public void resetForTest() {
+    states.clear();
+    failureThreshold = 5;
+    cooldownMillis = 60_000L;
+  }
+
   /** Check if the interceptor with the given name should be invoked. */
   public boolean shouldInvoke(String interceptorName) {
     State state = states.get(interceptorName);

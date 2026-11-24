@@ -581,6 +581,11 @@ public class InterceptorHolder {
     circuitBreaker.configure(failureThreshold, cooldownMillis);
   }
 
+  /** Clear every hook's breaker state and restore the defaults. For test cleanup only. */
+  public static void resetCircuitBreakerForTest() {
+    circuitBreaker.resetForTest();
+  }
+
   /** @return the breaker's current failure threshold, for diagnostics and tests. */
   public static int getCircuitBreakerFailureThreshold() {
     return circuitBreaker.getFailureThreshold();

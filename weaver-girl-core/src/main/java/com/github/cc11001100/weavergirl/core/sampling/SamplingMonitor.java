@@ -18,6 +18,14 @@ public class SamplingMonitor {
 
   private static final Logger log = LoggerFactory.getLogger(SamplingMonitor.class);
 
+  /**
+   * Every monitor that is running, so a test that forgot its {@code shutdown()} cannot leave a
+   * thread adapting the shared sampling rate for the rest of the JVM (see {@link
+   * #stopAllForTest()}). Production agents start exactly one monitor and stop it on shutdown.
+   */
+  private static final java.util.Set<SamplingMonitor> RUNNING =
+      java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<>());
+
   private final SamplingController controller;
   private final AtomicBoolean running = new AtomicBoolean(false);
   private ScheduledExecutorService scheduler;
@@ -34,6 +42,7 @@ public class SamplingMonitor {
       return;
     }
 
+    RUNNING.add(this);
     lastCount.set(controller.getInvocationCount());
     scheduler =
         Executors.newSingleThreadScheduledExecutor(
@@ -54,11 +63,20 @@ public class SamplingMonitor {
   /** Stop the monitoring thread. */
   public void stop() {
     if (running.compareAndSet(true, false)) {
+      RUNNING.remove(this);
       if (scheduler != null) {
         scheduler.shutdown();
       }
       log.info("Sampling monitor stopped");
     }
+  }
+
+  /** Stop every monitor still running. For test cleanup only. */
+  public static void stopAllForTest() {
+    for (SamplingMonitor monitor : RUNNING) {
+      monitor.stop();
+    }
+    RUNNING.clear();
   }
 
   private void check() {
