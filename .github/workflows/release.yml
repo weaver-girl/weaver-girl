@@ -5,14 +5,14 @@ on:
     tags:
       - 'v*'
   # Dry run proves the build, signing and packaging pipeline without a tag and
-  # without touching Maven Central. Real releases still come from `v*` tags.
+  # without publishing anything.
   workflow_dispatch:
     inputs:
       version:
         description: Version to build, without the leading v (for example 1.0.0-rc.1)
         required: true
       dry_run:
-        description: Build, sign and package, but do not deploy or create a release
+        description: Build, sign and package, but do not publish or create a release
         type: boolean
         default: true
 
@@ -22,45 +22,24 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build, Deploy & Release
+  # Validates the version and reports whether Maven Central publishing is possible.
+  #
+  # This is a separate job because `secrets` cannot be read in a job-level `if`:
+  # a job that needs to know whether CENTRAL_USERNAME/CENTRAL_TOKEN exist has to
+  # learn it from an earlier job's output. Keeping the check here also means a
+  # missing Central credential is a *skip* with a visible warning, not a failure
+  # that takes the GitHub Release down with it — the release is the thing users
+  # download, and it does not depend on Central being reachable or configured.
+  preflight:
+    name: Preflight
     runs-on: ubuntu-latest
-
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      has_central: ${{ steps.creds.outputs.has_central }}
     steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up JDK 17 (release)
-        uses: actions/setup-java@v6
-        with:
-          # The compiler plugin still targets Java 1.8 bytecode; JDK 17 is used so the
-          # Maven release tooling (central-publishing-maven-plugin) and GPG signing run.
-          java-version: 17
-          distribution: temurin
-          server-id: central
-          server-username: CENTRAL_USERNAME
-          server-password: CENTRAL_TOKEN
-          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
-          gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
-
-      - name: Cache Maven packages
-        uses: actions/cache@v6
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2-
-
-      - name: Check publishing credentials
-        if: github.event_name == 'push'
-        env:
-          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
-          CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
-        run: |
-          missing=0
-          [ -n "$CENTRAL_USERNAME" ] || { echo "::error::CENTRAL_USERNAME is not configured"; missing=1; }
-          [ -n "$CENTRAL_TOKEN" ] || { echo "::error::CENTRAL_TOKEN is not configured"; missing=1; }
-          [ "$missing" -eq 0 ] || { echo "Configure the Central Portal token first; see RELEASE_PROCEDURE.md."; exit 1; }
-
       - name: Resolve the release version
+        id: version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG_VERSION="${{ inputs.version }}"
@@ -82,32 +61,75 @@ jobs:
             echo "::error::tag ${GITHUB_REF_NAME} does not match version $TAG_VERSION"
             exit 1
           fi
-          echo "Setting Maven version to $TAG_VERSION"
-          echo "VERSION=$TAG_VERSION" >> $GITHUB_ENV
-          ./mvnw versions:set -DnewVersion=$TAG_VERSION -B
+          echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+          # A 1.0.0-rc.1 tag must not be presented as the stable release.
+          if printf '%s' "$TAG_VERSION" | grep -q -- '-'; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Build and sign without publishing (dry run)
-        if: github.event_name == 'workflow_dispatch' && inputs.dry_run == true
+      - name: Check whether Maven Central publishing is configured
+        id: creds
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
+        run: |
+          if [ -n "$CENTRAL_USERNAME" ] && [ -n "$CENTRAL_TOKEN" ]; then
+            echo "has_central=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_central=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::CENTRAL_USERNAME/CENTRAL_TOKEN are not configured; the Maven Central job will be skipped. The GitHub Release still ships the distribution archive. See RELEASE_PROCEDURE.md."
+          fi
+
+  # Builds, signs and publishes the GitHub Release. Never depends on Maven Central.
+  github-release:
+    name: Build & Publish GitHub Release
+    needs: preflight
+    runs-on: ubuntu-latest
+    env:
+      # Every artifact name below is derived from this, so the release step never has to
+      # discover paths through `find` output that another step exported.
+      VERSION: ${{ needs.preflight.outputs.version }}
+      AGENT_JAR: weaver-girl-agent/target/weaver-girl-agent-${{ needs.preflight.outputs.version }}.jar
+      DIST_ZIP: weaver-girl-agent/target/weaver-girl-agent-${{ needs.preflight.outputs.version }}-dist.zip
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 17 (release)
+        uses: actions/setup-java@v6
+        with:
+          # The compiler plugin still targets Java 1.8 bytecode; JDK 17 is used so the
+          # Maven release tooling (gpg signing, javadoc) runs.
+          java-version: 17
+          distribution: temurin
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Cache Maven packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Set the Maven version from the tag
+        run: ./mvnw versions:set -DnewVersion=${{ needs.preflight.outputs.version }} -B
+
+      - name: Build and sign the artifacts
         env:
           MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        # The release profile attaches sources/javadoc and signs them. Tests are skipped here:
+        # a tag only exists for a commit whose CI gate is already green, and running the full
+        # 3,800-test suite again would double the time between tag and release for no new signal.
         run: >-
           ./mvnw -B -Prelease clean verify -DskipTests
           -Djacoco.skip=true -Dcheckstyle.skip=true -Dspotbugs.skip=true
 
-      - name: Deploy to Maven Central
-        if: github.event_name == 'push' || inputs.dry_run != true
-        env:
-          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
-          CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        # A release must pass the same quality gate as a pull request.
-        run: ./mvnw -B -Pquality-gate,release clean deploy
-
       - name: Verify agent JAR
         run: |
-          AGENT_JAR=$(find weaver-girl-agent/target -name "weaver-girl-agent-*.jar" ! -name "*sources*" ! -name "*javadoc*" | head -1)
           echo "Agent JAR: $AGENT_JAR"
-          test -n "$AGENT_JAR" || (echo "FAIL: No agent JAR found" && exit 1)
+          test -f "$AGENT_JAR" || { echo "FAIL: $AGENT_JAR not found"; ls weaver-girl-agent/target/*.jar; exit 1; }
           echo "=== Manifest ==="
           MANIFEST=$(unzip -p "$AGENT_JAR" META-INF/MANIFEST.MF)
           printf '%s\n' "$MANIFEST"
@@ -119,12 +141,10 @@ jobs:
             *"Agent-Class:"*) ;;
             *) echo "FAIL: no Agent-Class" && exit 1 ;;
           esac
-          echo "AGENT_JAR=$AGENT_JAR" >> $GITHUB_ENV
 
       - name: Verify distribution archive
         run: |
-          DIST_ZIP=$(find weaver-girl-agent/target -name "weaver-girl-agent-*-dist.zip" | head -1)
-          test -n "$DIST_ZIP" || (echo "FAIL: No distribution archive found" && exit 1)
+          test -f "$DIST_ZIP" || { echo "FAIL: $DIST_ZIP not found"; ls weaver-girl-agent/target/*.zip; exit 1; }
           # The agent has no built-in plugin classes; it loads them from plugins/ next to the jar.
           # A jar-only release would instrument nothing.
           DIST_LISTING=$(unzip -l "$DIST_ZIP")
@@ -135,14 +155,14 @@ jobs:
           JDBC_COUNT=$(printf '%s\n' "$DIST_LISTING" | grep -c 'plugins/weaver-girl-plugin-jdbc-.*\.jar$')
           test "$SERVLET_COUNT" -gt 0 || (echo "FAIL: distribution is missing the servlet plugin" && exit 1)
           test "$JDBC_COUNT" -gt 0 || (echo "FAIL: distribution is missing the jdbc plugin" && exit 1)
-          echo "DIST_ZIP=$DIST_ZIP" >> $GITHUB_ENV
 
       - name: Generate checksums
         run: |
           # Record bare file names: users run `sha256sum -c` on the downloaded asset in a
           # different directory than the build workspace.
-          ( cd "$(dirname "$AGENT_JAR")" && sha256sum "$(basename "$AGENT_JAR")" > "$(basename "$AGENT_JAR").sha256" )
-          ( cd "$(dirname "$DIST_ZIP")" && sha256sum "$(basename "$DIST_ZIP")" > "$(basename "$DIST_ZIP").sha256" )
+          for artifact in "$AGENT_JAR" "$DIST_ZIP"; do
+            ( cd "$(dirname "$artifact")" && sha256sum "$(basename "$artifact")" > "$(basename "$artifact").sha256" )
+          done
           echo "=== Checksums ==="
           cat "$AGENT_JAR.sha256" "$DIST_ZIP.sha256"
 
@@ -159,6 +179,60 @@ jobs:
             gpg --verify "$artifact.asc" "$artifact"
           done
 
+      - name: Write the release notes
+        run: |
+          {
+            echo "## Installation"
+            echo
+            echo "The distribution archive contains the agent jar and the \`plugins/\` directory it"
+            echo "discovers built-in capabilities from. Download the archive, not the bare jar —"
+            echo "an agent without \`plugins/\` instruments nothing."
+            echo
+            echo '```bash'
+            echo "# Download the archive and its checksum (keep the original file names)"
+            echo "curl -LO https://github.com/weaver-girl/weaver-girl/releases/download/${{ github.ref_name }}/weaver-girl-agent-${{ env.VERSION }}-dist.zip"
+            echo "curl -LO https://github.com/weaver-girl/weaver-girl/releases/download/${{ github.ref_name }}/weaver-girl-agent-${{ env.VERSION }}-dist.zip.sha256"
+            echo "sha256sum -c weaver-girl-agent-${{ env.VERSION }}-dist.zip.sha256"
+            echo
+            echo "# Verify the signature (public key: docs/release-signing-key.asc)"
+            echo "gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys 56EF998B96FA1B31"
+            echo "gpg --verify weaver-girl-agent-${{ env.VERSION }}-dist.zip.asc weaver-girl-agent-${{ env.VERSION }}-dist.zip"
+            echo
+            echo "# Unpack and attach (the plugins/ directory must stay next to the jar)"
+            echo "unzip weaver-girl-agent-${{ env.VERSION }}-dist.zip"
+            echo "java -javaagent:weaver-girl-agent-${{ env.VERSION }}/weaver-girl-agent-${{ env.VERSION }}.jar -jar your-app.jar"
+            echo '```'
+            echo
+            echo "## Maven Central"
+            echo
+            echo "The artifacts use the group id \`io.github.cc11001100\`:"
+            echo
+            echo '```xml'
+            echo "<dependency>"
+            echo "  <groupId>io.github.cc11001100</groupId>"
+            echo "  <artifactId>weaver-girl-core</artifactId>"
+            echo "  <version>${{ env.VERSION }}</version>"
+            echo "</dependency>"
+            echo '```'
+            echo
+            echo "Whether this version is visible on Central depends on the \`maven-central\` job of"
+            echo "this workflow run — check that job before pointing a build at the coordinates."
+            echo
+            echo "## What's Included"
+            echo "- Built-in instrumentation plugins (Servlet, Spring, JDBC, Redis, Kafka, gRPC,"
+            echo "  MongoDB, Dubbo, MyBatis, RocketMQ, Druid, Feign, and more), one jar per capability,"
+            echo "  loaded only when its target library is present"
+            echo "- Runtime capability jars (metrics, health, OTLP export, JSON events, JMX,"
+            echo "  config watch, diagnostics, taint, and more)"
+            echo "- Adaptive sampling, circuit breaker, JMX diagnostics"
+            echo "- Global emergency kill-switch"
+            echo "- Hot-reload support"
+            echo
+            echo "## Requirements"
+            echo "- Java 1.8+"
+          } > release-notes.md
+          cat release-notes.md
+
       - name: Upload release assets as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -173,53 +247,12 @@ jobs:
             ${{ env.DIST_ZIP }}.asc
 
       - name: Create GitHub Release
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || inputs.dry_run != true
         uses: softprops/action-gh-release@v3
         with:
-          name: Weaver-Girl ${{ github.ref_name }}
-          body: |
-            ## Installation
-
-            The distribution archive contains the agent jar and the `plugins/` directory it
-            discovers built-in capabilities from. Download the archive, not the bare jar —
-            an agent without `plugins/` instruments nothing.
-
-            ```bash
-            # Download the archive and its checksum (keep the original file names)
-            curl -LO https://github.com/weaver-girl/weaver-girl/releases/download/${{ github.ref_name }}/weaver-girl-agent-${{ env.VERSION }}-dist.zip
-            curl -LO https://github.com/weaver-girl/weaver-girl/releases/download/${{ github.ref_name }}/weaver-girl-agent-${{ env.VERSION }}-dist.zip.sha256
-            sha256sum -c weaver-girl-agent-${{ env.VERSION }}-dist.zip.sha256
-
-            # Unpack and attach (the plugins/ directory must stay next to the jar)
-            unzip weaver-girl-agent-${{ env.VERSION }}-dist.zip
-            java -javaagent:weaver-girl-agent-${{ env.VERSION }}/weaver-girl-agent-${{ env.VERSION }}.jar -jar your-app.jar
-            ```
-
-            ## Maven Central
-
-            Artifacts are published to Maven Central under
-            `io.github.cc11001100:weaver-girl-*`.
-
-            ```xml
-            <dependency>
-              <groupId>io.github.cc11001100</groupId>
-              <artifactId>weaver-girl-core</artifactId>
-              <version>${{ env.VERSION }}</version>
-            </dependency>
-            ```
-
-            ## What's Included
-            - 126 built-in instrumentation plugins (Servlet, Spring, JDBC, Redis, Kafka, gRPC,
-              MongoDB, Dubbo, MyBatis, RocketMQ, Druid, Feign, and more), one jar per capability,
-              loaded only when its target library is present
-            - 14 runtime capability jars (metrics, health, OTLP export, JSON events, JMX,
-              config watch, diagnostics, taint, and more)
-            - Adaptive sampling, circuit breaker, JMX diagnostics
-            - Global emergency kill-switch
-            - Hot-reload support
-
-            ## Requirements
-            - Java 1.8+
+          name: Weaver-Girl ${{ needs.preflight.outputs.version }}
+          tag_name: ${{ github.event_name == 'push' && github.ref_name || format('v{0}', needs.preflight.outputs.version) }}
+          body_path: release-notes.md
           files: |
             ${{ env.AGENT_JAR }}
             ${{ env.AGENT_JAR }}.sha256
@@ -228,5 +261,45 @@ jobs:
             ${{ env.DIST_ZIP }}.sha256
             ${{ env.DIST_ZIP }}.asc
           draft: false
-          # A 1.0.0-rc.1 tag must not be presented as the stable release.
-          prerelease: ${{ contains(env.VERSION, '-') }}
+          prerelease: ${{ needs.preflight.outputs.prerelease == 'true' }}
+
+  # Publishes to Maven Central. Skipped (not failed) when the credentials are absent, so a
+  # release without Central access still produces a GitHub Release.
+  maven-central:
+    name: Publish to Maven Central
+    needs:
+      - preflight
+      - github-release
+    if: needs.preflight.outputs.has_central == 'true' && (github.event_name == 'push' || inputs.dry_run != true)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 17 (release)
+        uses: actions/setup-java@v6
+        with:
+          java-version: 17
+          distribution: temurin
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_TOKEN
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Cache Maven packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2-
+
+      - name: Set the Maven version from the tag
+        run: ./mvnw versions:set -DnewVersion=${{ needs.preflight.outputs.version }} -B
+
+      - name: Deploy to Maven Central
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_TOKEN: ${{ secrets.CENTRAL_TOKEN }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        # A release must pass the same quality gate as a pull request.
+        run: ./mvnw -B -Pquality-gate,release clean deploy
