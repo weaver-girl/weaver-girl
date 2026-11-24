@@ -31,6 +31,12 @@ public class ConfigValidator {
     KNOWN_KEYS.put("apiPort", ConfigType.PORT);
     KNOWN_KEYS.put("watch", ConfigType.BOOLEAN);
     KNOWN_KEYS.put("jsonEvents", ConfigType.BOOLEAN);
+    // Per-call performance switches; see PerformanceSwitches. All default to true.
+    KNOWN_KEYS.put("telemetry", ConfigType.BOOLEAN);
+    KNOWN_KEYS.put("returnSnapshot", ConfigType.BOOLEAN);
+    KNOWN_KEYS.put("mdc", ConfigType.BOOLEAN);
+    KNOWN_KEYS.put("pluginMetrics", ConfigType.BOOLEAN);
+    KNOWN_KEYS.put("circuitBreaker", ConfigType.BOOLEAN);
     KNOWN_KEYS.put("disabledPlugins", ConfigType.STRING);
     KNOWN_KEYS.put("enabledPlugins", ConfigType.STRING);
     KNOWN_KEYS.put("config", ConfigType.STRING);

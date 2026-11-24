@@ -165,7 +165,24 @@ public class InterceptorCircuitBreaker {
    * the failure counter, mirroring {@link #recordSuccess(String)}.
    */
   public void recordOutcome(String interceptorName, boolean success, long durationNanos) {
-    State state = states.computeIfAbsent(interceptorName, k -> new State());
+    // Fast path: a successful, fast call cannot trip anything. The only work it needs is clearing
+    // counters a previous failure/slow call may have raised, and that needs no lock. Healthy
+    // hooks — the overwhelming majority — therefore never create a state entry or synchronize.
+    boolean slow = slowThresholdNanos > 0 && durationNanos >= slowThresholdNanos;
+    State state = states.get(interceptorName);
+    if (state == null) {
+      // Keep the entry even for a healthy hook: snapshot() reports every hook that has run.
+      state = states.computeIfAbsent(interceptorName, k -> new State());
+    }
+    if (success && !slow) {
+      if (state.failures.get() != 0) {
+        state.failures.set(0);
+      }
+      if (state.consecutiveSlow.get() != 0) {
+        state.consecutiveSlow.set(0);
+      }
+      return;
+    }
     synchronized (state) {
       if (success) {
         state.failures.set(0);
@@ -177,12 +194,12 @@ public class InterceptorCircuitBreaker {
       }
       if (slowThresholdNanos > 0) {
         if (durationNanos >= slowThresholdNanos) {
-          int slow = state.consecutiveSlow.incrementAndGet();
-          if (slow >= slowConsecutiveLimit && !state.open) {
+          int slowCount = state.consecutiveSlow.incrementAndGet();
+          if (slowCount >= slowConsecutiveLimit && !state.open) {
             trip(
                 state,
                 interceptorName,
-                slow + " consecutive slow calls (>= " + (slowThresholdNanos / 1_000_000) + "ms)");
+                slowCount + " consecutive slow calls (>= " + (slowThresholdNanos / 1_000_000) + "ms)");
           }
         } else {
           state.consecutiveSlow.set(0);

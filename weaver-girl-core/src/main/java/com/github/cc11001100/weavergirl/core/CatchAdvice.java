@@ -7,6 +7,7 @@ import com.github.cc11001100.weavergirl.api.pointcut.CatchPointcut;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.interceptor.CatchInvocationPool;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
+import com.github.cc11001100.weavergirl.core.status.HookTelemetry;
 import java.lang.reflect.Method;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.implementation.bytecode.assign.Assigner;
@@ -147,10 +148,12 @@ public class CatchAdvice {
           CatchInvocationPool.acquire(targetClass, methodName, caughtException);
 
       boolean matched = false;
-      for (InterceptorDefinition def : registry.getAllDefinitions()) {
-        if (!(def.getInterceptor() instanceof CatchInterceptor)) {
-          continue;
-        }
+      // Only catch interceptors, filtered once per registry generation instead of scanning every
+      // definition on every thrown exception.
+      InterceptorDefinition[] catchDefs =
+          InterceptorHolder.definitionsWithInterceptorType(CatchInterceptor.class);
+      for (int d = 0; d < catchDefs.length; d++) {
+        InterceptorDefinition def = catchDefs[d];
         CatchInterceptor catchInterceptor = (CatchInterceptor) def.getInterceptor();
         for (CatchPointcut cp : catchInterceptor.catchPointcuts()) {
           // Pass the real Class, not just its name: matches(Class, ...) can evaluate
@@ -163,19 +166,13 @@ public class CatchAdvice {
               continue;
             }
             matched = true;
-            long hookStart = System.nanoTime();
+            long hookStart = HookTelemetry.startNanos();
             try {
               catchInterceptor.onCatch(invocation);
-              long hookNanos = System.nanoTime() - hookStart;
-              InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
-              com.github.cc11001100.weavergirl.core.status.AgentStatus.getInstance()
-                  .recordInterceptorInvocation(def.getName(), true, hookNanos);
+              HookTelemetry.record(def.getName(), true, hookStart);
             } catch (Throwable e) {
-              long hookNanos = System.nanoTime() - hookStart;
               InterceptorHolder.logInterceptorError(def.getName(), "catch", e);
-              InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
-              com.github.cc11001100.weavergirl.core.status.AgentStatus.getInstance()
-                  .recordInterceptorInvocation(def.getName(), false, hookNanos);
+              HookTelemetry.record(def.getName(), false, hookStart);
             }
           }
         }

@@ -138,9 +138,14 @@ public class AgentStatus implements AgentStatusView {
    * @param durationNanos wall-clock time spent inside the interceptor callback
    */
   public void recordInterceptorInvocation(String name, boolean success, long durationNanos) {
-    interceptorMetrics
-        .computeIfAbsent(name, k -> new InterceptorMetrics())
-        .record(success, durationNanos);
+    // get first: on the steady state the entry exists and this avoids the lambda call that
+    // computeIfAbsent makes even when the key is present. The lambda is only reached on a
+    // hook's first invocation.
+    InterceptorMetrics metrics = interceptorMetrics.get(name);
+    if (metrics == null) {
+      metrics = interceptorMetrics.computeIfAbsent(name, k -> new InterceptorMetrics());
+    }
+    metrics.record(success, durationNanos);
   }
 
   /** Get per-interceptor metrics. */

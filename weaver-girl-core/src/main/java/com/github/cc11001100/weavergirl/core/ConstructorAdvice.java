@@ -7,9 +7,8 @@ import com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.interceptor.MethodInvocationPool;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
-import com.github.cc11001100.weavergirl.core.status.AgentStatus;
+import com.github.cc11001100.weavergirl.core.status.HookTelemetry;
 import java.lang.reflect.Constructor;
-import java.util.List;
 import net.bytebuddy.asm.Advice;
 
 /**
@@ -63,17 +62,24 @@ public class ConstructorAdvice {
       MethodInvocation invocation =
           MethodInvocationPool.acquire(targetClass, methodName, constructor, target, arguments);
 
+      // Cached per class+method: with thousands of pointcuts registered this is two hash lookups,
+      // not a scan of every definition.
+      InterceptorHolder.DispatchView dispatch = InterceptorHolder.dispatch(className, methodName);
+
       // Opt-in per definition; see InterceptAdvice for why the stack walk is not unconditional.
-      if (InterceptorHolder.tracksCallSite(className)) {
+      if (dispatch.tracksCallSite) {
         InterceptorHolder.captureCaller(invocation);
       }
 
       // cflow tracking: push current constructor onto the cflow stack before evaluating
-      // runtime conditions. Pop on exit.
-      PointcutExpression.enterCflow(className, methodName);
+      // runtime conditions. Pop on exit. Skipped entirely when no cflow expression exists.
+      if (PointcutExpression.isCflowTrackingRequired()) {
+        PointcutExpression.enterCflow(className, methodName);
+      }
 
-      List<InterceptorDefinition> defs = InterceptorHolder.getInterceptorsForClassSnapshot(className);
-      for (InterceptorDefinition def : defs) {
+      InterceptorDefinition[] defs = dispatch.definitions;
+      for (int d = 0; d < defs.length; d++) {
+        InterceptorDefinition def = defs[d];
         // Use the two-arg matches() to also check parameter types for
         // CONSTRUCTOR matchers that specify a signature (e.g.
         // byConstructor("java.lang.String,int")).
@@ -92,17 +98,13 @@ public class ConstructorAdvice {
           if (!InterceptorHolder.shouldInvoke(def.getName())) {
             continue; // circuit breaker is open
           }
-          long hookStart = System.nanoTime();
+          long hookStart = HookTelemetry.startNanos();
           try {
             def.getInterceptor().before(invocation);
-            long hookNanos = System.nanoTime() - hookStart;
-            InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
-            AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true, hookNanos);
+            HookTelemetry.record(def.getName(), true, hookStart);
           } catch (Throwable e) {
-            long hookNanos = System.nanoTime() - hookStart;
             InterceptorHolder.logInterceptorError(def.getName(), "before", e);
-            InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
-            AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false, hookNanos);
+            HookTelemetry.record(def.getName(), false, hookStart);
           }
         }
       }
@@ -166,8 +168,10 @@ public class ConstructorAdvice {
         return;
       }
 
-      List<InterceptorDefinition> defs = InterceptorHolder.getInterceptorsForClassSnapshot(className);
-      for (InterceptorDefinition def : defs) {
+      InterceptorHolder.DispatchView dispatch = InterceptorHolder.dispatch(className, methodName);
+      InterceptorDefinition[] defs = dispatch.definitions;
+      for (int d = 0; d < defs.length; d++) {
+        InterceptorDefinition def = defs[d];
         // Use the two-arg matches() to also check parameter types for
         // CONSTRUCTOR matchers that specify a signature.
         if (def.getPointcut()
@@ -176,26 +180,25 @@ public class ConstructorAdvice {
           if (!InterceptorHolder.shouldInvoke(def.getName())) {
             continue; // circuit breaker is open
           }
-          long hookStart = System.nanoTime();
+          long hookStart = HookTelemetry.startNanos();
           try {
             Interceptor interceptor = def.getInterceptor();
             interceptor.after(context);
-            long hookNanos = System.nanoTime() - hookStart;
-            InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
-            AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true, hookNanos);
+            HookTelemetry.record(def.getName(), true, hookStart);
           } catch (Throwable e) {
-            long hookNanos = System.nanoTime() - hookStart;
             InterceptorHolder.logInterceptorError(def.getName(), "after", e);
-            InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
-            AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false, hookNanos);
+            HookTelemetry.record(def.getName(), false, hookStart);
           }
         }
       }
 
       // cflow tracking: pop current constructor from the cflow stack on exit
       // (pushed in onMethodEnter). Without this, every constructor invocation
-      // permanently leaks a frame onto the ThreadLocal cflow stack.
-      PointcutExpression.exitCflow(className, methodName);
+      // permanently leaks a frame onto the ThreadLocal cflow stack. The pop itself only happens
+      // when tracking was on and this frame is the top one, so nothing is corrupted either way.
+      if (PointcutExpression.isCflowTrackingRequired()) {
+        PointcutExpression.exitCflow(className, methodName);
+      }
 
       MethodInvocationPool.release(context);
     } catch (Throwable e) {

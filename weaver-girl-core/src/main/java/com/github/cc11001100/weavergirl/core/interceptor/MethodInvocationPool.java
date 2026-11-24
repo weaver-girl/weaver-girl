@@ -69,6 +69,9 @@ public final class MethodInvocationPool {
     Method method = (executable instanceof Method) ? (Method) executable : null;
     if (inv != null) {
       POOL.remove();
+      // Release clears the instance; reset re-populates the call fields and any flags the
+      // previous call left set. Both are needed — reset alone would keep the pooled object's
+      // cleared references pointing at the old call's target.
       inv.reset(targetClass, methodName, method, target, arguments);
       return inv;
     }

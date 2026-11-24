@@ -4,6 +4,7 @@ import com.github.cc11001100.weavergirl.api.interceptor.FieldInvocation;
 import com.github.cc11001100.weavergirl.api.interceptor.FieldInterceptor;
 import com.github.cc11001100.weavergirl.core.interceptor.FieldInvocationPool;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
+import com.github.cc11001100.weavergirl.core.status.HookTelemetry;
 import java.lang.reflect.Field;
 import net.bytebuddy.asm.Advice;
 
@@ -224,11 +225,12 @@ public class FieldAdvice {
       FieldInvocation invocation =
           FieldInvocationPool.acquire(targetClass, fieldName, fieldTypeName, target);
 
-      for (com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition def :
-          registry.getAllDefinitions()) {
-        if (!(def.getInterceptor() instanceof FieldInterceptor)) {
-          continue;
-        }
+      // Only field interceptors, filtered once per registry generation instead of scanning every
+      // definition on every field access.
+      com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition[] fieldDefs =
+          InterceptorHolder.definitionsWithInterceptorType(FieldInterceptor.class);
+      for (int d = 0; d < fieldDefs.length; d++) {
+        com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition def = fieldDefs[d];
         FieldInterceptor fieldInterceptor = (FieldInterceptor) def.getInterceptor();
         for (com.github.cc11001100.weavergirl.api.pointcut.FieldPointcut fp :
             fieldInterceptor.fieldPointcuts()) {
@@ -242,7 +244,7 @@ public class FieldAdvice {
             if (!InterceptorHolder.shouldInvoke(def.getName())) {
               continue;
             }
-            long hookStart = System.nanoTime();
+            long hookStart = HookTelemetry.startNanos();
             try {
               if (writeValue != null) {
                 // putfield access: invoke onFieldSet
@@ -266,16 +268,10 @@ public class FieldAdvice {
                 // interceptor that wants to inspect it.
                 fieldInterceptor.onFieldGet(invocation, readFieldValue(field, target));
               }
-              long hookNanos = System.nanoTime() - hookStart;
-              InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
-              com.github.cc11001100.weavergirl.core.status.AgentStatus.getInstance()
-                  .recordInterceptorInvocation(def.getName(), true, hookNanos);
+              HookTelemetry.record(def.getName(), true, hookStart);
             } catch (Throwable e) {
-              long hookNanos = System.nanoTime() - hookStart;
               InterceptorHolder.logInterceptorError(def.getName(), "field", e);
-              InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
-              com.github.cc11001100.weavergirl.core.status.AgentStatus.getInstance()
-                  .recordInterceptorInvocation(def.getName(), false, hookNanos);
+              HookTelemetry.record(def.getName(), false, hookStart);
             }
           }
         }

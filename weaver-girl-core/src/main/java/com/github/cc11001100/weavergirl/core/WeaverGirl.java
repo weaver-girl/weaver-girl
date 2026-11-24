@@ -1050,6 +1050,10 @@ public class WeaverGirl {
    *   <li>{@code circuitBreakerThreshold} — consecutive failures to open breaker (default: 5)
    *   <li>{@code circuitBreakerCooldownMs} — cooldown before retry (default: 60000)
    *   <li>{@code metricsPath} — Prometheus metrics endpoint path (default: /metrics)
+   *   <li>{@code telemetry}, {@code returnSnapshot}, {@code mdc}, {@code pluginMetrics},
+   *       {@code circuitBreaker} — the per-call performance switches (see
+   *       {@link com.github.cc11001100.weavergirl.api.config.PerformanceSwitches}); a
+   *       {@code -Dweavergirl.<name>.enabled} system property wins over any of them
    * </ul>
    */
   static void applyCoreConfig(java.util.Map<String, String> config) {
@@ -1058,6 +1062,26 @@ public class WeaverGirl {
     // Log configuration with sensitive values masked
     java.util.Map<String, String> safeConfig = SecurityUtils.sanitizeForLogging(config);
     log.info("Agent configuration: {}", safeConfig);
+
+    // Validate the map before acting on it, so a wrong-typed value that used to be silently
+    // ignored (or half-applied) is reported. Errors are logged at error level; "unknown key" is
+    // only a debug note because this map merges every plugin's options — an unrecognised key is
+    // usually a capability's own setting, not a mistake. Neither blocks startup.
+    com.github.cc11001100.weavergirl.core.config.validation.ConfigValidationResult validation =
+        com.github.cc11001100.weavergirl.core.config.validation.ConfigValidator.validate(config);
+    for (String error : validation.getErrors()) {
+      log.error("Invalid agent configuration: {}", error);
+    }
+    for (String warning : validation.getWarnings()) {
+      log.debug("Agent configuration note: {}", warning);
+    }
+
+    // Per-call performance switches first: everything below configures components the switches
+    // decide whether the hot path calls at all.
+    com.github.cc11001100.weavergirl.api.config.PerformanceSwitches.applyFrom(config);
+    log.info(
+        "Performance switches: {}",
+        com.github.cc11001100.weavergirl.api.config.PerformanceSwitches.snapshot());
 
     // P102: emergency disable switch
     String emergencyDisable = config.get("weavergirl.emergency.disable");
@@ -1198,6 +1222,18 @@ public class WeaverGirl {
               InterceptorHolder.getCircuitBreakerFailureThreshold(),
               parsePositiveLong(value, InterceptorHolder.getCircuitBreakerCooldownMillis()));
           log.info("[DynamicConfig] Applied: circuitBreakerCooldownMs={}", value);
+          break;
+
+        case "telemetry":
+        case "returnSnapshot":
+        case "mdc":
+        case "pluginMetrics":
+        case "circuitBreaker":
+          // A switch flipped at runtime takes effect on the next invocation: the hot path reads
+          // the volatile directly. Useful for "pay for telemetry only while diagnosing".
+          com.github.cc11001100.weavergirl.api.config.PerformanceSwitches.setEnabled(
+              key, "true".equalsIgnoreCase(value.trim()));
+          log.info("[DynamicConfig] Applied: {}.enabled={}", key, value);
           break;
 
         default:

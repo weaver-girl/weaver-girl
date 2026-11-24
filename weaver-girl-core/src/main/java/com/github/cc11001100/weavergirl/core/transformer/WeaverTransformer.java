@@ -347,14 +347,22 @@ public class WeaverTransformer {
     // dispatches to every matching interceptor itself, so weaving it once per method is enough and
     // weaving it again runs the method body and every callback once per copy. Definitions differ in
     // which methods they select, so the copies collapse into one visit whose matcher is the union.
+    //
+    // The group key includes the advice class, not just the advice mode: a constructor pointcut and
+    // a method pointcut can share a class matcher and mode, yet they need different advice classes
+    // (ByteBuddy cannot bind both @Advice.Origin Method and Constructor in one class).
     java.util.Map<String, java.util.List<InterceptorDefinition>> weaveGroups =
         new java.util.LinkedHashMap<>();
     for (InterceptorDefinition definition : registry.getAllDefinitions()) {
       ClassMatcher classMatcher = definition.getPointcut().getClassMatcher();
       String groupKey = classMatcher.getMatchType() + ":" + classMatcher.getPattern()
-          + ":" + definition.getAdviceMode();
+          + ":" + selectAdviceClass(definition).getName();
       weaveGroups.computeIfAbsent(groupKey, k -> new java.util.ArrayList<>()).add(definition);
     }
+
+    // Advice.to() parses and validates the advice class. Doing that once per advice class instead of
+    // once per woven class keeps the per-class transform cost flat when thousands of groups exist.
+    final java.util.Map<Class<?>, net.bytebuddy.asm.Advice> adviceByClass = new java.util.HashMap<>();
 
     for (java.util.List<InterceptorDefinition> group : weaveGroups.values()) {
       InterceptorDefinition definition = group.get(0);
@@ -398,37 +406,23 @@ public class WeaverTransformer {
         typeMatcher = typeMatcher.and(packageAllowMatcher);
       }
       if (typeMatcher != null) {
-        // Choose advice class based on match type / mode:
-        //  - constructors use ConstructorAdvice (binds @Advice.Origin Constructor<?>)
-        //  - ARGUMENT_REWRITE interceptors use AsyncArgumentAdvice (binds
-        //    @Advice.Argument(0, readOnly=false) so setArgument(0,...) propagates)
-        //  - everything else uses InterceptAdvice (binds @Advice.Origin Method).
-        // ByteBuddy cannot bind both Origin Method and Constructor<?> in one class,
-        // and AllArguments (even readOnly=false) does not write element mutations
-        // back to parameter slots — hence the dedicated advice per concern.
-        com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode mode =
-            definition.getAdviceMode();
-        Class<?> adviceClass;
-        if (mode == com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode.FIELD) {
-          adviceClass = FieldAdvice.class;
-        } else if (mode == com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode.CATCH) {
-          adviceClass = CatchAdvice.class;
-        } else if (mode == com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode.STATIC_INIT) {
-          // Static initializers have no reflective Method, so InterceptAdvice's
-          // @Advice.Origin Method binding cannot be inlined into <clinit> (ByteBuddy throws
-          // "Cannot represent static <clinit>() as the specified constant" at make() time).
-          // StaticInitAdvice binds only @Advice.Origin Class<?>, which resolves on <clinit>.
-          adviceClass = StaticInitAdvice.class;
-        } else if (definition.getPointcut().getMethodMatcher().getMatchType()
-            == com.github.cc11001100.weavergirl.api.matcher.MethodMatcher.MatchType.CONSTRUCTOR) {
-          adviceClass = ConstructorAdvice.class;
-        } else if (mode
-            == com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode
-                .ARGUMENT_REWRITE) {
-          adviceClass = AsyncArgumentAdvice.class;
-        } else {
-          adviceClass = InterceptAdvice.class;
+        final Class<?> adviceClass = selectAdviceClass(definition);
+        // The union of the group's method matchers is the same for every class the group matches,
+        // so it is built once here instead of once per transformed class.
+        net.bytebuddy.matcher.ElementMatcher.Junction<
+                net.bytebuddy.description.method.MethodDescription>
+            woven = null;
+        for (InterceptorDefinition member : group) {
+          net.bytebuddy.matcher.ElementMatcher.Junction<
+                  net.bytebuddy.description.method.MethodDescription>
+              memberMatcher = buildMethodMatcher(member.getPointcut().getMethodMatcher());
+          woven = woven == null ? memberMatcher : woven.or(memberMatcher);
         }
+        final net.bytebuddy.matcher.ElementMatcher.Junction<
+                net.bytebuddy.description.method.MethodDescription>
+            wovenMatcher = woven == null ? isMethod() : woven;
+        final net.bytebuddy.asm.Advice advice =
+            adviceByClass.computeIfAbsent(adviceClass, net.bytebuddy.asm.Advice::to);
 
         agentBuilder =
             agentBuilder
@@ -447,10 +441,7 @@ public class WeaverTransformer {
                       if (forced != null) {
                         throw new RuntimeException(forced);
                       }
-                      if (mode
-                              == com.github.cc11001100.weavergirl.api.interceptor
-                                  .InterceptorDefinition.AdviceMode.ARGUMENT_REWRITE
-                          && classLoader == null) {
+                      if (adviceClass == AsyncArgumentAdvice.class && classLoader == null) {
                         if (isDebugMode()) {
                           log.debug(
                               "Skipping ARGUMENT_REWRITE advice for bootstrap class: {}",
@@ -465,17 +456,7 @@ public class WeaverTransformer {
                             typeDescription.getName());
                         return builder; // return unmodified builder
                       }
-                      net.bytebuddy.matcher.ElementMatcher.Junction<
-                              net.bytebuddy.description.method.MethodDescription>
-                          woven = null;
-                      for (InterceptorDefinition member : group) {
-                        net.bytebuddy.matcher.ElementMatcher.Junction<
-                                net.bytebuddy.description.method.MethodDescription>
-                            memberMatcher =
-                                buildMethodMatcher(member.getPointcut().getMethodMatcher());
-                        woven = woven == null ? memberMatcher : woven.or(memberMatcher);
-                      }
-                      return builder.visit(net.bytebuddy.asm.Advice.to(adviceClass).on(woven));
+                      return builder.visit(advice.on(wovenMatcher));
                     });
       }
     }
@@ -860,6 +841,50 @@ public class WeaverTransformer {
       }
     }
     return false;
+  }
+
+  /**
+   * The advice class that handles one definition's join points.
+   *
+   * <p>ByteBuddy cannot bind both {@code @Advice.Origin Method} and {@code Constructor} in one
+   * class, and {@code AllArguments} (even {@code readOnly = false}) does not write element mutations
+   * back to parameter slots — hence one advice class per concern.
+   *
+   * @param definition the definition whose join points are being woven
+   * @return the advice class to install
+   */
+  private static Class<?> selectAdviceClass(InterceptorDefinition definition) {
+    com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode mode =
+        definition.getAdviceMode();
+    if (mode
+        == com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode
+            .FIELD) {
+      return FieldAdvice.class;
+    }
+    if (mode
+        == com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode
+            .CATCH) {
+      return CatchAdvice.class;
+    }
+    if (mode
+        == com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode
+            .STATIC_INIT) {
+      // Static initializers have no reflective Method, so InterceptAdvice's @Advice.Origin Method
+      // binding cannot be inlined into <clinit> (ByteBuddy throws "Cannot represent static
+      // <clinit>() as the specified constant" at make() time). StaticInitAdvice binds only
+      // @Advice.Origin Class<?>, which resolves on <clinit>.
+      return StaticInitAdvice.class;
+    }
+    if (definition.getPointcut().getMethodMatcher().getMatchType()
+        == com.github.cc11001100.weavergirl.api.matcher.MethodMatcher.MatchType.CONSTRUCTOR) {
+      return ConstructorAdvice.class;
+    }
+    if (mode
+        == com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode
+            .ARGUMENT_REWRITE) {
+      return AsyncArgumentAdvice.class;
+    }
+    return InterceptAdvice.class;
   }
 
   private net.bytebuddy.matcher.ElementMatcher.Junction<TypeDescription> buildTypeMatcher(

@@ -87,38 +87,105 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
    */
   private final Set<String> precedenceUnresolvable = new HashSet<>();
 
+  /**
+   * The ordered names declared by one aspect's {@link DeclarePrecedence}, cached by aspect name.
+   * An aspect class cannot gain an annotation after it is loaded, so this never goes stale; an
+   * empty array means "loaded, no annotation". Caching here is what keeps registration linear:
+   * rebuilding the precedence map used to resolve every aspect through {@code Class.forName} once
+   * per definition, which is quadratic in the number of pointcuts.
+   */
+  private final Map<String, String[]> aspectPrecedence = new ConcurrentHashMap<>();
+
+  /**
+   * Set on every mutation; the map is rebuilt lazily inside {@link #rebuildIndex()}, in the same
+   * synchronized pass that rebuilds the class index, so a burst of registrations pays for one
+   * rebuild instead of one per definition.
+   */
+  private volatile boolean precedenceDirty = true;
+
+  /** Resolves one aspect's declared order, or {@code null} when the aspect cannot be loaded. */
+  private String[] aspectOrder(String aspectName) {
+    if (precedenceUnresolvable.contains(aspectName)) {
+      return null;
+    }
+    String[] cached = aspectPrecedence.get(aspectName);
+    if (cached != null) {
+      return cached;
+    }
+    try {
+      Class<?> aspectClass =
+          Class.forName(aspectName, false, Thread.currentThread().getContextClassLoader());
+      DeclarePrecedence declarePrecedence = aspectClass.getAnnotation(DeclarePrecedence.class);
+      if (declarePrecedence == null) {
+        aspectPrecedence.put(aspectName, new String[0]);
+        return new String[0];
+      }
+      String[] ordered = declarePrecedence.value().split(",");
+      for (int i = 0; i < ordered.length; i++) {
+        ordered[i] = ordered[i].trim();
+      }
+      aspectPrecedence.put(aspectName, ordered);
+      return ordered;
+    } catch (Throwable t) {
+      precedenceUnresolvable.add(aspectName);
+      log.debug("Failed to load aspect class {} for precedence resolution: {}", aspectName, t.getMessage());
+      return null;
+    }
+  }
+
+  /**
+   * The {@code @DeclarePrecedence} index (aspect class name to ordering position), refreshed
+   * lazily after a mutation. Empty when no aspect declares precedence.
+   *
+   * <p>Read by {@code InterceptorHolder}'s dispatch cache, which must order the definitions it
+   * hands to the inlined advice exactly as {@link #getInterceptorsForClass(String)} does.
+   */
+  public Map<String, Integer> getPrecedenceMap() {
+    if (precedenceDirty) {
+      synchronized (this) {
+        refreshPrecedence();
+      }
+    }
+    if (precedenceMap.isEmpty()) {
+      return java.util.Collections.emptyMap();
+    }
+    // A snapshot: the map is cleared and refilled in place on the next mutation, and the dispatch
+    // cache must keep the ordering it was built with for its whole generation.
+    synchronized (this) {
+      return new java.util.HashMap<>(precedenceMap);
+    }
+  }
+
   private void refreshPrecedence() {
+    if (!precedenceDirty) {
+      return;
+    }
     Map<String, Integer> newMap = new LinkedHashMap<>();
     for (InterceptorDefinition def : definitions) {
       String aspectName = def.getAspectClassName();
-      if (aspectName == null || aspectName.isEmpty() || precedenceUnresolvable.contains(aspectName)) {
+      if (aspectName == null || aspectName.isEmpty()) {
         continue;
       }
-      try {
-        Class<?> aspectClass = Class.forName(aspectName, false, Thread.currentThread().getContextClassLoader());
-        DeclarePrecedence declarePrecedence = aspectClass.getAnnotation(DeclarePrecedence.class);
-        if (declarePrecedence != null) {
-          String[] ordered = declarePrecedence.value().split(",");
-          for (int i = 0; i < ordered.length; i++) {
-            String name = ordered[i].trim();
-            if (name.isEmpty() || newMap.containsKey(name)) {
-              continue;
-            }
-            newMap.put(name, i);
-            // Nested classes are written with dots in source and dollars in Class.getName().
-            Class<?> resolved = resolveAspectClass(name);
-            if (resolved != null) {
-              newMap.put(resolved.getName(), i);
-            }
-          }
+      String[] ordered = aspectOrder(aspectName);
+      if (ordered == null) {
+        continue;
+      }
+      for (int i = 0; i < ordered.length; i++) {
+        String name = ordered[i];
+        if (name.isEmpty() || newMap.containsKey(name)) {
+          continue;
         }
-      } catch (Throwable t) {
-        precedenceUnresolvable.add(aspectName);
-        log.debug("Failed to load aspect class {} for precedence resolution: {}", aspectName, t.getMessage());
+        newMap.put(name, i);
+        // Nested classes are written with dots in source and dollars in Class.getName().
+        Class<?> resolved = resolveAspectClass(name);
+        if (resolved != null) {
+          newMap.putIfAbsent(resolved.getName(), i);
+        }
       }
     }
     precedenceMap.clear();
     precedenceMap.putAll(newMap);
+    precedenceDirty = false;
   }
 
   /**
@@ -486,10 +553,11 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
       definitions.removeIf(d -> d.getName().equals(definition.getName()));
       definitions.add(definition);
       indexDirty = true;
+      // Precedence is rebuilt lazily by rebuildIndex(): doing it per registration made a bulk load
+      // of thousands of pointcuts quadratic.
+      precedenceDirty = true;
       bumpGeneration();
       fireReloadHooks();
-      // Refresh precedence ordering after each successful registration
-      refreshPrecedence();
       // Invoke lifecycle hook
       boolean initOk = true;
       try {
@@ -515,7 +583,7 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
   @Override
   public List<InterceptorDefinition> getInterceptorsForClass(String className) {
     ValidationUtils.requireNonEmpty(className, "className");
-    if (indexDirty) {
+    if (indexDirty || precedenceDirty) {
       rebuildIndex();
     }
     List<InterceptorDefinition> result =
@@ -580,9 +648,9 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
     boolean removed = definitions.removeIf(d -> name.equals(d.getName()));
     if (removed) {
       indexDirty = true;
+      precedenceDirty = true;
       bumpGeneration();
       fireReloadHooks();
-      refreshPrecedence();
       log.info("Unregistered interceptor: {}", name);
       boolean destroyOk = true;
       if (toRemove != null) {
@@ -621,6 +689,8 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
     }
     precedenceMap.clear();
     precedenceUnresolvable.clear();
+    aspectPrecedence.clear();
+    precedenceDirty = true;
     for (InterceptorDefinition def : clearedDefinitions) {
       boolean destroyOk = true;
       try {
@@ -720,6 +790,11 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
   }
 
   private synchronized void rebuildIndex() {
+    if (!indexDirty && !precedenceDirty) {
+      return;
+    }
+    // Precedence first: the index lists below are sorted with it.
+    refreshPrecedence();
     if (!indexDirty) {
       return;
     }

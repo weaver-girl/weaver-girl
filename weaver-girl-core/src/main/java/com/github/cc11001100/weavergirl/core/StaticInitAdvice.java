@@ -6,9 +6,8 @@ import com.github.cc11001100.weavergirl.api.pointcut.PointcutExpression;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
 import com.github.cc11001100.weavergirl.core.interceptor.MethodInvocationPool;
 import com.github.cc11001100.weavergirl.core.sampling.SamplingController;
-import com.github.cc11001100.weavergirl.core.status.AgentStatus;
+import com.github.cc11001100.weavergirl.core.status.HookTelemetry;
 import java.lang.reflect.Constructor;
-import java.util.List;
 import net.bytebuddy.asm.Advice;
 
 /**
@@ -61,27 +60,30 @@ public class StaticInitAdvice {
           MethodInvocationPool.acquire(targetClass, methodName, (Constructor<?>) null, null, new Object[0]);
 
       // cflow tracking: push <clinit> onto the stack so nested cflow expressions can see it.
-      PointcutExpression.enterCflow(className, methodName);
+      // Skipped entirely when no cflow expression exists.
+      if (PointcutExpression.isCflowTrackingRequired()) {
+        PointcutExpression.enterCflow(className, methodName);
+      }
 
-      List<InterceptorDefinition> defs = InterceptorHolder.getInterceptorsForClassSnapshot(className);
-      for (InterceptorDefinition def : defs) {
+      // Cached per class+method: with thousands of pointcuts registered this is two hash lookups,
+      // not a scan of every definition.
+      InterceptorHolder.DispatchView dispatch = InterceptorHolder.dispatch(className, methodName);
+      InterceptorDefinition[] defs = dispatch.definitions;
+      for (int d = 0; d < defs.length; d++) {
+        InterceptorDefinition def = defs[d];
         if (!def.getPointcut().matchRuntime(className, methodName, null, new Object[0], null, null)) {
           continue;
         }
         if (!InterceptorHolder.shouldInvoke(def.getName())) {
           continue; // circuit breaker is open
         }
-        long hookStart = System.nanoTime();
+        long hookStart = HookTelemetry.startNanos();
         try {
           def.getInterceptor().before(invocation);
-          long hookNanos = System.nanoTime() - hookStart;
-          InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
-          AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true, hookNanos);
+          HookTelemetry.record(def.getName(), true, hookStart);
         } catch (Throwable e) {
-          long hookNanos = System.nanoTime() - hookStart;
           InterceptorHolder.logInterceptorError(def.getName(), "before", e);
-          InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
-          AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false, hookNanos);
+          HookTelemetry.record(def.getName(), false, hookStart);
         }
       }
 
@@ -125,30 +127,30 @@ public class StaticInitAdvice {
         return;
       }
 
-      List<InterceptorDefinition> defs = InterceptorHolder.getInterceptorsForClassSnapshot(className);
-      for (InterceptorDefinition def : defs) {
+      InterceptorHolder.DispatchView dispatch = InterceptorHolder.dispatch(className, methodName);
+      InterceptorDefinition[] defs = dispatch.definitions;
+      for (int d = 0; d < defs.length; d++) {
+        InterceptorDefinition def = defs[d];
         if (!def.getPointcut().matchRuntime(className, methodName, null, new Object[0], null, null)) {
           continue;
         }
         if (!InterceptorHolder.shouldInvoke(def.getName())) {
           continue; // circuit breaker is open
         }
-        long hookStart = System.nanoTime();
+        long hookStart = HookTelemetry.startNanos();
         try {
           def.getInterceptor().after(context);
-          long hookNanos = System.nanoTime() - hookStart;
-          InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
-          AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true, hookNanos);
+          HookTelemetry.record(def.getName(), true, hookStart);
         } catch (Throwable e) {
-          long hookNanos = System.nanoTime() - hookStart;
           InterceptorHolder.logInterceptorError(def.getName(), "after", e);
-          InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
-          AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false, hookNanos);
+          HookTelemetry.record(def.getName(), false, hookStart);
         }
       }
 
       // cflow tracking: pop <clinit> off the stack (pushed in onMethodEnter)
-      PointcutExpression.exitCflow(className, methodName);
+      if (PointcutExpression.isCflowTrackingRequired()) {
+        PointcutExpression.exitCflow(className, methodName);
+      }
 
       MethodInvocationPool.release(context);
     } catch (Throwable e) {

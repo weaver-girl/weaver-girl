@@ -57,6 +57,10 @@ public class YamlConfigLoader {
               "disabledPlugins",
               "enabledPlugins",
               "alertRules",
+              // The per-call performance switches (telemetry / returnSnapshot / mdc /
+              // pluginMetrics / circuitBreaker) are deliberately NOT listed: they are scalar
+              // booleans, so leaving them out of this set makes collectPluginOptions keep them as
+              // plugin options, which is the map PerformanceSwitches.applyFrom receives.
               "plugins"));
 
   /**

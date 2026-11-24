@@ -4,9 +4,8 @@ import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
-import com.github.cc11001100.weavergirl.core.status.AgentStatus;
+import com.github.cc11001100.weavergirl.core.status.HookTelemetry;
 import java.lang.reflect.Method;
-import java.util.List;
 import net.bytebuddy.asm.Advice;
 import net.bytebuddy.implementation.bytecode.assign.Assigner;
 
@@ -121,8 +120,9 @@ public class AsyncArgumentAdvice {
       MethodInvocation invocation =
           new MethodInvocation(targetClass, methodName, method, null, snapshot);
 
-      List<InterceptorDefinition> defs = InterceptorHolder.getInterceptorsForClassSnapshot(className);
-      for (InterceptorDefinition def : defs) {
+      InterceptorDefinition[] defs = InterceptorHolder.dispatch(className, methodName).definitions;
+      for (int d = 0; d < defs.length; d++) {
+        InterceptorDefinition def = defs[d];
         if (def.getAdviceMode()
             != com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition.AdviceMode
                 .ARGUMENT_REWRITE) {
@@ -134,18 +134,14 @@ public class AsyncArgumentAdvice {
         if (!InterceptorHolder.shouldInvoke(def.getName())) {
           continue;
         }
-        long hookStart = System.nanoTime();
+        long hookStart = HookTelemetry.startNanos();
         try {
           def.getInterceptor().before(invocation);
-          long hookNanos = System.nanoTime() - hookStart;
-          InterceptorHolder.recordOutcome(def.getName(), true, hookNanos);
-          AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), true, hookNanos);
+          HookTelemetry.record(def.getName(), true, hookStart);
         } catch (Throwable e) {
-          long hookNanos = System.nanoTime() - hookStart;
           invocation.setSkipMethod(false);
           InterceptorHolder.logInterceptorError(def.getName(), "before", e);
-          InterceptorHolder.recordOutcome(def.getName(), false, hookNanos);
-          AgentStatus.getInstance().recordInterceptorInvocation(def.getName(), false, hookNanos);
+          HookTelemetry.record(def.getName(), false, hookStart);
         }
       }
 
