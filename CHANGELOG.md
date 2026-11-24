@@ -4,29 +4,43 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
-## Unreleased — CI green again: the config leak behind 14 red integration tests (2026-11-24)
+## Unreleased — CI green again: the test-state leaks behind the red suite (2026-11-24)
 
-`main` had been red since 2026-11-22: fourteen weaving tests in `weaver-girl-core` failed on
-JDK 17 and 21 (`before() should have been called: expected true but was false`) while passing
-when the class ran alone. It was not a weaving defect.
+`main` had been red since 2026-11-22, and the failure set changed on every run: fourteen weaving
+tests, then twenty-six, then thirty-seven, then three — all "before() should have been called:
+expected true but was false" on JDK 17 and 21, all passing when the class ran alone. The engine
+was fine; the module's tests were sharing process-wide state and surefire's ordering is not
+stable, so each leaking test poisoned whatever ran after it.
 
-- **Cause: a config test left emergency mode on.** `WeaverGirlBootstrapTest` and
-  `CoreConfigWiringTest` apply a real config map through `WeaverGirl.applyCoreConfig`,
-  including `weavergirl.emergency.disable=true`. Applying it is process-wide: the agent enters
-  emergency mode, which switches the global interception kill-switch off and caps the sampling
-  rate. Surefire runs the whole module in one JVM, so every weaving test that ran afterwards
-  saw a disabled kill-switch and reported its callbacks as never firing — in whatever order
-  surefire happened to pick.
-- **Fix: restore the singletons.** New `ProcessWideState.restore()` (test support) clears
-  emergency mode, turns interception back on and resets the sampling rate / max rate /
-  threshold. The two config tests call it from a `finally`, so the state cannot leak regardless
-  of an assertion failure. `GracefulDegradationManager.resetForTest()` alone was not enough —
-  it clears the emergency flag but leaves the kill-switch and the sampling rate as they were.
-- **Verified.** Running the two tests in the order that failed in CI (`WeaverGirlBootstrapTest`,
-  then `AgentIntegrationTest`) now passes, and a full `mvn clean test` on JDK 17 across all 153
-  modules is green.
-- **Test hygiene.** The reset lives in one helper instead of being open-coded per test, so a
-  third test that applies a config cannot reintroduce the leak by forgetting one of the resets.
+Four leaks, each of them enough on its own:
+
+- **A config test left emergency mode on.** `WeaverGirlBootstrapTest` and `CoreConfigWiringTest`
+  apply a real config map through `WeaverGirl.applyCoreConfig`, including
+  `weavergirl.emergency.disable=true`. That is process-wide: emergency mode switches the
+  interception kill-switch off and caps the sampling rate.
+- **The same path left the per-call switches off.** A config with `returnSnapshot=false` /
+  `telemetry=false` left them in effect for the whole fork, so a later hook that reads the
+  called method's return value got `null` (`InterceptAdviceTest`'s durable-registry snapshot test).
+- **A bootstrap test never shut its agent down.** `dynamicConfigChangesReachTheSamplingController`
+  was the one bootstrap test in its class without a `shutdown()`, so its `SamplingMonitor` thread
+  outlived the test and kept raising the shared sampling rate from `AgentStatus` counters other
+  tests left behind — which is what sampled `SignatureMatchingIntegrationTest`'s `before()` callbacks away.
+- **Breaker state and threshold leaked too.** `HookTelemetryTest` retunes the global breaker to
+  threshold 2 and then 1 without restoring it, and breaker states are keyed by hook name, so a
+  tripped hook disabled anything reusing its name.
+
+**The fix is ambient rather than per-class.** `ProcessWideStateExtension` runs
+`ProcessWideState.restore()` before and after every core test, auto-detected through
+`META-INF/services` with `junit.jupiter.extensions.autodetection.enabled=true` in the module's
+`junit-platform.properties`. It resets emergency mode, the kill-switch, the five per-call
+switches, the breaker (state and threshold), the sampling rate, and stops any leftover
+`SamplingMonitor` (`SamplingMonitor.stopAllForTest()`). Patching one leaking test at a time was
+tried first and did not hold — the leak simply moved to the next test in the next run.
+
+**Verified on CI, not only locally:** `ci.yml` at `8f68bfbc` and `88fed789` are green on JDK 17,
+JDK 21 and the quality gate, and `agent-smoke.yml` is green on all six jobs (JDK 8/11/17/21 plus
+Spring Boot 3.3 and the Jetty/H2 sample). A local run on a different order cannot reproduce this
+class of failure, which is why the CI result is the one that counts.
 
 ## Unreleased — per-call overhead and the ASM question (2026-11-24)
 
