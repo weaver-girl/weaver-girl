@@ -47,8 +47,38 @@ public class ReturnVersion {
    * @return the new version (>= 1)
    */
   public static long next(String methodSignature) {
-    AtomicLong counter = VERSION_MAP.computeIfAbsent(methodSignature, k -> new AtomicLong(0));
-    return counter.incrementAndGet();
+    return counterFor(methodSignature).incrementAndGet();
+  }
+
+  /**
+   * Whether the inlined advice records a {@link ReturnSnapshot} on every successful return.
+   *
+   * <p>Recording costs about 40 ns per call (one object, one global-id atomic bump and one clock
+   * read) and only pays off for a deployment that actually reads {@link #latestSnapshot(String)}
+   * — a cache or a trace correlator. On a throughput-sensitive application that reads none of it,
+   * turning it off leaves the version counter (about 2 ns) and removes the rest.
+   *
+   * <p>Controlled by {@code -Dweavergirl.returnSnapshot.enabled}; default {@code true} so existing
+   * consumers keep working.
+   *
+   * @return true when snapshots should be recorded
+   */
+  public static boolean snapshotRecordingEnabled() {
+    return com.github.cc11001100.weavergirl.api.config.PerformanceSwitches
+        .isReturnSnapshotEnabled();
+  }
+
+  /**
+   * The counter behind {@link #next(String)} for a signature, creating it on first use.
+   *
+   * <p>Callers that version the same method on every invocation can hold this reference instead of
+   * paying a map lookup per call; the inlined advice caches it in its dispatch view.
+   *
+   * @param methodSignature the method signature
+   * @return the live counter for that signature
+   */
+  public static AtomicLong counterFor(String methodSignature) {
+    return VERSION_MAP.computeIfAbsent(methodSignature, k -> new AtomicLong(0));
   }
 
   /**

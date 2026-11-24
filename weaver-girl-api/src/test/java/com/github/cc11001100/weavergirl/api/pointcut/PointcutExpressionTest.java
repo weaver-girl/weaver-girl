@@ -11,11 +11,9 @@ class PointcutExpressionTest {
 
   @AfterEach
   void drainCflowStack() {
-    // The cflow ThreadLocal persists across tests on the same thread; drain it so
+    // The cflow ThreadLocal persists across tests on the same thread; reset it so
     // one test's pushed frames never leak into the next test's assertions.
-    while (PointcutExpression.CflowContext.current() != null) {
-      PointcutExpression.exitCflow("drain", "drain");
-    }
+    PointcutExpression.resetCflow();
   }
 
   @Test

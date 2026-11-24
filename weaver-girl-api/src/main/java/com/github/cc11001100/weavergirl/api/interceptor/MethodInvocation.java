@@ -169,6 +169,10 @@ public class MethodInvocation {
     this.returnSnapshot = null;
     this.conditionMatched = true;
     this.conditionEvaluated = false;
+    // The per-instance object belongs to the target, not to the pooled invocation: leaving it
+    // here would hand the previous target's pertarget state to the next call on this thread.
+    this.perInstance = null;
+    this.perInstanceInitialized = false;
     if (this.attachments != null) {
       this.attachments.clear();
     }
@@ -197,6 +201,10 @@ public class MethodInvocation {
     this.returnSnapshot = null;
     this.conditionMatched = true;
     this.conditionEvaluated = false;
+    // Hold the target's pertarget/perthis state no longer than the call: a pooled invocation
+    // would otherwise keep a strong reference to a target object from an idle thread pool.
+    this.perInstance = null;
+    this.perInstanceInitialized = false;
     if (this.attachments != null) {
       this.attachments.clear();
     }

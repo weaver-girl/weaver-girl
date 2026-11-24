@@ -1,10 +1,13 @@
 package com.github.cc11001100.weavergirl.api.taint;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.github.cc11001100.weavergirl.api.context.ContextPropagators;
 import com.github.cc11001100.weavergirl.api.context.ContextSnapshot;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -90,5 +93,80 @@ class TaintScopeTest {
       pool.shutdownNow();
     }
     System.out.println("IAST scope source=parent-source worker-restored source=worker-source");
+  }
+
+  @Test
+  void wrapCarriesTheScopeIntoTheTaskAndRestoresTheCallerAfterwards() {
+    final String value = new String("wrapped-value");
+    Taint.openScope();
+    Taint.tag(value, "wrapped-source");
+    Runnable wrapped =
+        Taint.wrap(
+            new Runnable() {
+              @Override
+              public void run() {
+                assertTrue(Taint.hasSource(value, "wrapped-source"));
+              }
+            });
+    Taint.closeScope();
+    assertFalse(Taint.isTainted(value));
+
+    wrapped.run();
+    assertFalse(Taint.isTainted(value), "the previous (empty) scopes are back after the task");
+    System.out.println("IAST wrap carried wrapped-source and cleaned up");
+  }
+
+  @Test
+  void wrapWithoutAScopeAndASecondWrapAreNoOps() {
+    Runnable plain = new Runnable() {
+      @Override
+      public void run() {}
+    };
+    assertSame(plain, Taint.wrap(plain), "no scope means no wrapper allocation");
+
+    Taint.openScope();
+    try {
+      Runnable wrapped = Taint.wrap(plain);
+      assertNotSame(plain, wrapped);
+      assertSame(wrapped, Taint.wrap(wrapped), "an already wrapped task is not wrapped twice");
+    } finally {
+      Taint.closeScope();
+    }
+  }
+
+  @Test
+  void wrappedCallableSeesTheScopeAndReturnsTheValue() throws Exception {
+    final String value = new String("callable-value");
+    Taint.openScope();
+    Taint.tag(value, "callable-source");
+    Callable<Boolean> callable =
+        Taint.wrap(
+            new Callable<Boolean>() {
+              @Override
+              public Boolean call() {
+                return Boolean.valueOf(Taint.hasSource(value, "callable-source"));
+              }
+            });
+    Taint.closeScope();
+
+    assertTrue(callable.call().booleanValue());
+    assertFalse(Taint.isTainted(value));
+    System.out.println("IAST callable saw callable-source");
+  }
+
+  @Test
+  void captureAndRestoreContextMoveTheScopesBetweenThreads() {
+    final String value = new String("captured");
+    Taint.openScope();
+    Taint.tag(value, "captured-source");
+    Object snapshot = Taint.captureContext();
+    Taint.closeScope();
+    assertFalse(Taint.isTainted(value));
+
+    Taint.restoreContext(snapshot);
+    assertTrue(Taint.hasSource(value, "captured-source"));
+    Taint.restoreContext(null);
+    assertFalse(Taint.isTainted(value), "restoring a non-snapshot clears the thread");
+    System.out.println("IAST manual capture/restore moved captured-source");
   }
 }

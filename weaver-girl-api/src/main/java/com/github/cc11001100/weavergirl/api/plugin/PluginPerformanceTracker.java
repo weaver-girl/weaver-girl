@@ -103,10 +103,13 @@ public final class PluginPerformanceTracker {
     void recordInvocation(long durationMs, boolean error) {
       invocationCount.increment();
       totalDurationMs.add(durationMs);
-      lastInvocationAt.set(System.currentTimeMillis());
+      // The coarse clock replaces two ~20 ns clock reads with one volatile read. These timestamps
+      // only feed health reporting ("is this plugin still firing"), which needs second-level
+      // accuracy, not per-call.
+      lastInvocationAt.set(com.github.cc11001100.weavergirl.api.metrics.CoarseClock.millis());
       if (error) {
         errorCount.increment();
-        lastErrorAt.set(System.currentTimeMillis());
+        lastErrorAt.set(com.github.cc11001100.weavergirl.api.metrics.CoarseClock.millis());
       }
     }
 

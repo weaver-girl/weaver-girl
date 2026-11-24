@@ -23,6 +23,17 @@ public class PointcutExpression {
     IF
   }
 
+  /**
+   * Whether any {@code cflow()} expression has ever been built in this JVM.
+   *
+   * <p>An inlined advice pushes a frame on every woven method so a {@code cflow()} evaluated deeper
+   * in the call stack can inspect its callers. When no cflow expression exists, nothing will ever
+   * read that stack, so the push can be skipped entirely — it costs a string concatenation and
+   * ThreadLocal work on every intercepted call. The flag is monotonic: once a cflow expression
+   * exists, tracking stays on for the life of the process.
+   */
+  private static volatile boolean cflowTrackingRequired = false;
+
   private final Type type;
   private final String returnType;
   private final String classPattern;
@@ -88,6 +99,22 @@ public class PointcutExpression {
     this.handlerExceptionType = handlerExceptionType;
     this.cflowExpression = cflowExpression;
     this.ifCondition = ifCondition;
+    if (type == Type.CFLOW) {
+      cflowTrackingRequired = true;
+    }
+  }
+
+  /**
+   * Whether the woven advice must maintain the cflow call stack.
+   *
+   * <p>False until a {@code cflow()} expression is constructed; reading it is a single volatile
+   * read, cheap enough for the per-invocation path.
+   *
+   * @return true when some cflow expression exists and call-stack tracking is needed
+   * @since 1.7.0
+   */
+  public static boolean isCflowTrackingRequired() {
+    return cflowTrackingRequired;
   }
 
   public static PointcutExpression execution(
@@ -712,7 +739,14 @@ public class PointcutExpression {
   public static final class CflowContext {
     private static final ThreadLocal<CflowContext> CURRENT = new ThreadLocal<>();
 
-    private final java.util.Deque<String> callStack = new java.util.ArrayDeque<>();
+    /**
+     * Class and method names of the frames on this thread, most recent first. Two parallel stacks
+     * instead of one of pre-concatenated strings: a push then costs no allocation, and cflow is
+     * evaluated on every intercepted call whenever any cflow expression exists.
+     */
+    private final java.util.Deque<String> classes = new java.util.ArrayDeque<>();
+
+    private final java.util.Deque<String> methods = new java.util.ArrayDeque<>();
 
     static CflowContext current() {
       return CURRENT.get();
@@ -724,28 +758,35 @@ public class PointcutExpression {
         ctx = new CflowContext();
         CURRENT.set(ctx);
       }
-      ctx.callStack.push(className + "." + methodName);
+      ctx.classes.push(className);
+      ctx.methods.push(methodName);
     }
 
     static void exit() {
       CflowContext ctx = CURRENT.get();
-      if (ctx != null && !ctx.callStack.isEmpty()) {
-        ctx.callStack.pop();
-        if (ctx.callStack.isEmpty()) {
+      if (ctx != null && !ctx.classes.isEmpty()) {
+        ctx.classes.pop();
+        ctx.methods.pop();
+        if (ctx.classes.isEmpty()) {
           CURRENT.remove();
         }
       }
     }
 
+    /** Whether the most recent frame is the given join point. */
+    boolean topIs(String className, String methodName) {
+      return !classes.isEmpty()
+          && classes.peek().equals(className)
+          && methods.peek().equals(methodName);
+    }
+
     boolean matches(PointcutExpression inner, String className, String methodName) {
       // Check if the inner pointcut matches any frame in the call stack
       Pointcut innerPointcut = inner.toPointcut();
-      for (String frame : callStack) {
-        int dot = frame.lastIndexOf('.');
-        if (dot < 0) continue;
-        String frameClass = frame.substring(0, dot);
-        String frameMethod = frame.substring(dot + 1);
-        if (innerPointcut.matches(frameClass, frameMethod)) {
+      java.util.Iterator<String> classIt = classes.iterator();
+      java.util.Iterator<String> methodIt = methods.iterator();
+      while (classIt.hasNext() && methodIt.hasNext()) {
+        if (innerPointcut.matches(classIt.next(), methodIt.next())) {
           return true;
         }
       }
@@ -758,18 +799,15 @@ public class PointcutExpression {
       // The top of the call stack (most recent frame) is the current method being evaluated,
       // so we skip it and check only the caller frames below it.
       Pointcut innerPointcut = inner.toPointcut();
-      java.util.Iterator<String> it = callStack.iterator();
+      java.util.Iterator<String> classIt = classes.iterator();
+      java.util.Iterator<String> methodIt = methods.iterator();
       // Skip the first frame (the current method's own frame)
-      if (it.hasNext()) {
-        it.next();
+      if (classIt.hasNext()) {
+        classIt.next();
+        methodIt.next();
       }
-      while (it.hasNext()) {
-        String frame = it.next();
-        int dot = frame.lastIndexOf('.');
-        if (dot < 0) continue;
-        String frameClass = frame.substring(0, dot);
-        String frameMethod = frame.substring(dot + 1);
-        if (innerPointcut.matches(frameClass, frameMethod)) {
+      while (classIt.hasNext() && methodIt.hasNext()) {
+        if (innerPointcut.matches(classIt.next(), methodIt.next())) {
           return true;
         }
       }
@@ -783,18 +821,33 @@ public class PointcutExpression {
       ctx = new PointcutExpression.CflowContext();
       PointcutExpression.CflowContext.CURRENT.set(ctx);
     }
-    ctx.callStack.push(className + "." + methodName);
+    ctx.classes.push(className);
+    ctx.methods.push(methodName);
     return true;
   }
 
+  /**
+   * Pops the frame for the given join point, if it is the most recent one.
+   *
+   * <p>The ownership check matters when call-stack tracking is switched on while a call is already
+   * in flight: an invocation that entered without pushing must not pop the frame of a caller, or
+   * every enclosing cflow evaluation would see a corrupted stack. A frame that does not match is
+   * left in place.
+   *
+   * @param className the class whose frame should be popped
+   * @param methodName the method whose frame should be popped
+   */
   public static void exitCflow(String className, String methodName) {
     PointcutExpression.CflowContext ctx = PointcutExpression.CflowContext.current();
-    if (ctx != null && !ctx.callStack.isEmpty()) {
-      ctx.callStack.pop();
-      if (ctx.callStack.isEmpty()) {
-        PointcutExpression.CflowContext.CURRENT.remove();
-      }
+    if (ctx != null && ctx.topIs(className, methodName)) {
+      PointcutExpression.CflowContext.exit();
     }
+  }
+
+  /** Drops every cflow frame recorded on this thread. Intended for tests and for a thread that
+   * abandoned a request mid-flight. */
+  public static void resetCflow() {
+    PointcutExpression.CflowContext.CURRENT.remove();
   }
 
   public Pointcut toPointcut() {

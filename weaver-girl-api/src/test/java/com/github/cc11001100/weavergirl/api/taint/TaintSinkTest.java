@@ -274,6 +274,75 @@ class TaintSinkTest {
   }
 
   @Test
+  void genericSinkReportsNonStringValuesAndCarriesTheCallSite() {
+    final List<InterceptorEvent> findings = new ArrayList<InterceptorEvent>();
+    InterceptorEventListener listener =
+        new InterceptorEventListener() {
+          @Override
+          public void onEvent(InterceptorEvent event) {
+            if (TaintFindings.EVENT_TYPE.equals(event.getType())) {
+              findings.add(event);
+            }
+          }
+        };
+    InterceptorEventPublisher.getInstance().addListener(listener);
+    try {
+      Integer tainted = Integer.valueOf(42);
+      Taint.tag(tainted, "http.parameter:id");
+
+      assertTrue(Taint.sink("template", tainted), "the caller learns the value was tainted");
+      assertEquals(1, findings.size());
+      Map<String, String> attributes = findings.get(0).getAttributes();
+      assertEquals("template", attributes.get("sink"));
+      assertEquals("http.parameter:id", attributes.get("source"));
+      assertEquals("42", attributes.get("argument"));
+      assertEquals("0", attributes.get("start"));
+      assertEquals("2", attributes.get("end"));
+      assertEquals(getClass().getName(), attributes.get("callerClass"));
+      assertEquals(
+          "genericSinkReportsNonStringValuesAndCarriesTheCallSite",
+          attributes.get("callerMethod"));
+
+      assertFalse(Taint.sink("template", "clean"));
+      assertEquals(1, findings.size(), "a clean value adds no finding");
+    } finally {
+      InterceptorEventPublisher.getInstance().removeListener(listener);
+    }
+  }
+
+  @Test
+  void genericSinkFlattensCollectionsAndArrays() {
+    final List<InterceptorEvent> findings = new ArrayList<InterceptorEvent>();
+    InterceptorEventListener listener =
+        new InterceptorEventListener() {
+          @Override
+          public void onEvent(InterceptorEvent event) {
+            if (TaintFindings.EVENT_TYPE.equals(event.getType())) {
+              findings.add(event);
+            }
+          }
+        };
+    InterceptorEventPublisher.getInstance().addListener(listener);
+    try {
+      String dirty = new String("dirty");
+      Taint.tag(dirty, "http.parameter:v");
+
+      assertTrue(Taint.sink("collection", Arrays.asList("clean", dirty)));
+      assertEquals(1, findings.size());
+      assertEquals("dirty", findings.get(0).getAttributes().get("argument"));
+
+      findings.clear();
+      assertTrue(Taint.sink("array", new Object[] {new String[] {"x"}, dirty}));
+      assertEquals(1, findings.size());
+
+      assertFalse(Taint.sink("clean", Arrays.asList("a", "b")));
+      assertEquals(1, findings.size(), "clean collections add no finding");
+    } finally {
+      InterceptorEventPublisher.getInstance().removeListener(listener);
+    }
+  }
+
+  @Test
   void closingWithoutAScopeAndLeavingWithoutAnEntryAreNoOps() {
     Taint.closeScope();
     TaintBridge.leave();

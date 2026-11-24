@@ -6,6 +6,7 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -23,6 +24,10 @@ public final class TaintBridge {
   public static final String SINK_SQL = "sql";
   public static final String PARAMETER_PREFIX = "http.parameter:";
   public static final String HEADER_PREFIX = "http.header:";
+  public static final String COOKIE_PREFIX = "http.cookie:";
+  public static final String URI_LABEL = "http.uri";
+  public static final String PATH_LABEL = "http.path";
+  public static final String QUERY_LABEL = "http.query";
 
   /** Set by tests so {@code ProcessBuilder.start} / {@code Runtime.exec} advice does not spawn. */
   public static volatile boolean suppressProcessStart = false;
@@ -51,10 +56,15 @@ public final class TaintBridge {
     void onFinding(String sourceLabel, String sinkKind, String argument, int start, int end);
   }
 
-  static final class Range {
-    final int start;
-    final int end;
-    final String source;
+  /**
+   * One tainted slice. Public because the bridge is appended to the bootstrap loader while {@link
+   * Taint} stays with the application: a package-private type would make {@link
+   * Taint#ranges(Object)} fail with {@code IllegalAccessError} across those two loaders.
+   */
+  public static final class Range {
+    public final int start;
+    public final int end;
+    public final String source;
 
     Range(int start, int end, String source) {
       this.start = start;
@@ -109,6 +119,34 @@ public final class TaintBridge {
     if (depth != null) {
       depth[0] = 0;
     }
+  }
+
+  /**
+   * Releases the guard only when this advice frame acquired it. Used on the exception path, where
+   * {@code @Advice.Enter} still says whether {@link #tryEnter()} succeeded but nothing else runs.
+   *
+   * @param entered the value {@link #tryEnter()} returned for this frame
+   */
+  public static void release(boolean entered) {
+    if (entered) {
+      leave();
+    }
+  }
+
+  /**
+   * Reference-identity comparison for advice code.
+   *
+   * <p>Lives here so the inlined advice never compares a {@code String} parameter with {@code ==}
+   * directly (a static analyser cannot tell that {@code String.valueOf(Object)} returning the very
+   * same instance is exactly what is being tested). {@code Object} parameters keep the identity
+   * semantics explicit.
+   *
+   * @param a first value
+   * @param b second value
+   * @return true when both refer to the same instance
+   */
+  public static boolean isSameInstance(Object a, Object b) {
+    return a == b;
   }
 
   /**
@@ -179,6 +217,12 @@ public final class TaintBridge {
     ranges.add(new Range(0, len, source));
   }
 
+  /** Whether this thread currently has a request scope. A cheap gate before doing any work. */
+  public static boolean hasScope() {
+    ArrayDeque<Scope> stack = STACK.get();
+    return stack != null && !stack.isEmpty();
+  }
+
   public static boolean isTainted(Object value) {
     ArrayList<Range> ranges = lookup(value);
     return ranges != null && !ranges.isEmpty();
@@ -211,7 +255,66 @@ public final class TaintBridge {
     return new ArrayList<String>(labels);
   }
 
-  static ArrayList<Range> lookup(Object value) {
+  /**
+   * Drop every mark for {@code value} on this thread. This is what a sanitiser hook calls after it
+   * has proved the value can no longer carry an injection payload.
+   *
+   * @return true when at least one mark was removed
+   */
+  public static boolean clear(Object value) {
+    if (value == null) {
+      return false;
+    }
+    ArrayDeque<Scope> stack = STACK.get();
+    if (stack == null || stack.isEmpty()) {
+      return false;
+    }
+    boolean removed = false;
+    for (Scope scope : stack) {
+      if (scope.marks.remove(value) != null) {
+        removed = true;
+      }
+    }
+    return removed;
+  }
+
+  /**
+   * Drop the marks for {@code value} that carry {@code source}, leaving other sources in place.
+   *
+   * @return true when at least one mark was removed
+   */
+  public static boolean clear(Object value, String source) {
+    if (value == null || source == null) {
+      return false;
+    }
+    ArrayDeque<Scope> stack = STACK.get();
+    if (stack == null || stack.isEmpty()) {
+      return false;
+    }
+    boolean removed = false;
+    for (Scope scope : stack) {
+      ArrayList<Range> ranges = scope.marks.get(value);
+      if (ranges == null) {
+        continue;
+      }
+      for (int i = ranges.size() - 1; i >= 0; i--) {
+        if (source.equals(ranges.get(i).source)) {
+          ranges.remove(i);
+          removed = true;
+        }
+      }
+      if (ranges.isEmpty()) {
+        scope.marks.remove(value);
+      }
+    }
+    return removed;
+  }
+
+  /**
+   * Merged ranges of {@code value} across this thread's scopes. Public for the same reason {@link
+   * Range} is: {@link Taint} may live in a different loader from this bootstrap copy.
+   */
+  public static ArrayList<Range> lookup(Object value) {
     if (value == null) {
       return null;
     }
@@ -244,6 +347,25 @@ public final class TaintBridge {
     top.marks.put(value, ranges);
   }
 
+  /**
+   * Replace the ranges of a mutable value (a {@code StringBuilder} after {@code delete},
+   * {@code insert}, {@code replace}, {@code setLength} or {@code reverse}) with a recomputed set.
+   * The old entry is dropped from every scope first, so an inherited range cannot survive in an
+   * outer scope and reappear with stale offsets.
+   */
+  static void rewriteRanges(Object value, ArrayList<Range> ranges) {
+    ArrayDeque<Scope> stack = STACK.get();
+    if (stack == null || stack.isEmpty() || value == null) {
+      return;
+    }
+    for (Scope scope : stack) {
+      scope.marks.remove(value);
+    }
+    if (ranges != null && !ranges.isEmpty()) {
+      stack.peekFirst().marks.put(value, ranges);
+    }
+  }
+
   static void addRanges(Object value, ArrayList<Range> ranges) {
     Scope top = top();
     if (top == null || value == null || ranges == null || ranges.isEmpty()) {
@@ -258,21 +380,37 @@ public final class TaintBridge {
   }
 
   public static void emit(String sinkKind, String argument) {
-    if (sinkKind == null || argument == null) {
+    emitValue(sinkKind, argument);
+  }
+
+  /**
+   * Sink entry for any value, not just strings. Non-{@link CharSequence} values are tagged as a
+   * whole object at capture time ({@code [0,0)}), so their rendered text is reported as the slice.
+   */
+  public static void emitValue(String sinkKind, Object value) {
+    if (sinkKind == null || value == null) {
       return;
     }
-    ArrayList<Range> ranges = lookup(argument);
+    ArrayList<Range> ranges = lookup(value);
     if (ranges == null || ranges.isEmpty() || OBSERVERS.isEmpty()) {
       return;
     }
+    String argument = String.valueOf(value);
+    int length = argument.length();
+    boolean textual = value instanceof CharSequence;
     ArrayList<Range> slices = new ArrayList<Range>();
     for (int i = 0; i < ranges.size(); i++) {
       Range range = ranges.get(i);
-      if (range.source == null || range.start >= range.end) {
+      int start = textual ? range.start : 0;
+      int end = textual ? range.end : length;
+      start = Math.max(0, Math.min(start, length));
+      end = Math.max(0, Math.min(end, length));
+      if (range.source == null || start >= end) {
         continue;
       }
-      if (!containsSlice(slices, range)) {
-        slices.add(range);
+      Range slice = new Range(start, end, range.source);
+      if (!containsSlice(slices, slice)) {
+        slices.add(slice);
       }
     }
     for (int s = 0; s < slices.size(); s++) {
@@ -302,6 +440,100 @@ public final class TaintBridge {
 
   public static Object emptySnapshot() {
     return EMPTY_SNAPSHOT;
+  }
+
+  /**
+   * Wrap a task so the scopes captured on the submitting thread are active while it runs and the
+   * worker thread's previous scopes are put back afterwards. Returns {@code task} unchanged when
+   * the submitting thread has no scope or the task is already wrapped, so a clean submission pays
+   * nothing.
+   *
+   * <p>This is the API entry for manual carries (a custom thread, a reactor callback). JDK
+   * executors are wrapped automatically when the agent's taint instrumentation is installed.
+   *
+   * @param task the task to wrap
+   * @return the wrapping task, or the original when no wrap is needed
+   * @since 1.6.0
+   */
+  public static Runnable wrap(Runnable task) {
+    if (task == null || !hasScope() || task instanceof WrappedRunnable) {
+      return task;
+    }
+    return new WrappedRunnable(task, capture());
+  }
+
+  /**
+   * {@link Callable} variant of {@link #wrap(Runnable)}.
+   *
+   * <p>The returned value is computed with the submitting thread's scopes active. Marks written to
+   * that value live in the worker's temporary scopes and are dropped when the task finishes, so a
+   * caller that needs the result tainted must transfer it explicitly (for example via {@link
+   * #capture()} inside the task).
+   *
+   * @param task the task to wrap
+   * @param <V> the result type
+   * @return the wrapping task, or the original when no wrap is needed
+   * @since 1.6.0
+   */
+  public static <V> Callable<V> wrap(Callable<V> task) {
+    if (task == null || !hasScope() || task instanceof WrappedCallable) {
+      return task;
+    }
+    return new WrappedCallable<V>(task, capture());
+  }
+
+  /** Runnable wrapper that activates a captured taint snapshot around {@link Runnable#run()}. */
+  public static final class WrappedRunnable implements Runnable {
+    private final Runnable delegate;
+    private final Object snapshot;
+
+    WrappedRunnable(Runnable delegate, Object snapshot) {
+      this.delegate = delegate;
+      this.snapshot = snapshot;
+    }
+
+    @Override
+    public void run() {
+      Object previous = capture();
+      restore(snapshot);
+      try {
+        delegate.run();
+      } finally {
+        restore(previous);
+      }
+    }
+
+    @Override
+    public String toString() {
+      return "TaintWrapped[" + delegate + "]";
+    }
+  }
+
+  /** Callable wrapper that activates a captured taint snapshot around {@link Callable#call()}. */
+  public static final class WrappedCallable<V> implements Callable<V> {
+    private final Callable<V> delegate;
+    private final Object snapshot;
+
+    WrappedCallable(Callable<V> delegate, Object snapshot) {
+      this.delegate = delegate;
+      this.snapshot = snapshot;
+    }
+
+    @Override
+    public V call() throws Exception {
+      Object previous = capture();
+      restore(snapshot);
+      try {
+        return delegate.call();
+      } finally {
+        restore(previous);
+      }
+    }
+
+    @Override
+    public String toString() {
+      return "TaintWrapped[" + delegate + "]";
+    }
   }
 
   public static Object capture() {
