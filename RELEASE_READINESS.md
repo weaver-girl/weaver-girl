@@ -1,43 +1,71 @@
-# Weaver-Girl Release Readiness (verified 2026-11-11)
+# Weaver-Girl Release Readiness (verified 2026-11-11, re-verified 2026-11-24)
 
 > **Read this together with [`docs/release-assessment-2026-11-19.md`](docs/release-assessment-2026-11-19.md).**
-> This file proves the build, test and packaging chain is green. The 2026-11-19 assessment asks
-> the next question — whether the *capability surface* of a hook base is ready — and finds it is
-> not yet: per-invocation overhead is ~2 µs, runtime-added pointcuts never reach loaded classes,
-> and the management endpoints default to 0.0.0.0 without auth. Clear those before a 1.0.0 GA.
+> This file proves the build, test and packaging chain is green. The 2026-11-19 assessment asked
+> the next question — whether the *capability surface* of a hook base is ready — and found three
+> gaps: per-invocation overhead was ~0.67 µs, runtime-added pointcuts never reached loaded
+> classes, and the management endpoints defaulted to 0.0.0.0 without auth. The first two are
+> closed (overhead now ~88–335 ns/call depending on the observation switches, and a registry
+> generation change retransforms); the endpoints default to loopback with a bounded executor and
+> an optional bearer token.
 
 Honest status of the quality gates and what stands between the current tree and a
-shippable release. Every row below is backed by a command run on this machine on
-2026-11-11, not by an older audit.
+shippable release. The rows below were re-run on 2026-11-24 (JDK 17, `wi=2 i=3`); where a
+figure differs from the 2026-11-11 run, the newer one is shown.
 
 ## Verdict
 
 **The code and packaging are release-ready.** `scripts/release-check.sh` passes on JDK 17:
-a full `-Pquality-gate clean verify` over all 153 modules (3,671 tests, 0 failures),
+a full `-Pquality-gate clean verify` over all 153 modules (3,819 tests, 0 failures) took 9m18s,
 SpotBugs/Checkstyle clean everywhere, JaCoCo met on the engine/runtime modules, all 444
 `jar`/`sources`/`javadoc` publication artifacts present, and the distribution archive
-verified to contain the agent and 140 capability jars.
+verified to contain the agent and 126 capability jars.
+
+CI is also green end to end on `main` as of `8f68bfbc`: both `Build & Test` jobs (JDK 17 and
+JDK 21) and the quality-gate job pass. That matters more than the local gate repeating, because
+surefire orders tests differently per run — the module's static singletons used to leak state
+from one test into the next and fail a different set of weaving tests each time (see "Test
+isolation" below).
 
 What remains is **external to the repository**: the Maven Central credentials/GPG key and
 the actual tag push + Portal publish. Those are deliberately not performed here.
 
 ## Gate status
 
-| Gate | Command | Result on 2026-11-11 |
+| Gate | Command | Result on 2026-11-24 |
 |---|---|---|
 | Full release gate | `scripts/release-check.sh` (JDK 17) | ✅ PASSED — prints `RELEASE CHECK PASSED` |
-| Unit tests | part of `clean verify -Pquality-gate` | ✅ 3,671 tests, 0 failures, 0 errors, 0 skipped |
+| Unit tests | part of `clean verify -Pquality-gate` | ✅ 3,819 tests, 0 failures, 0 errors, 0 skipped |
+| CI on `main` | `ci.yml` at `8f68bfbc` | ✅ JDK 17 and JDK 21 build/test green; quality gate green |
 | SpotBugs (High) | `spotbugs:check` in every module | ✅ 0 bugs (see fixes below) |
 | Checkstyle | `checkstyle:check` in every module | ✅ 0 violations |
 | JaCoCo (engine/runtime) | 80% instructions / 70% branches | ✅ met on `api`, `core`, `annotation-runtime`, `runtime-*` |
 | JaCoCo exemptions | see below | ⚪ documented, not silently disabled |
 | Publication artifacts | `release-check.sh` artifact loop | ✅ 444 artifacts (148 modules × jar/sources/javadoc) |
+| Test isolation | `junit-platform.properties` + `META-INF/services` | ✅ engine singletons reset around every core test (see below) |
 | Agent manifest | `Premain-Class` / `Agent-Class` | ✅ both `com.github.cc11001100.weavergirl.agent.WeaverGirlAgent` |
 | Distribution archive | `weaver-girl-agent-<version>-dist.zip` | ✅ 15.6 MB, agent jar + `plugins/` (126 plugin + 14 runtime jars) |
 | Overhead regression guard | `scripts/verify-benchmarks.sh` | ✅ 16/16 within 1.5x budget (max ratio 1.408) |
 | Packaged-agent smoke | `scripts/cross-jdk-smoke.sh` | ✅ PASS on JDK 8, 11, 17, 21 |
 | Maven Central packaging | `release` profile + `release.yml` | ✅ tooling ready; publishing needs secrets |
 | GitHub Release | `release.yml` on `v*` tag | ✅ tooling ready; no tag pushed |
+
+## Test isolation
+
+`weaver-girl-core` ran its whole suite in one JVM against static singletons, and a test that
+changed one without restoring it failed a *different* set of weaving tests each run — `main`
+was red for two days on 26, then 37, then 3 failures, all "before() should have been called:
+expected true but was false". The final cause was two-fold: a config test left
+`weavergirl.emergency.disable` in effect (kill-switch off), and a bootstrap test never shut its
+agent down, so a `SamplingMonitor` thread kept re-raising the shared sampling rate from stale
+`AgentStatus` counters.
+
+`ProcessWideStateExtension` now calls `ProcessWideState.restore()` before and after every core
+test (auto-detected through `META-INF/services` with `junit.jupiter.extensions.autodetection
+.enabled=true` in that module's `junit-platform.properties`). It covers emergency mode, the kill
+switch, the five per-call switches, the circuit breaker (state and threshold), the sampling rate
+and a leftover monitor thread. A leaking test can now only affect itself; the ordering problem is
+gone rather than patched per class.
 
 ## Coverage policy and exemptions
 
