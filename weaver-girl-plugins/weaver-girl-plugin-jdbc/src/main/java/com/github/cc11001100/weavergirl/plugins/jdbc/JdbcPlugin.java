@@ -167,6 +167,18 @@ public class JdbcPlugin extends AbstractPlugin {
     Interceptor connectionInterceptor =
         new Interceptor() {
           @Override
+          public void before(MethodInvocation inv) {
+            // PreparedStatement.executeQuery() has no SQL argument, so the execute hook only sees
+            // Statement.execute(sql). The SQL text of a prepared statement exists here, at prepare
+            // time, and that is where a tainted query must be reported.
+            try {
+              SqlExecutionSink.observe(extractSql(inv));
+            } catch (Throwable ignored) {
+              // Sink observation must not fail preparation.
+            }
+          }
+
+          @Override
           public void after(MethodInvocation inv) {
             if (log.isDebugEnabled()) {
               log.debug(

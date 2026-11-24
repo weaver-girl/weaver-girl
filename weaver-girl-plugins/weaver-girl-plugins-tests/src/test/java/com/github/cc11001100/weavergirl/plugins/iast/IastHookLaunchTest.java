@@ -1,6 +1,7 @@
 package com.github.cc11001100.weavergirl.plugins.iast;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
@@ -8,9 +9,11 @@ import com.github.cc11001100.weavergirl.api.event.InterceptorEventListener;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import com.github.cc11001100.weavergirl.api.taint.CommandExecutionSink;
 import com.github.cc11001100.weavergirl.api.taint.Taint;
 import com.github.cc11001100.weavergirl.api.taint.TaintBridge;
 import com.github.cc11001100.weavergirl.api.taint.TaintFindings;
+import com.github.cc11001100.weavergirl.api.taint.TaintRange;
 import com.github.cc11001100.weavergirl.api.tracing.SpanContext;
 import com.github.cc11001100.weavergirl.api.tracing.Tracer;
 import com.github.cc11001100.weavergirl.core.InterceptorHolder;
@@ -26,13 +29,27 @@ import java.lang.instrument.Instrumentation;
 import java.net.HttpURLConnection;
 import java.net.ServerSocket;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
 import net.bytebuddy.agent.ByteBuddyAgent;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
@@ -82,6 +99,9 @@ class IastHookLaunchTest {
     assertTrue(
         TaintInstrumentation.isJdkInstrumented(),
         "JDK taint advice must share the bootstrap TaintBridge");
+    assertTrue(
+        TaintInstrumentation.isConcatInstrumented(),
+        "the invokedynamic concat transformer must be registered with the agent");
 
     TaintBridge.suppressProcessStart = true;
     DefaultInterceptorRegistry registry = new DefaultInterceptorRegistry();
@@ -173,6 +193,446 @@ class IastHookLaunchTest {
     String listing = httpGet("/events");
     assertEquals(0, count(listing, "\"type\":\"iast-finding\""));
     System.out.println("IAST launch clean-argument findings=0 listing=" + listing);
+  }
+
+  /**
+   * The bridge runs from the bootstrap loader while {@code Taint} stays with the application. A
+   * package-private bridge member made this call throw {@code IllegalAccessError}; the public
+   * bridge surface is what keeps a product's own reporting code working in that layout.
+   */
+  /**
+   * String transforms and {@code StringBuilder} mutations run through the real JDK advice: a
+   * transform keeps the flow, and a mutation moves the range instead of leaving a stale slice.
+   */
+  @Test
+  void transformAndMutationAdviceKeepTheFlowAndItsOffsets() {
+    Taint.openScope();
+    try {
+      String param = new String("payload");
+      Taint.tag(param, Taint.PARAMETER_PREFIX + "x");
+
+      assertTrue(Taint.isTainted(param.trim()), "trim keeps the flow");
+      assertTrue(Taint.isTainted(param.toUpperCase()), "upper case keeps the flow");
+      assertTrue(Taint.isTainted(param.replace('a', 'b')), "replace(char, char) keeps the flow");
+      assertTrue(
+          Taint.isTainted(param.replace("pay", "PAY")), "replace keeps the flow");
+      assertTrue(Taint.isTainted(param.replaceAll("a", "b")), "replaceAll keeps the flow");
+      assertTrue(Taint.isTainted(String.join("-", "a", param)), "join keeps the flow");
+
+      StringBuilder deleted = new StringBuilder("echo:").append(param);
+      deleted.delete(0, 1);
+      String afterDelete = deleted.toString();
+      assertEquals("cho:payload", afterDelete);
+      FINDINGS.clear();
+      CommandExecutionSink.observe(afterDelete);
+      assertEquals(1, FINDINGS.size());
+      assertEquals("4", FINDINGS.get(0).getAttributes().get("start"));
+      assertEquals("11", FINDINGS.get(0).getAttributes().get("end"));
+
+      StringBuilder inserted = new StringBuilder().append(param);
+      inserted.insert(0, "xx");
+      assertEquals("xxpayload", inserted.toString());
+      List<TaintRange> insertRanges = Taint.ranges(inserted.toString());
+      assertEquals(2, insertRanges.get(0).getStart());
+      assertEquals(2 + param.length(), insertRanges.get(0).getEnd());
+
+      StringBuilder replaced = new StringBuilder("a").append(param);
+      replaced.replace(0, 1, "long");
+      assertEquals("longpayload", replaced.toString());
+      List<TaintRange> replaceRanges = Taint.ranges(replaced.toString());
+      assertEquals("long".length(), replaceRanges.get(0).getStart());
+      assertEquals("long".length() + param.length(), replaceRanges.get(0).getEnd());
+
+      StringBuilder clipped = new StringBuilder().append(param).append("tail");
+      clipped.setLength(3);
+      List<TaintRange> clipRanges = Taint.ranges(clipped.toString());
+      assertEquals(1, clipRanges.size());
+      assertEquals(0, clipRanges.get(0).getStart());
+      assertEquals(3, clipRanges.get(0).getEnd());
+
+      StringBuilder reversed = new StringBuilder("ab").append(param);
+      reversed.reverse();
+      List<TaintRange> reverseRanges = Taint.ranges(reversed.toString());
+      assertEquals(0, reverseRanges.get(0).getStart());
+      assertEquals(param.length(), reverseRanges.get(0).getEnd());
+      System.out.println(
+          "IAST mutation delete-start="
+              + FINDINGS.get(0).getAttributes().get("start")
+              + " delete-end="
+              + FINDINGS.get(0).getAttributes().get("end"));
+    } finally {
+      Taint.closeScope();
+    }
+  }
+
+  /**
+   * Java 9+ lowers {@code +} to {@code invokedynamic}, which no {@code StringBuilder} advice can
+   * see. The class is compiled at runtime (the test sources target Java 8) and defined after the
+   * agent is installed, so this exercises the registered transformer, not just its unit.
+   */
+  @Test
+  void javaNineConcatenationKeepsTheFlowThroughTheRegisteredTransformer() throws Exception {
+    Path dir = Files.createTempDirectory("iast-indy-probe");
+    try {
+      Path source = dir.resolve("IndyConcatProbe.java");
+      Files.write(
+          source,
+          Arrays.asList(
+              "public final class IndyConcatProbe {",
+              "  public static String run(String s) { return \"cmd:\" + s; }",
+              "}"));
+      JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+      assertTrue(compiler != null, "tests run on a JDK");
+      assertEquals(
+          0,
+          compiler.run(null, null, null, "-d", dir.toString(), source.toString()),
+          "probe compilation failed");
+      byte[] bytes = Files.readAllBytes(dir.resolve("IndyConcatProbe.class"));
+
+      Class<?> probe = new ProbeLoader().define("IndyConcatProbe", bytes);
+      Taint.openScope();
+      try {
+        String param = new String("payload");
+        Taint.tag(param, Taint.PARAMETER_PREFIX + "q");
+        String result = (String) probe.getMethod("run", String.class).invoke(null, param);
+        assertEquals("cmd:payload", result);
+        assertTrue(Taint.isTainted(result), "the indy concat result must keep the flow");
+        List<TaintRange> ranges = Taint.ranges(result);
+        assertEquals(1, ranges.size());
+        assertEquals("cmd:".length(), ranges.get(0).getStart());
+        assertEquals("cmd:".length() + param.length(), ranges.get(0).getEnd());
+        assertEquals(Taint.PARAMETER_PREFIX + "q", ranges.get(0).getSource());
+        System.out.println(
+            "IAST indy source="
+                + ranges.get(0).getSource()
+                + " start="
+                + ranges.get(0).getStart()
+                + " end="
+                + ranges.get(0).getEnd());
+      } finally {
+        Taint.closeScope();
+      }
+    } finally {
+      try {
+        Files.walk(dir)
+            .sorted(java.util.Comparator.reverseOrder())
+            .forEach(path -> path.toFile().delete());
+      } catch (java.io.IOException ignored) {
+        // best-effort cleanup
+      }
+    }
+  }
+
+  /**
+   * Constructors and array round trips are part of the modern string toolkit: a builder seeded from
+   * a tainted string, a {@code StringBuffer} (not a {@code StringBuilder}), and a
+   * {@code char[]}/{@code byte[]} copy all keep the flow.
+   */
+  @Test
+  void builderConstructorsStringBufferAndArrayRoundTripsKeepTheFlow() {
+    Taint.openScope();
+    try {
+      String param = new String("payload");
+      Taint.tag(param, Taint.PARAMETER_PREFIX + "b");
+
+      StringBuilder seeded = new StringBuilder(param);
+      List<TaintRange> ranges = Taint.ranges(seeded.toString());
+      assertEquals(1, ranges.size(), "a constructor seeds the builder with the slice");
+      assertEquals(0, ranges.get(0).getStart());
+      assertEquals(param.length(), ranges.get(0).getEnd());
+      assertEquals(Taint.PARAMETER_PREFIX + "b", ranges.get(0).getSource());
+
+      StringBuffer buffer = new StringBuffer(param);
+      buffer.append("-x");
+      assertEquals("payload-x", buffer.toString());
+      ranges = Taint.ranges(buffer.toString());
+      assertEquals(1, ranges.size());
+      assertEquals(0, ranges.get(0).getStart());
+      assertEquals(param.length(), ranges.get(0).getEnd());
+
+      byte[] bytes = param.getBytes();
+      assertTrue(Taint.isTainted(bytes), "getBytes keeps an object-level mark");
+      String decoded = new String(bytes);
+      assertTrue(Taint.isTainted(decoded), "a String built from the bytes inherits the mark");
+      assertEquals(param, decoded);
+
+      char[] chars = param.toCharArray();
+      assertTrue(Taint.isTainted(chars), "toCharArray mirrors the slices");
+      String copy = new String(chars);
+      ranges = Taint.ranges(copy);
+      assertEquals(1, ranges.size());
+      assertEquals(0, ranges.get(0).getStart());
+      assertEquals(param.length(), ranges.get(0).getEnd());
+
+      String middle = new String(chars, 2, 3);
+      ranges = Taint.ranges(middle);
+      assertEquals(1, ranges.size());
+      assertEquals(0, ranges.get(0).getStart());
+      assertEquals(3, ranges.get(0).getEnd());
+
+      StringBuilder appended = new StringBuilder("x:");
+      appended.append(chars);
+      ranges = Taint.ranges(appended.toString());
+      assertEquals(1, ranges.size());
+      assertEquals(2, ranges.get(0).getStart());
+      assertEquals(2 + param.length(), ranges.get(0).getEnd());
+
+      StringBuilder fromBuffer = new StringBuilder("y:");
+      fromBuffer.append(new StringBuffer(param));
+      ranges = Taint.ranges(fromBuffer.toString());
+      assertEquals(1, ranges.size(), "append(StringBuffer) is a separate overload");
+      assertEquals(2, ranges.get(0).getStart());
+      assertEquals(2 + param.length(), ranges.get(0).getEnd());
+
+      StringBuilder replaced = new StringBuilder(param);
+      replaced.setCharAt(3, 'X');
+      ranges = Taint.ranges(replaced.toString());
+      assertEquals(2, ranges.size(), "the replaced character drops out of the range");
+      assertEquals(3, ranges.get(0).getEnd());
+      assertEquals(4, ranges.get(1).getStart());
+
+      String fromChars = String.valueOf(chars);
+      ranges = Taint.ranges(fromChars);
+      assertEquals(1, ranges.size(), "valueOf(char[]) keeps the slices of the array");
+      assertEquals(0, ranges.get(0).getStart());
+      assertEquals(param.length(), ranges.get(0).getEnd());
+
+      Integer tagged = Integer.valueOf(42);
+      Taint.tag(tagged, Taint.PARAMETER_PREFIX + "boxed");
+      String fromObject = String.valueOf((Object) tagged);
+      ranges = Taint.ranges(fromObject);
+      assertEquals(1, ranges.size(), "valueOf(Object) covers the rendered text");
+      assertEquals(0, ranges.get(0).getStart());
+      assertEquals(fromObject.length(), ranges.get(0).getEnd());
+
+      StringBuilder inserted = new StringBuilder("ab");
+      inserted.insert(1, param);
+      ranges = Taint.ranges(inserted.toString());
+      assertEquals(1, ranges.size(), "insert(int,CharSequence) copies the inserted slice");
+      assertEquals(1, ranges.get(0).getStart());
+      assertEquals(1 + param.length(), ranges.get(0).getEnd());
+
+      StringBuilder insertedChars = new StringBuilder("ab");
+      insertedChars.insert(1, chars);
+      ranges = Taint.ranges(insertedChars.toString());
+      assertEquals(1, ranges.size(), "insert(int,char[]) copies the inserted slice");
+      assertEquals(1, ranges.get(0).getStart());
+      assertEquals(1 + param.length(), ranges.get(0).getEnd());
+
+      System.out.println(
+          "IAST builder/array source="
+              + ranges.get(0).getSource()
+              + " insert-start="
+              + ranges.get(0).getStart()
+              + " insert-end="
+              + ranges.get(0).getEnd());
+    } finally {
+      Taint.closeScope();
+    }
+  }
+
+  /**
+   * {@code String.getChars} writes into a caller-owned array, and {@code insert(int,char[],int,int)}
+   * copies only a window of the array. Both must map marks onto the written window.
+   */
+  @Test
+  void getCharsAndInsertRangeMapTheirWindows() {
+    Taint.openScope();
+    try {
+      String param = new String("abcdef");
+      Taint.tag(param, Taint.PARAMETER_PREFIX + "w");
+
+      char[] dest = new char[8];
+      param.getChars(1, 4, dest, 2);
+      List<TaintRange> ranges = Taint.ranges(dest);
+      assertEquals(1, ranges.size(), "getChars writes its window into the array");
+      assertEquals(2, ranges.get(0).getStart());
+      assertEquals(5, ranges.get(0).getEnd());
+
+      char[] chars = param.toCharArray();
+      StringBuilder builder = new StringBuilder("ab");
+      builder.insert(1, chars, 2, 3);
+      ranges = Taint.ranges(builder);
+      assertEquals(1, ranges.size(), "insert(int,char[],int,int) copies just its window");
+      assertEquals(1, ranges.get(0).getStart());
+      assertEquals(4, ranges.get(0).getEnd());
+      assertEquals("acdeb", builder.toString());
+      System.out.println(
+          "IAST getChars/insert-range start="
+              + ranges.get(0).getStart()
+              + " end="
+              + ranges.get(0).getEnd());
+    } finally {
+      Taint.closeScope();
+    }
+  }
+
+  /**
+   * An exception thrown inside an instrumented JDK call must not strand the re-entrancy guard:
+   * before the fix, every later propagation on that thread was skipped for the rest of the request.
+   */
+  @Test
+  void exceptionInsideAnInstrumentedCallReleasesTheGuard() {
+    Taint.openScope();
+    try {
+      String param = new String("abcdef");
+      Taint.tag(param, Taint.PARAMETER_PREFIX + "e");
+      boolean threw = false;
+      try {
+        param.substring(4, 2);
+      } catch (IndexOutOfBoundsException expected) {
+        threw = true;
+      }
+      assertTrue(threw, "the probe must actually throw");
+
+      char[] chars = param.toCharArray();
+      boolean constructorThrew = false;
+      try {
+        new String(chars, 4, 10);
+      } catch (IndexOutOfBoundsException expected) {
+        constructorThrew = true;
+      }
+      assertTrue(constructorThrew, "the constructor probe must actually throw");
+
+      String derived = "pre:" + param;
+      assertTrue(
+          Taint.isTainted(derived),
+          "a later concatenation still propagates after the guarded call threw");
+      List<TaintRange> ranges = Taint.ranges(derived);
+      assertEquals("pre:".length(), ranges.get(0).getStart());
+      assertEquals("pre:".length() + param.length(), ranges.get(0).getEnd());
+      System.out.println("IAST guard released after throw, ranges=" + ranges.size());
+    } finally {
+      Taint.closeScope();
+    }
+  }
+
+  /** One-shot scheduled tasks carry the submitting scope, like any other executor submission. */
+  @Test
+  void scheduledTasksCarryTheSubmittingScope() throws Exception {
+    final String param = new String("payload");
+    final String label = Taint.PARAMETER_PREFIX + "s";
+    ScheduledExecutorService pool = Executors.newScheduledThreadPool(1);
+    try {
+      Taint.openScope();
+      Taint.tag(param, label);
+      Future<Boolean> seen =
+          pool.schedule(
+              new Callable<Boolean>() {
+                @Override
+                public Boolean call() {
+                  return Boolean.valueOf(Taint.hasSource(param, label));
+                }
+              },
+              10,
+              TimeUnit.MILLISECONDS);
+      assertTrue(
+          seen.get(5, TimeUnit.SECONDS).booleanValue(),
+          "a scheduled worker sees the submitting scope");
+      System.out.println("IAST scheduled task carried source=" + label);
+    } finally {
+      Taint.closeScope();
+      pool.shutdownNow();
+    }
+  }
+
+  /**
+   * The agent wraps executor submissions so a request-scoped tag survives the hand-off to a pool
+   * thread, and a later clean submission does not inherit the previous task's scope.
+   */
+  @Test
+  void executorSubmissionsCarryTheSubmittingScopeIntoTheWorker() throws Exception {
+    assertTrue(
+        TaintInstrumentation.isExecutorInstrumented(),
+        "executor task wrapping must be installed with the taint instrumentation");
+    final String param = new String("payload");
+    final String label = Taint.PARAMETER_PREFIX + "t";
+    ExecutorService pool = Executors.newFixedThreadPool(1);
+    try {
+      Taint.openScope();
+      Taint.tag(param, label);
+      Future<Boolean> seen =
+          pool.submit(
+              new Callable<Boolean>() {
+                @Override
+                public Boolean call() {
+                  return Boolean.valueOf(Taint.hasSource(param, label));
+                }
+              });
+      assertTrue(seen.get(5, TimeUnit.SECONDS).booleanValue(), "worker sees the submitting scope");
+      Taint.closeScope();
+
+      Future<Boolean> clean =
+          pool.submit(
+              new Callable<Boolean>() {
+                @Override
+                public Boolean call() {
+                  return Boolean.valueOf(Taint.hasScope());
+                }
+              });
+      assertFalse(
+          clean.get(5, TimeUnit.SECONDS).booleanValue(),
+          "a submission without a scope does not inherit the previous one");
+      System.out.println("IAST executor carried source=" + label + " into the worker");
+    } finally {
+      pool.shutdownNow();
+      for (int i = 0; i < 8; i++) {
+        Taint.closeScope();
+      }
+    }
+  }
+
+  /** Fork-join tasks and {@code CompletableFuture} stages are submitted through the same hook. */
+  @Test
+  void commonPoolAndCompletableFutureCarryTheScope() throws Exception {
+    final String param = new String("payload");
+    final String label = Taint.PARAMETER_PREFIX + "f";
+    Taint.openScope();
+    try {
+      Taint.tag(param, label);
+      Future<Boolean> forkJoin =
+          ForkJoinPool.commonPool()
+              .submit(
+                  new Callable<Boolean>() {
+                    @Override
+                    public Boolean call() {
+                      return Boolean.valueOf(Taint.hasSource(param, label));
+                    }
+                  });
+      assertTrue(forkJoin.get(5, TimeUnit.SECONDS).booleanValue(), "common pool sees the scope");
+
+      CompletableFuture<Boolean> stage =
+          CompletableFuture.supplyAsync(
+              new Supplier<Boolean>() {
+                @Override
+                public Boolean get() {
+                  return Boolean.valueOf(Taint.hasSource(param, label));
+                }
+              },
+              ForkJoinPool.commonPool());
+      assertTrue(stage.get(5, TimeUnit.SECONDS).booleanValue(), "a future stage sees the scope");
+      System.out.println("IAST common-pool and future carried source=" + label);
+    } finally {
+      Taint.closeScope();
+    }
+  }
+
+  @Test
+  void rangesStayReadableAfterTheBridgeMovesToTheBootstrapLoader() {
+    assertTrue(TaintInstrumentation.isJdkInstrumented(), "the bootstrap bridge must be installed");
+    Taint.openScope();
+    try {
+      String value = new String("ranges");
+      Taint.tag(value, Taint.PARAMETER_PREFIX + "q");
+      assertEquals(1, Taint.ranges(value).size());
+      assertEquals(Taint.PARAMETER_PREFIX + "q", Taint.ranges(value).get(0).getSource());
+      assertEquals(0, Taint.ranges(value).get(0).getStart());
+      assertEquals(value.length(), Taint.ranges(value).get(0).getEnd());
+      assertTrue(Taint.untaint(value));
+      assertFalse(Taint.isTainted(value));
+    } finally {
+      Taint.closeScope();
+    }
   }
 
   @Test
@@ -363,6 +823,17 @@ class IastHookLaunchTest {
       }
       occurrences++;
       from = at + needle.length();
+    }
+  }
+
+  /** Defines runtime-compiled bytes so the agent's transformers see a real class load. */
+  private static final class ProbeLoader extends ClassLoader {
+    ProbeLoader() {
+      super(IastHookLaunchTest.class.getClassLoader());
+    }
+
+    Class<?> define(String name, byte[] bytes) {
+      return defineClass(name, bytes, 0, bytes.length);
     }
   }
 }

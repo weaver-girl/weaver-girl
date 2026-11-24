@@ -211,6 +211,52 @@ class JdbcPluginTest {
     assertDoesNotThrow(() -> interceptor.onException(inv));
   }
 
+  /**
+   * {@code PreparedStatement.executeQuery()} has no SQL argument, so the execute hook cannot see a
+   * prepared query. The SQL reaches JDBC at prepare time, and that is where the finding must fire.
+   */
+  @Test
+  void prepareStatementEmitsSqlFindingForTaintedSql() {
+    plugin.init(context);
+    plugin.registerInterceptors(registry);
+    Interceptor interceptor = connectionDefinition().getInterceptor();
+    final List<InterceptorEvent> findings = new ArrayList<InterceptorEvent>();
+    InterceptorEventListener listener =
+        new InterceptorEventListener() {
+          @Override
+          public void onEvent(InterceptorEvent event) {
+            if (TaintFindings.EVENT_TYPE.equals(event.getType())) {
+              findings.add(event);
+            }
+          }
+        };
+    InterceptorEventPublisher.getInstance().clearHistory();
+    InterceptorEventPublisher.getInstance().addListener(listener);
+    try {
+      Taint.openScope();
+      String tainted = new String("SELECT * FROM users WHERE name = 'x'");
+      Taint.tag(tainted, "http.parameter:name");
+
+      interceptor.before(
+          new MethodInvocation(
+              Object.class, "prepareStatement", null, new Object[] {tainted}));
+
+      assertEquals(1, findings.size(), "a tainted prepared statement is one finding");
+      assertEquals(Taint.SINK_SQL, findings.get(0).getAttributes().get("sink"));
+      assertEquals("http.parameter:name", findings.get(0).getAttributes().get("source"));
+      assertEquals(tainted, findings.get(0).getAttributes().get("argument"));
+
+      interceptor.before(
+          new MethodInvocation(Object.class, "createStatement", null, new Object[0]));
+      assertEquals(1, findings.size(), "createStatement carries no SQL and adds no finding");
+      System.out.println(
+          "IAST jdbc prepare source=" + findings.get(0).getAttributes().get("source"));
+    } finally {
+      Taint.closeScope();
+      InterceptorEventPublisher.getInstance().removeListener(listener);
+    }
+  }
+
   @Test
   void executeHookEmitsSqlFindingOnlyForTaintedSql() {
     plugin.init(context);
