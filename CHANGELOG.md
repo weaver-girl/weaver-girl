@@ -4,6 +4,191 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## Unreleased — CI green again: the config leak behind 14 red integration tests (2026-11-24)
+
+`main` had been red since 2026-11-22: fourteen weaving tests in `weaver-girl-core` failed on
+JDK 17 and 21 (`before() should have been called: expected true but was false`) while passing
+when the class ran alone. It was not a weaving defect.
+
+- **Cause: a config test left emergency mode on.** `WeaverGirlBootstrapTest` and
+  `CoreConfigWiringTest` apply a real config map through `WeaverGirl.applyCoreConfig`,
+  including `weavergirl.emergency.disable=true`. Applying it is process-wide: the agent enters
+  emergency mode, which switches the global interception kill-switch off and caps the sampling
+  rate. Surefire runs the whole module in one JVM, so every weaving test that ran afterwards
+  saw a disabled kill-switch and reported its callbacks as never firing — in whatever order
+  surefire happened to pick.
+- **Fix: restore the singletons.** New `ProcessWideState.restore()` (test support) clears
+  emergency mode, turns interception back on and resets the sampling rate / max rate /
+  threshold. The two config tests call it from a `finally`, so the state cannot leak regardless
+  of an assertion failure. `GracefulDegradationManager.resetForTest()` alone was not enough —
+  it clears the emergency flag but leaves the kill-switch and the sampling rate as they were.
+- **Verified.** Running the two tests in the order that failed in CI (`WeaverGirlBootstrapTest`,
+  then `AgentIntegrationTest`) now passes, and a full `mvn clean test` on JDK 17 across all 153
+  modules is green.
+- **Test hygiene.** The reset lives in one helper instead of being open-coded per test, so a
+  third test that applies a config cannot reintroduce the leak by forgetting one of the resets.
+
+## Unreleased — per-call overhead and the ASM question (2026-11-24)
+
+Measured the cost of a woven call end to end, found that it was observation work rather than
+dispatch, and cut the biggest terms.
+
+- **Method advice allocates instead of pooling.** `MethodInvocationPool.acquire` + `release` measured
+  39 ns on the reference machine; a fresh `MethodInvocation` measured 7 ns. The pool spent two
+  ThreadLocal operations and two full-field resets to save a TLAB allocation. `InterceptAdvice`
+  now allocates one invocation per call. The pool remains for the constructor/static-init/field/catch
+  advices.
+- **Latent pertarget leak fixed.** `MethodInvocation.reset()` and `clear()` did not null
+  `perInstance`, so a pooled invocation could hand the previous target's perthis/pertarget state to
+  the next call on the same thread (and pinned that target in an idle thread pool). Both now clear
+  it; a regression test covers it.
+- **Exit reuses the entry's dispatch view.** Enter stamps its registry generation onto the carrier
+  object; exit re-dispatches only when the generation changed during the call. Removes a hash lookup
+  per successful invocation.
+- **No-op exits.** Kill-switch-off and null-registry now return the `NOTHING` marker instead of
+  `null`, so the exit advice returns immediately instead of taking the defensive path that acquired
+  and released an invocation for nothing. A registry whose every match is an `ARGUMENT_REWRITE`
+  hook does the same.
+- **Allocation-free MDC bridge.** The common case (no trace context on the thread) returns a shared
+  empty snapshot instead of building one. When a bridge key does change, only the changed keys are
+  written and only those are restored, so the tracing case costs one or two `MDC.put`s instead of
+  three put-or-remove pairs each way.
+- **Coarse clock for plugin "last invocation" timestamps.** `PluginPerformanceTracker` read
+  `System.currentTimeMillis()` twice per callback (~20 ns each) for fields a health check reads every
+  30 s. `CoarseClock` refreshes a `volatile` timestamp every 10 ms on a daemon thread; readers pay
+  one volatile read.
+- **`get` before `computeIfAbsent`** in the per-hook metrics map, so the steady state does not call
+  the lambda.
+- **All costly per-call work is now a configurable switch.** `PerformanceSwitches` (in the API
+  module, so both the engine and `ReturnVersion` read it) holds five switches, all defaulting on:
+  `telemetry`, `returnSnapshot`, `mdc`, `pluginMetrics`, `circuitBreaker`. Each is settable by
+  system property (`-Dweavergirl.<name>.enabled=false`), by agent argument / YAML key of the same
+  name, or at runtime through the dynamic-config listener — the system property wins. The hot path
+  pays one `volatile` read per switch. All six advices (method, constructor, static-init, field,
+  catch, argument-rewrite) now record through `HookTelemetry.record`, so switching telemetry off
+  stops the cost everywhere rather than only on the method path.
+- **Measured cost per switch** (one matching hook, medians of repeated runs): all on ~335 ns/call;
+  telemetry off ~197; mdc off ~291; returnSnapshot off ~307; pluginMetrics off ~344 (noise);
+  telemetry+returnSnapshot+mdc+pluginMetrics off **~88 ns/call (-74%)**. Interception is
+  unaffected in every case; with the breaker on, throwing hooks still trip it (failure paths report
+  an unknown duration, `-1`) — turning the breaker off means failing hooks are never skipped.
+- **Switches are real, not advisory.** The MDC switch is checked inside `MdcInjector.inject()` too,
+  not only in `isMdcAvailable()`, so direct callers of the public API cannot bridge while it is
+  off; `InterceptorHolder.shouldInvoke` returns true unconditionally when the breaker is off.
+  Behaviour tests pin each switch (`MdcSwitchTest`, `PluginMetricsSwitchTest`,
+  `HookTelemetryTest`, `CoreConfigWiringTest`, `PerformanceSwitchesTest`).
+- **Tests.** `HookPathBenchmark` (per-callback attribution), `InstrumentationOverheadBenchmark`
+  (end-to-end woven calls), `HookTelemetryTest` (switch removes timing without changing breaker
+  behaviour), `CoarseClockTest`, and a pooled-invocation pertarget regression test.
+- **Regression guard** now covers `DispatchBenchmark.preResolvedView` and every end-to-end
+  scenario of `InstrumentationOverheadBenchmark` (30 checks, all within budget).
+- **Measured effect** (one hook, in-process, shared host so ±20-30%): 625 ns before this pass →
+  290-450 ns default → 140-200 ns with telemetry off. 5,000 registered pointcuts: 601 → 297-319 →
+  101-152 ns. Dispatch itself is 6.5-7.7 ns of that total.
+
+### The ASM-generated-dispatch question
+
+Would replacing the runtime dispatcher with ASM-generated code help? The measurements say no by
+more than a rounding error. `preResolvedView` (a static field read — the floor for any
+weave-time-resolved dispatch) is 2.2 ns; today's `dispatch_hotPath` is 6.5–7.6 ns. The entire
+saving available is ~5 ns per call: 1-2% of the default one-hook cost and 2.5-3.5% of the
+telemetry-off cost. The remaining cost is per-callback observation (timing, metrics, snapshot),
+which an ASM rewrite of the dispatcher would not change. See
+`docs/benchmarks/baseline-v1.md` for the full tables.
+
+## Unreleased — dispatch scaling (2026-11-23)
+
+Instrumentation cost no longer grows with the number of registered pointcuts.
+
+- **Per-class/per-method dispatch cache.** `InterceptorHolder` now answers the inlined advice from
+  a cache keyed by registry generation, class name and method name (`DispatchCache` → `ClassPlan` →
+  `DispatchView`). Every intercepted call used to rescan the registry — including reflective
+  `Class.forName` matching for interface/superclass/annotation matchers — three times per call
+  (enter, exit, plus the call-site flag check). A call now costs two hash lookups and iterates only
+  the definitions that can apply to that method. Exact names, name patterns, signatures, constructor
+  and accessor matchers are pre-filtered by method name; composed pointcuts are deliberately not
+  filtered because their combined method matcher is only an approximation.
+- **Measured effect** (JMH, in-process): `dispatch_hotPath` is ~8 ns/op at 100, 1,000 and 5,000
+  registered pointcuts — flat. The previous per-call registry lookup is 10.9 µs / 15.1 µs /
+  33.9 µs at the same sizes. See `docs/benchmarks/baseline-v1.md`.
+- **Linear bulk registration.** `@DeclarePrecedence` resolution is cached per aspect class and the
+  precedence map is rebuilt lazily on first lookup instead of once per registration, removing the
+  quadratic `Class.forName` cost of loading thousands of pointcuts. Dispatch order is unchanged
+  (priority, then `@DeclarePrecedence`).
+- **Cheaper field/catch dispatch.** `FieldAdvice` and `CatchAdvice` no longer scan the whole registry
+  per event; the definitions whose interceptor is a `FieldInterceptor` / `CatchInterceptor` are
+  selected once per registry generation.
+- **cflow costs nothing when unused.** The thread-local cflow stack is only maintained when a cflow
+  expression has ever been constructed, frames are stored as two parallel deques instead of
+  concatenated strings, and a pop only happens when the exiting frame is the top one. `resetCflow()`
+  clears the stack for tests.
+- **Transform-time precomputation.** The weaver builds one union method matcher and one `Advice`
+  instance per weave group instead of per definition, and the group key now includes the advice
+  class (constructor/static-init/field/catch definitions no longer share a group with method
+  advice).
+- **Guard rails.** `DispatchScaleTest` asserts that repeated dispatches never rescan the registry or
+  resolve classes reflectively, that per-method filtering is exact, that a registration invalidates
+  the cache, and that bulk registration stays linear; `DispatchBenchmark` is part of the `bench`
+  profile.
+
+## Unreleased — taint / IAST hardening (2026-11-23)
+
+- **`Taint.ranges()` no longer throws `IllegalAccessError`** when the taint plugin appends the
+  bridge to the bootstrap loader. `TaintBridge.Range` and `lookup` are public so the
+  application-loader `Taint` class can read them across the loader boundary.
+- **Sanitiser primitive.** `Taint.untaint(value)` / `Taint.untaint(value, source)` remove marks in
+  every scope of the current thread, so a product's encoder / whitelist interceptor can clear a
+  propagated mark.
+- **Prepared statements reach the SQL sink.** The JDBC plugin observes SQL text at
+  `prepareStatement` / `prepareCall` time. `PreparedStatement.executeQuery()` has no SQL argument,
+  so the execute-only hook was blind to the most common JDBC pattern.
+- **Java 9+ concatenation keeps taint.** `a + b` compiles to
+  `StringConcatFactory.makeConcatWithConstants` and never touched `StringBuilder`, so the dominant
+  string-building idiom lost the mark. `TaintConcatTransformer` rewrites each concat call site
+  (arguments spilled to fresh locals, original indy preserved, template resolved at transform time)
+  and calls bootstrap-loaded `TaintConcat.propagate`, keeping exact argument offsets. Idempotent,
+  skips bootstrap/JDK/agent classes, and leaves a class untouched if the rewrite fails.
+- **Wider propagation.** `String.trim`, `strip*`, case conversion, `replace`, `replaceAll`,
+  `replaceFirst` and `String.join` now propagate the whole result; `StringBuilder.delete`,
+  `deleteCharAt`, `insert`, `replace`, `setLength`, `reverse` and `append(CharSequence, int, int)`
+  move ranges with the text instead of leaving stale slices that caused false positives.
+- **Generic engine APIs.** `Taint.propagate(source, target)` copies labels for flows the string
+  advice cannot see; `Taint.sink(kind, values...)` reports a finding for any sink, flattens arrays /
+  iterables / map values, and returns whether a value was tainted. Non-string values are rendered
+  into the finding, and findings now carry `callerClass` / `callerMethod` / `callerLine` for the
+  application frame that reached the sink.
+- **Broader HTTP sources.** `HttpSourceCapture` also tags cookies (`http.cookie:name`) and the URL
+  envelope (`http.uri`, `http.path`, `http.query`), not just parameters and headers.
+- **Thread hand-off carries the scope.** The agent now instruments `ThreadPoolExecutor.execute`,
+  `ForkJoinPool.execute` and the `ForkJoinPool.submit` overloads, wrapping each submitted
+  `Runnable`/`Callable` with a submission-time snapshot. The worker sees the submitting request's
+  tags and its previous scopes are restored afterwards, so a pooled thread never keeps a stale
+  request. `CompletableFuture` stages inherit through the same hook. `Taint.wrap`,
+  `Taint.captureContext` / `restoreContext` and `Taint.hasScope` cover boundaries the agent does
+  not wrap (`new Thread`, third-party callbacks).
+- **Sanitiser framework.** `Taint.untaintAll(Object...)` cleans a parameter group and reports how
+  many values carried marks; `TaintSanitizerInterceptor.returnValue()` / `.argument(int)` /
+  `.returnValueAndArgument(int)` turn a sanitiser into a drop-in `Interceptor`.
+- **Array and rendering parity.** `toCharArray`, `getChars`, `getBytes`, `new String(char[])`,
+  `new String(char[],int,int)`, `new String(byte[])`, `append(Object)`, `append(char[])`,
+  `append(char[],int,int)`, `insert(int,Object)`, `insert(int,char[])`, `insert(int,char[],int,int)`,
+  `setCharAt`, `String.valueOf` and `new StringBuilder/StringBuffer(CharSequence)` all propagate.
+  `getChars` and `insert(int,char[],int,int)` map only the window they touch, keeping the rest of
+  the destination untouched. Every builder advice takes `CharSequence`, so `StringBuffer` is
+  covered alongside `StringBuilder`.
+- **One-shot scheduled tasks carry context.** `ScheduledThreadPoolExecutor` overrides `execute`
+  and queues the task itself, so its `schedule(Runnable/Callable, long, TimeUnit)` overloads are
+  wrapped at submission. Periodic scheduling is deliberately left alone so a request scope cannot
+  be pinned for the lifetime of the process.
+- **Re-entrancy guard never strands.** Every advice that takes the guard now releases it on all
+  exit paths — null results, unmatched arguments and, new in this pass, the throwable path
+  (`onThrowable` + `@Advice.Thrown`). An exception from `substring`, `append` or `getBytes` no
+  longer silences propagation for the rest of the request. Constructor advice probes and releases
+  on entry because ByteBuddy cannot attach throwable exit advice to a constructor.
+- **Capability audit.** `docs/taint-iast-capability-audit.md` records the verified propagation
+  matrix, source/sink coverage, async carry, cost, and the remaining IAST gaps (rule layer,
+  source/sink breadth, raw-thread hand-off).
+
 ## Unreleased — seeded issues and ecosystem fixes (2026-11-20)
 
 Work driven by the open issues and by running the agent against a real Spring Boot application.

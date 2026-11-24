@@ -354,6 +354,48 @@ try {
 
 `TaintFindings.install()` publishes each finding as an `InterceptorEvent` of type `TaintFindings.EVENT_TYPE` (`"iast-finding"`), so the same listener and exporter path that carries everything else carries findings too. Call it once, at startup.
 
+A sanitiser hook clears the mark it has disproved. `Taint.untaint(value)` drops every source on the value in the current thread; `Taint.untaint(value, source)` drops one label and keeps the rest; `Taint.untaintAll(a, b, c)` cleans a whole parameter group and returns how many values carried marks. Call it from the interceptor of the encoder / whitelist / numeric cast, on that function's return value:
+
+```java
+intercept("com.example.Html").method("encode").after(
+    inv -> Taint.untaint(inv.getReturnValue()));
+```
+
+`TaintSanitizerInterceptor` packages the same call as an `Interceptor`: `returnValue()` cleans the result, `argument(n)` cleans one argument (a validator that becomes safe through its in-place check), and `returnValueAndArgument(n)` does both. Register it like any other interceptor:
+
+```java
+registry.register(new InterceptorDefinition(
+    "example-sql-escape",
+    new Pointcut(ClassMatcher.byName("com.example.Sql"), MethodMatcher.byName("escape")),
+    TaintSanitizerInterceptor.returnValue()));
+```
+
+Propagation is slice-aware for `String.concat`, `substring`, `StringBuilder`/`StringBuffer` append/insert/setCharAt/toString and builder construction from a `CharSequence`, `String.format` (via its internal builder), and `char[]` round trips (`toCharArray`, `getChars`, `new String(char[], int, int)`, `append(char[])`, `insert(char[])`, `insert(int, char[], int, int)`). `byte[]` round trips (`getBytes`, `new String(byte[])`) carry an object-level mark that the decoded string inherits whole. `append(Object)`, `insert(int, Object)` and `String.valueOf` copy the object's mark onto exactly the window the rendering added.
+
+`taint=true` also rewrites Java 9+ `invokedynamic` concatenation (`a + b`) through `TaintConcat`, so the modern compiler form keeps precise slices. `String.trim`, `strip*`, case conversion, `replace`, `replaceAll`, `replaceFirst` and `String.join` propagate the whole result, and builder edits move the existing ranges instead of leaving stale ones.
+
+**Thread hand-off.** The agent wraps `ThreadPoolExecutor.execute`, `ForkJoinPool.execute`, the `ForkJoinPool.submit` overloads and the one-shot `ScheduledThreadPoolExecutor.schedule` overloads, so a tag written before `executor.submit(task)` is visible inside the worker and the worker's previous scopes are restored afterwards. `CompletableFuture` stages inherit through the same hook; periodic scheduling is intentionally not wrapped. For boundaries the agent does not wrap — `new Thread(task)`, a third-party callback — carry the context by hand:
+
+```java
+Runnable carried = Taint.wrap(task);          // fixed at submission time
+Object snapshot = Taint.captureContext();     // or move it manually
+Taint.restoreContext(snapshot);               // inside the other thread
+```
+
+For everything the built-in hooks cannot see, use the generic primitives:
+
+```java
+// copy every source label from one value to another (JSON encoder, mapper, template renderer)
+Taint.propagate(input, output);
+
+// report a finding for a sink the base has no advice for
+if (Taint.sink("template", template, model)) {
+    // the value reached a dangerous call
+}
+```
+
+`Taint.sink` renders non-string values and records the application call site (`callerClass`, `callerMethod`, `callerLine`) on the finding, alongside the existing `source`, `sink`, `argument`, `start`, `end` and trace/span attributes. See the [taint / IAST capability audit](taint-iast-capability-audit.md) for the verified matrix and the remaining gaps.
+
 ### Weaving bytecode the registry cannot reach
 
 `InterceptorRegistry` covers methods, constructors, fields, catch blocks, static initializers and

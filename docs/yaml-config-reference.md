@@ -58,9 +58,21 @@ samplingRate=1,samplingMaxRate=100,circuitBreakerThreshold=5,circuitBreakerCoold
 | `statePersistIntervalMs` | Snapshot interval | `60000` |
 | `emergencyDisable=true` | Start with interception disabled | off |
 | `maxTransformations` | Max classes to transform | `10000` |
+| `telemetry` | Record per-callback timing and per-hook metrics. `false` removes the largest per-call cost | `true` |
+| `returnSnapshot` | Build a `ReturnSnapshot` on each successful return | `true` |
+| `mdc` | Bridge ThreadContext (`traceId`/`spanId`/`tenantId`) into SLF4J MDC around each call | `true` |
+| `pluginMetrics` | Write the plugin-level metrics mirror in addition to the per-hook metrics | `true` |
+| `circuitBreaker` | Consult and feed the per-hook breaker. `false` means a failing hook is never skipped | `true` |
 | `endpointBindAddress` | Bind address for the metrics/health/diagnostics/management endpoints | `127.0.0.1` |
 | `endpointMaxThreads` | Request-thread ceiling per endpoint server | `16` |
 | `endpointAuthToken` | Bearer token the management API requires; empty means no authentication | unset |
+
+The five boolean switches above can also be written as top-level YAML keys of the same name, or
+flipped with the equivalent system property (`-Dweavergirl.<name>.enabled=false`). A system
+property always wins, so an operator overriding a YAML file from the command line is not undone by
+the file. **These switches change only what the agent records, never whether interception happens**;
+with all of them off a matched call went from ~335 ns to ~88 ns on the reference machine. See
+[docs/observability.md](observability.md) §4.2.4a for the measured cost of each.
 
 The endpoint defaults are loopback-only because the endpoints have no authentication: anyone who
 can reach the port can read `/events`, `/traces`, `/audit` and flip the global interception

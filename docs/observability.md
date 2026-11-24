@@ -246,6 +246,48 @@ weavergirl_plugin_interceptors{plugin="servlet"} 3
 `weavergirl_plugin_interceptors` 掉到 0 通常意味着插件注册失败。未安装 `PluginManager`
 （单独运行插件测试）时不输出。
 
+### 4.2.4a 关闭每次回调的观测开销（性能开关）
+
+被插桩的方法本身的行为与这些开关无关；开关只决定 agent **记什么**。每个都默认开，配置什么都不写
+就是原来的行为。五个开关（`PerformanceSwitches`）：
+
+| 开关 | 系统属性 | agent 参数 / YAML 键 | 关掉后不再做 |
+| --- | --- | --- | --- |
+| telemetry | `-Dweavergirl.telemetry.enabled=false` | `telemetry=false` | 每个回调两次 `nanoTime` + 4.2.4 的 per-hook 指标 |
+| returnSnapshot | `-Dweavergirl.returnSnapshot.enabled=false` | `returnSnapshot=false` | 每次成功返回构造 `ReturnSnapshot` |
+| mdc | `-Dweavergirl.mdc.enabled=false` | `mdc=false` | ThreadContext→MDC 桥接 |
+| pluginMetrics | `-Dweavergirl.pluginMetrics.enabled=false` | `pluginMetrics=false` | 4.2.2 的 plugin 级指标镜像 |
+| circuitBreaker | `-Dweavergirl.circuitBreaker.enabled=false` | `circuitBreaker=false` | 失败计数与慢调用熔断 |
+
+系统属性优先于 agent 参数和 YAML。运行期也能改：配置文件热更新里的 `telemetry` / `returnSnapshot`
+/ `mdc` / `pluginMetrics` / `circuitBreaker` 会直接作用到活着的开关；代码里调
+`PerformanceSwitches.setEnabled(key, boolean)` 同样。热路径每次读一个 `volatile`，所以下一次调用即生效。
+
+实测（一个匹配的钩子、空回调、同机、多次取中位数；机器有负载，单次跑波动 ±20–30%）：
+
+```
+全部开启（默认）                      ~335 ns/call
+关 telemetry                         ~197 ns/call
+关 mdc                               ~291 ns/call
+关 returnSnapshot                    ~307 ns/call
+关 pluginMetrics                     ~344 ns/call（在噪声内）
+关 telemetry+returnSnapshot+mdc+pluginMetrics   ~88 ns/call（-74%）
+```
+
+真正有量的是 `telemetry`。不消费 4.2.4 / 4.2.2 这些序列的部署可以整组关掉：
+
+```
+-javaagent:weaver-girl-agent.jar \
+  -Dweavergirl.telemetry.enabled=false \
+  -Dweavergirl.returnSnapshot.enabled=false \
+  -Dweavergirl.mdc.enabled=false \
+  -Dweavergirl.pluginMetrics.enabled=false
+```
+
+**关掉后仍然保证的：** 匹配和回调照跑。只要熔断器开着，抛异常的钩子仍然累计失败并熔断（失败路径传
+未知耗时 `-1`，熔断器把它当作“不慢”）；熔断器本身关掉，则失败的钩子也不会被跳过。
+`HookTelemetry.setEnabled(false)` 是 `telemetry` 开关的便捷入口，适合“平时关掉、排查某个钩子时再打开”。
+
 ### 4.2.4b 熔断器状态（CircuitBreaker）
 
 每个拦截器定义的熔断器状态。回调连续失败达到 `failureThreshold`（默认 5）或连续慢调用达到

@@ -43,6 +43,16 @@ declare -A BASELINE=(
   ["CoreComponentBenchmark.pool_acquireRelease"]=759.948
   ["CoreComponentBenchmark.sampling_shouldSample_rate1"]=2.740
   ["CoreComponentBenchmark.sampling_shouldSample_rate10"]=7.271
+  # DispatchBenchmark rows differ only by the @Param pointcut count; the same budget is applied to
+  # all three (100 / 1,000 / 5,000), and the worst measured row (8.35 ns at 1,000) is the baseline.
+  ["DispatchBenchmark.dispatch_hotPath"]=8.350
+  # The floor for any weave-time-resolved dispatch: one static field read.
+  ["DispatchBenchmark.preResolvedView"]=2.250
+  # End-to-end woven-call cost. Every @Param scenario reports under the same benchmark name, so
+  # one budget covers them all and the baseline is the worst default-configuration scenario
+  # (one-hook-with-trace, 358 ns); its 1.5x budget (537 ns) is the watchdog for "some woven call
+  # got much more expensive". See the end-to-end table in docs/benchmarks/baseline-v1.md.
+  ["InstrumentationOverheadBenchmark.call"]=358.136
 )
 
 if [ "${SKIP_BENCH:-0}" != "1" ]; then
@@ -89,7 +99,7 @@ for pair in "${PAIRS[@]}"; do
   full="${pair%%$'\t'*}"
   score="${pair##*$'\t'}"
   # full looks like: com.github...InterceptorBenchmark.baseline_noRegistry
-  short="$(printf '%s' "$full" | sed -E 's/.*\.(InterceptorBenchmark|MatcherBenchmark|CoreComponentBenchmark)\./\1./')"
+  short="$(printf '%s' "$full" | sed -E 's/.*\.(InterceptorBenchmark|MatcherBenchmark|CoreComponentBenchmark|DispatchBenchmark|InstrumentationOverheadBenchmark)\./\1./')"
   [ -z "$short" ] || [ -z "$score" ] && continue
   base="${BASELINE[$short]:-}"
   if [ -z "$base" ]; then

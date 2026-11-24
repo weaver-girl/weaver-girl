@@ -88,6 +88,7 @@ interceptors:
 - **Dynamic Attach**: Runtime attachment via `agentmain` with retransformation
 - **Hot Reload**: YAML config changes applied without restart
 - **Circuit Breaker**: Automatic disable of failing (or consistently slow) interceptors; `circuitBreakerThreshold` / `circuitBreakerCooldownMs` retune the live breaker, including at runtime
+- **Configurable Per-Call Overhead**: `telemetry` / `returnSnapshot` / `mdc` / `pluginMetrics` / `circuitBreaker` switches (agent arg, YAML key, `-Dweavergirl.<name>.enabled`, or runtime) strip the observation work from the hot path while leaving interception intact — all off takes a matched call from ~335 ns to ~88 ns
 - **Adaptive Sampling**: A monitor raises the sampling rate when the invocation rate exceeds `samplingThreshold`; `adaptiveSampling=false` turns the thread off
 - **Advanced Sampling**: SPI strategy interface with fixed-rate and probabilistic strategies
 - **Dynamic Config Center**: Runtime config changes with listeners, snapshots, rollback, and audit trail
