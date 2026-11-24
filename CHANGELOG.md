@@ -294,9 +294,11 @@ landed with them:
 
 ---
 
-## 1.0.0 — First release (2026-11-11)
+## 1.0.0 — First release (published 2026-11-24)
 
-The first release-ready cut of Weaver-Girl. Highlights:
+The first published release of Weaver-Girl. The 2026-11-11 date this section used to
+carry was the day the packaging chain was proven ready; the tag, the GitHub Release and
+its six signed assets went out on 2026-11-24. Highlights:
 
 - **126 built-in instrumentation plugins** (Servlet, Spring, JDBC, Redis, Kafka, gRPC, MongoDB,
   HttpClient, HikariCP, OkHttp, RabbitMQ, Elasticsearch, Dubbo, MyBatis, RocketMQ, Druid, Feign,

@@ -29,7 +29,8 @@ comes after those:
 - [x] Discussions enabled
 - [ ] Central namespace `io.github.cc11001100` verified on central.sonatype.com
 - [ ] Central Publishing credentials and GPG key configured as repository secrets
-- [ ] `v1.0.0` tag pushed and the staging deployment published
+- [x] `v1.0.0` tag pushed and the GitHub Release published (`2026-11-24`, six signed assets)
+- [ ] Maven Central deployment published (the release job runs it only when `CENTRAL_*` secrets exist)
 - [x] Seed “good first issue” issues and apply labels ([#43](https://github.com/weaver-girl/weaver-girl/issues/43)–[#46](https://github.com/weaver-girl/weaver-girl/issues/46))
 - [ ] Launch post, demo recording and a short “what it is / is not” explainer
 - [ ] `weaver-girl-examples` repository created from released artifacts (after 1.0.0);
