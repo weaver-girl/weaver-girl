@@ -42,24 +42,24 @@ class TaintAdviceTest {
     assertFalse(StringConcatAdvice.enter());
     TaintBridge.leave();
 
-    StringConcatAdvice.exit("ab", "cd", "abcd", false);
-    StringConcatAdvice.exit("ab", "cd", "abcd", true);
+    StringConcatAdvice.exit(null, "ab", "cd", "abcd", false);
+    StringConcatAdvice.exit(null, "ab", "cd", "abcd", true);
 
     assertTrue(StringSubstringAdvice.enter());
     TaintBridge.leave();
-    StringSubstringAdvice.exit("abcd", 1, 3, "bc", false);
-    StringSubstringAdvice.exit("abcd", 1, 3, "bc", true);
+    StringSubstringAdvice.exit(null, "abcd", 1, 3, "bc", false);
+    StringSubstringAdvice.exit(null, "abcd", 1, 3, "bc", true);
 
     assertTrue(StringSubstringBeginAdvice.enter());
     TaintBridge.leave();
-    StringSubstringBeginAdvice.exit("abcd", 2, "cd", false);
-    StringSubstringBeginAdvice.exit("abcd", 2, "cd", true);
+    StringSubstringBeginAdvice.exit(null, "abcd", 2, "cd", false);
+    StringSubstringBeginAdvice.exit(null, "abcd", 2, "cd", true);
 
     assertTrue(StringBuilderToStringAdvice.enter());
     TaintBridge.leave();
     StringBuilder builder = new StringBuilder("ab");
-    StringBuilderToStringAdvice.exit(builder, "ab", false);
-    StringBuilderToStringAdvice.exit(builder, "ab", true);
+    StringBuilderToStringAdvice.exit(null, builder, "ab", false);
+    StringBuilderToStringAdvice.exit(null, builder, "ab", true);
   }
 
   @Test
@@ -72,8 +72,8 @@ class TaintAdviceTest {
     assertEquals(Integer.MIN_VALUE, StringBuilderAppendStringAdvice.enter(builder));
     TaintBridge.leave();
 
-    StringBuilderAppendStringAdvice.exit(builder, "cd", Integer.MIN_VALUE);
-    StringBuilderAppendStringAdvice.exit(builder, "cd", 2);
+    StringBuilderAppendStringAdvice.exit(null, builder, "cd", Integer.MIN_VALUE);
+    StringBuilderAppendStringAdvice.exit(null, builder, "cd", 2);
 
     // append(CharSequence) does nothing for a String; that overload forwards to append(String).
     assertEquals(Integer.MIN_VALUE, StringBuilderAppendCharSequenceAdvice.enter(builder, "cd"));
@@ -82,8 +82,29 @@ class TaintAdviceTest {
     assertEquals(2, charSequenceOffset);
     TaintBridge.leave();
 
-    StringBuilderAppendCharSequenceAdvice.exit(builder, "cd", Integer.MIN_VALUE);
-    StringBuilderAppendCharSequenceAdvice.exit(builder, new StringBuilder("cd"), 2);
+    StringBuilderAppendCharSequenceAdvice.exit(null, builder, "cd", Integer.MIN_VALUE);
+    StringBuilderAppendCharSequenceAdvice.exit(null, builder, new StringBuilder("cd"), 2);
+  }
+
+  @Test
+  void aThrownExceptionReleasesTheGuardWithoutPropagating() {
+    StringBuilder builder = new StringBuilder("ab");
+    int offset = StringBuilderAppendStringAdvice.enter(builder);
+    assertEquals(2, offset);
+
+    StringBuilderAppendStringAdvice.exit(
+        new IllegalStateException("boom"), builder, "cd", offset);
+    assertTrue(StringConcatAdvice.enter(), "the guard is free again after the throwing exit");
+    TaintBridge.leave();
+
+    StringConcatAdvice.exit(new IllegalStateException("boom"), "ab", "cd", "abcd", true);
+    assertTrue(StringConcatAdvice.enter(), "a boolean-guarded advice releases on a throw too");
+    TaintBridge.leave();
+
+    StringConcatAdvice.exit(null, "ab", "cd", "abcd", false);
+    StringSubstringAdvice.exit(new IllegalStateException("boom"), "abcd", 1, 3, "bc", false);
+    assertTrue(StringSubstringAdvice.enter(), "a skipped frame leaves the guard untouched");
+    TaintBridge.leave();
   }
 
   @Test

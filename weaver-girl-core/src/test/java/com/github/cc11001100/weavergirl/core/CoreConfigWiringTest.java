@@ -2,6 +2,7 @@ package com.github.cc11001100.weavergirl.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -75,6 +76,78 @@ class CoreConfigWiringTest {
     listener.onConfigChange(new ConfigChangeEvent("circuitBreakerCooldownMs", "60000", "5000", "test"));
     assertEquals(2, InterceptorHolder.getCircuitBreakerFailureThreshold());
     assertEquals(5000L, InterceptorHolder.getCircuitBreakerCooldownMillis());
+  }
+
+  // --- per-call performance switches ---
+
+  @Test
+  void agentArgumentsTurnThePerformanceSwitchesOff() throws Exception {
+    Map<String, String> config = new HashMap<>();
+    config.put("telemetry", "false");
+    config.put("returnSnapshot", "false");
+
+    invokeApplyCoreConfig(config);
+
+    assertFalse(
+        com.github.cc11001100.weavergirl.api.config.PerformanceSwitches.isTelemetryEnabled(),
+        "telemetry=false as an agent argument must reach the switch");
+    assertFalse(
+        com.github.cc11001100.weavergirl.api.config.PerformanceSwitches.isReturnSnapshotEnabled(),
+        "returnSnapshot=false as an agent argument must reach the switch");
+  }
+
+  @Test
+  void aSystemPropertyOverridesTheAgentArguments() throws Exception {
+    System.setProperty("weavergirl.mdc.enabled", "false");
+    try {
+      com.github.cc11001100.weavergirl.api.config.PerformanceSwitches.resetForTest();
+      com.github.cc11001100.weavergirl.api.config.PerformanceSwitches
+          .reloadFromSystemPropertiesForTest();
+      Map<String, String> config = new HashMap<>();
+      config.put("mdc", "true");
+
+      invokeApplyCoreConfig(config);
+
+      assertFalse(
+          com.github.cc11001100.weavergirl.api.config.PerformanceSwitches.isMdcBridgeEnabled(),
+          "a -D override must win over the agent argument");
+    } finally {
+      System.clearProperty("weavergirl.mdc.enabled");
+      com.github.cc11001100.weavergirl.api.config.PerformanceSwitches.resetForTest();
+    }
+  }
+
+  /**
+   * A wrong-typed value must be reported rather than silently applied or ignored. The bootstrap
+   * path runs ConfigValidator before touching the components.
+   */
+  @Test
+  void aWrongTypedValueIsReportedWithoutBlockingStartup() throws Exception {
+    java.util.List<String> errors =
+        com.github.cc11001100.weavergirl.core.config.validation.ConfigValidator.validate(
+                Collections.singletonMap("samplingRate", "not-a-number"))
+            .getErrors();
+
+    assertEquals(
+        1,
+        errors.size(),
+        "an invalid samplingRate must be reported as an error: " + errors);
+
+    // Startup itself must not throw: applyCoreConfig logs the error and keeps the current value.
+    invokeApplyCoreConfig(Collections.singletonMap("samplingRate", "not-a-number"));
+  }
+
+  @Test
+  void dynamicConfigFlipsAPerformanceSwitch() throws Exception {
+    ConfigChangeListener listener = dynamicCoreConfigListener();
+    com.github.cc11001100.weavergirl.api.config.PerformanceSwitches.setEnabled("telemetry", true);
+
+    listener.onConfigChange(new ConfigChangeEvent("telemetry", "true", "false", "test"));
+
+    assertFalse(
+        com.github.cc11001100.weavergirl.api.config.PerformanceSwitches.isTelemetryEnabled(),
+        "a runtime change to telemetry must take effect without a restart");
+    com.github.cc11001100.weavergirl.api.config.PerformanceSwitches.setEnabled("telemetry", true);
   }
 
   @Test
@@ -166,7 +239,16 @@ class CoreConfigWiringTest {
     Method method =
         WeaverGirl.class.getDeclaredMethod("applyCoreConfig", Map.class);
     method.setAccessible(true);
-    method.invoke(null, config);
+    try {
+      method.invoke(null, config);
+    } finally {
+      // applyCoreConfig is a process-wide side-effect path: a config with
+      // weavergirl.emergency.disable=true enters emergency mode, which turns the global
+      // interception kill-switch off and caps the sampling rate. Left in place that leaks into
+      // every later test in the same surefire fork (the integration tests then see a disabled
+      // kill-switch and report "before() should have been called" failures).
+      com.github.cc11001100.weavergirl.core.testsupport.ProcessWideState.restore();
+    }
   }
 
   private static ConfigChangeListener dynamicCoreConfigListener() throws Exception {

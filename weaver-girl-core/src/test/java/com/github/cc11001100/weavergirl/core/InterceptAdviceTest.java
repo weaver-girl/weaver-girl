@@ -44,7 +44,7 @@ class InterceptAdviceTest {
   // --- onMethodEnter tests ---
 
   @Test
-  void onMethodEnter_noMatchingInterceptor_returnsNull() throws Exception {
+  void onMethodEnter_noMatchingInterceptor_returnsNothing() throws Exception {
     // No interceptors registered at all
     Method method = SampleClass.class.getMethod("greet");
     Object[] args = new Object[0];
@@ -52,8 +52,10 @@ class InterceptAdviceTest {
     Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), args);
 
-    assertNull(
-        result, "Should return null when no interceptors match — original method should execute");
+    assertSame(
+        InterceptAdvice.NOTHING,
+        result,
+        "Should return the nothing marker when no interceptors match — original method executes");
   }
 
   @Test
@@ -166,7 +168,7 @@ class InterceptAdviceTest {
   }
 
   @Test
-  void onMethodEnter_interceptorCallsSkipMethod_onUnmatchedClass_returnsNull() throws Exception {
+  void onMethodEnter_interceptorCallsSkipMethod_onUnmatchedClass_returnsNothing() throws Exception {
     // Register an interceptor for a DIFFERENT class
     Interceptor skipInterceptor =
         new Interceptor() {
@@ -187,12 +189,14 @@ class InterceptAdviceTest {
     Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
-    assertNull(
-        result, "Should return null when no interceptor matches the class — no skip triggered");
+    assertSame(
+        InterceptAdvice.NOTHING,
+        result,
+        "Should return the nothing marker when no interceptor matches the class");
   }
 
   @Test
-  void onMethodEnter_nullRegistry_returnsNull() throws Exception {
+  void onMethodEnter_nullRegistry_returnsNothing() throws Exception {
     // Remove the registry
     InterceptorHolder.setRegistry(null);
 
@@ -200,11 +204,15 @@ class InterceptAdviceTest {
     Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
-    assertNull(result, "Should return null when registry is null — original method should execute");
+    assertSame(
+        InterceptAdvice.NOTHING,
+        result,
+        "Should return the nothing marker when the registry is null — the method still runs "
+            + "and exit does no work");
   }
 
   @Test
-  void onMethodEnter_interceptorDoesNotSkip_returnsNull() throws Exception {
+  void onMethodEnter_interceptorDoesNotSkip_returnsEnterState() throws Exception {
     // Register an interceptor that does NOT call skipMethod
     Interceptor noOpInterceptor =
         new Interceptor() {
@@ -224,32 +232,34 @@ class InterceptAdviceTest {
     Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
-    assertNull(
-        result,
-        "Should return null when interceptor does not call skipMethod — original method executes"
-            + " normally");
+    assertTrue(
+        result instanceof InterceptAdvice.EnterState,
+        "Should carry the invocation when the interceptor does not skip — original method runs");
   }
 
   @Test
-  void onMethodEnter_disabledSwitch_returnsNull() throws Exception {
+  void onMethodEnter_disabledSwitch_returnsNothing() throws Exception {
     InterceptorHolder.setInterceptionEnabled(false, "test");
     Method method = SampleClass.class.getMethod("greet");
 
     Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
-    assertNull(result, "Should return null when global interception switch is disabled");
+    assertSame(
+        InterceptAdvice.NOTHING,
+        result,
+        "Should return the nothing marker when the global switch is disabled — no per-call work");
   }
 
   @Test
-  void onMethodEnter_unsampled_returnsNull() throws Exception {
+  void onMethodEnter_unsampled_returnsNothing() throws Exception {
     SamplingController.getInstance().setSamplingRate(2);
     Method method = SampleClass.class.getMethod("greet");
 
     Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
-    assertNull(result, "Should return null when the invocation is not sampled");
+    assertSame(InterceptAdvice.NOTHING, result, "Nothing to do when the invocation is not sampled");
   }
 
   @Test
@@ -274,7 +284,7 @@ class InterceptAdviceTest {
     Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
-    assertNull(result);
+    assertSame(InterceptAdvice.NOTHING, result);
     assertFalse(beforeCalled[0], "before() should not run when the method name does not match");
   }
 
@@ -302,7 +312,7 @@ class InterceptAdviceTest {
     Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
-    assertNull(result);
+    assertTrue(result instanceof InterceptAdvice.EnterState);
     assertFalse(beforeCalled[0], "before() should be skipped while circuit breaker is open");
   }
 
@@ -328,7 +338,7 @@ class InterceptAdviceTest {
         InterceptAdvice.onMethodEnter(
             SampleClass.class, method, new SampleClass(), new Object[] {"x"});
 
-    assertNull(result);
+    assertTrue(result instanceof InterceptAdvice.EnterState);
     assertTrue(beforeCalled[0], "before() should run when the if() condition is true");
   }
 
@@ -353,7 +363,7 @@ class InterceptAdviceTest {
     Object result =
         InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
 
-    assertNull(result);
+    assertTrue(result instanceof InterceptAdvice.EnterState);
     assertFalse(beforeCalled[0], "before() should be skipped when the if() condition is false");
   }
 
@@ -384,7 +394,7 @@ class InterceptAdviceTest {
       Method method = SampleClass.class.getMethod("greet");
       Object result =
           InterceptAdvice.onMethodEnter(SampleClass.class, method, new SampleClass(), new Object[0]);
-      assertNull(result);
+      assertTrue(result instanceof InterceptAdvice.EnterState);
       assertTrue(
           beforeCalled[0], "before() should run when the cflow() condition matches a caller frame");
     } finally {
@@ -1042,7 +1052,9 @@ class InterceptAdviceTest {
         InterceptAdvice.onMethodEnter(
             SampleClass.class, method, new SampleClass(), new Object[0]);
 
-    assertNull(result, "Should return null when around interceptor calls proceed");
+    assertTrue(
+        result instanceof InterceptAdvice.EnterState,
+        "Should carry the invocation when around interceptor calls proceed");
     assertTrue(before[0] > 0, "around() should have been invoked");
     assertTrue(after[0] >= before[0], "after proceed() should complete");
   }

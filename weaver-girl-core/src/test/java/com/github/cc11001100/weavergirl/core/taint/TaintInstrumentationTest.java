@@ -157,7 +157,7 @@ class TaintInstrumentationTest {
         TaintInstrumentation.StringConcatAdvice.class.getDeclaredMethod("enter"));
     assertNotNull(
         TaintInstrumentation.StringConcatAdvice.class.getDeclaredMethod(
-            "exit", String.class, String.class, String.class, boolean.class));
+            "exit", Throwable.class, String.class, String.class, String.class, boolean.class));
 
     // Verify RuntimeExecAdvice has enter/exit methods
     assertNotNull(

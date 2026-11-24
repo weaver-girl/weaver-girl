@@ -130,6 +130,34 @@ class MethodInvocationPoolTest {
     MethodInvocationPool.release(reused);
   }
 
+  /**
+   * A pertarget object belongs to the target, not to the pooled invocation. It must not survive a
+   * release/re-acquire, or the next call on this thread would see another object's context.
+   */
+  @Test
+  void reuseDoesNotCarryPerInstanceState() throws NoSuchMethodException {
+    Method method = getGreetMethod();
+
+    MethodInvocation first =
+        MethodInvocationPool.acquire(
+            DummyTarget.class, "greet", method, new DummyTarget(), new Object[] {"a"});
+    Object perInstance = new Object();
+    first.setPerInstance(perInstance);
+    assertSame(perInstance, first.getPerInstance());
+
+    MethodInvocationPool.release(first);
+
+    MethodInvocation reused =
+        MethodInvocationPool.acquire(
+            DummyTarget.class, "greet", method, new DummyTarget(), new Object[] {"b"});
+    assertSame(first, reused);
+    assertNull(reused.getPerInstance(), "a pooled invocation must not carry the previous target's "
+        + "pertarget state");
+    assertFalse(reused.hasPerInstance());
+
+    MethodInvocationPool.release(reused);
+  }
+
   @Test
   void acquireWithNullArgumentsUsesEmptyArray() throws NoSuchMethodException {
     Method method = getGreetMethod();

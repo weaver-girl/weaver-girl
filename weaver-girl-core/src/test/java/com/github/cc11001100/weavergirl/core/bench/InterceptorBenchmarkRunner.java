@@ -22,15 +22,29 @@ public class InterceptorBenchmarkRunner {
     // For authoritative absolute numbers, set -Djmh.f=1 (requires a real java classpath,
     // e.g. via scripts/run-benchmarks.sh, because JMH's fork needs the true classpath).
     int f = Integer.getInteger("jmh.f", 0);
+    // -Djmh.include=SomeBenchmark runs one benchmark class, which is what you want while iterating.
+    String only = System.getProperty("jmh.include");
+    // -Djmh.param=<scenario> runs one @Param value of the overhead benchmark only. Measuring the
+    // per-switch cost needs the same scenario repeated under different -D switches; running the
+    // whole matrix every time would take minutes per switch.
+    String param = System.getProperty("jmh.param");
+    OptionsBuilder builder = new OptionsBuilder();
+    if (param != null && !param.isEmpty()) {
+      builder.include(InstrumentationOverheadBenchmark.class.getSimpleName());
+      builder.param("scenario", param);
+    } else if (only != null && !only.isEmpty()) {
+      builder.include(only);
+    } else {
+      builder
+          .include(InterceptorBenchmark.class.getSimpleName())
+          .include(MatcherBenchmark.class.getSimpleName())
+          .include(CoreComponentBenchmark.class.getSimpleName())
+          .include(DispatchBenchmark.class.getSimpleName())
+          .include(InstrumentationOverheadBenchmark.class.getSimpleName())
+          .include(HookPathBenchmark.class.getSimpleName());
+    }
     Options opt =
-        new OptionsBuilder()
-            .include(InterceptorBenchmark.class.getSimpleName())
-            .include(MatcherBenchmark.class.getSimpleName())
-            .include(CoreComponentBenchmark.class.getSimpleName())
-            .warmupIterations(wi)
-            .measurementIterations(i)
-            .forks(f)
-            .build();
+        builder.warmupIterations(wi).measurementIterations(i).forks(f).build();
     new Runner(opt).run();
   }
 }

@@ -20,10 +20,19 @@ public class CoreComponentBenchmark {
 
   private SamplingController samplingController;
 
+  /**
+   * Resolved once, not per invocation. {@code String.class.getMethods()} copies the entire public
+   * method array of {@code String} on every call (~1.4 µs on the reference machine), which is two
+   * thousand times the pool operation it was supposed to frame — measured inside the benchmark it
+   * timed the reflection, not the pool, and its drift was attributed to the pool.
+   */
+  private java.lang.reflect.Method poolMethod;
+
   @Setup
   public void setup() {
     samplingController = SamplingController.getInstance();
     samplingController.setSamplingRate(1);
+    poolMethod = String.class.getMethods()[0];
   }
 
   // --- SamplingController ---
@@ -75,11 +84,10 @@ public class CoreComponentBenchmark {
   @Benchmark
   public Object pool_acquireRelease() {
     Object target = "target";
-    java.lang.reflect.Method method = String.class.getMethods()[0];
-    MethodInvocationPool.acquire(String.class, "toString", method, target, new Object[0]);
+    MethodInvocationPool.acquire(String.class, "toString", poolMethod, target, new Object[0]);
     // Simulate use
     com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation inv =
-        MethodInvocationPool.acquire(String.class, "toString", method, target, new Object[0]);
+        MethodInvocationPool.acquire(String.class, "toString", poolMethod, target, new Object[0]);
     MethodInvocationPool.release(inv);
     return inv;
   }

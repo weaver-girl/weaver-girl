@@ -88,7 +88,10 @@ class ArgumentRewriteIsolationTest {
       Object result =
           InterceptAdvice.onMethodEnter(
               Sample.class, method, new Sample(), new Object[] {"world"});
-      assertNull(result, "no STANDARD interceptor matched, so the method must proceed");
+      assertSame(
+          InterceptAdvice.NOTHING,
+          result,
+          "no STANDARD interceptor matched, so the method must proceed and exit has nothing to do");
       assertEquals(
           0,
           rewriteCalls.get(),

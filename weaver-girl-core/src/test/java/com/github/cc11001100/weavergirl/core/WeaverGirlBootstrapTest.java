@@ -230,24 +230,31 @@ class WeaverGirlBootstrapTest {
 
   @Test
   void applyCoreConfigCoversSamplingAndEmergencySwitches() {
-    // Null is a no-op.
-    assertDoesNotThrow(() -> WeaverGirl.applyCoreConfig(null));
+    try {
+      // Null is a no-op.
+      assertDoesNotThrow(() -> WeaverGirl.applyCoreConfig(null));
 
-    Map<String, String> valid = new HashMap<String, String>();
-    valid.put("weavergirl.emergency.disable", "true");
-    valid.put("samplingRate", "10");
-    valid.put("samplingMaxRate", "1000");
-    valid.put("samplingThreshold", "500");
-    valid.put("circuitBreakerThreshold", "5");
-    valid.put("circuitBreakerCooldownMs", "30000");
-    assertDoesNotThrow(() -> WeaverGirl.applyCoreConfig(valid));
+      Map<String, String> valid = new HashMap<String, String>();
+      valid.put("weavergirl.emergency.disable", "true");
+      valid.put("samplingRate", "10");
+      valid.put("samplingMaxRate", "1000");
+      valid.put("samplingThreshold", "500");
+      valid.put("circuitBreakerThreshold", "5");
+      valid.put("circuitBreakerCooldownMs", "30000");
+      assertDoesNotThrow(() -> WeaverGirl.applyCoreConfig(valid));
 
-    // Unparseable numbers are warned about and ignored, not thrown.
-    Map<String, String> invalid = new HashMap<String, String>();
-    invalid.put("samplingRate", "fast");
-    invalid.put("samplingMaxRate", "lots");
-    invalid.put("samplingThreshold", "soon");
-    assertDoesNotThrow(() -> WeaverGirl.applyCoreConfig(invalid));
+      // Unparseable numbers are warned about and ignored, not thrown.
+      Map<String, String> invalid = new HashMap<String, String>();
+      invalid.put("samplingRate", "fast");
+      invalid.put("samplingMaxRate", "lots");
+      invalid.put("samplingThreshold", "soon");
+      assertDoesNotThrow(() -> WeaverGirl.applyCoreConfig(invalid));
+    } finally {
+      // Applied config is process-wide: emergency.disable turns the global interception
+      // kill-switch off and caps sampling for the rest of the fork, which silently breaks
+      // every later weaving test. Put the singletons back.
+      com.github.cc11001100.weavergirl.core.testsupport.ProcessWideState.restore();
+    }
   }
 
   /** A jar holding one minimal plugin, so loading and then removing it counts as a directory change. */

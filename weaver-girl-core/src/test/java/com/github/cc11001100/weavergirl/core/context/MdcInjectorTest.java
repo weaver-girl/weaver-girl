@@ -48,14 +48,26 @@ class MdcInjectorTest {
 
     MdcInjector.restore(snapshot);
 
-    // After restore, MDC is replaced with the exact state captured at snapshot time.
-    assertEquals("existingValue", MDC.get("existingKey"));
-    // Bridge keys are not re-applied on restore; they were only active during inject().
+    // The bridge keys are restored to their pre-injection state (absent here).
     assertNull(MDC.get("traceId"));
     assertNull(MDC.get("spanId"));
     assertNull(MDC.get("tenantId"));
-    // Temp keys added during this method should not survive restore.
-    assertNull(MDC.get("tempKey"));
+    // Only the bridge keys are scoped: unrelated entries the method added are left alone.
+    assertEquals("existingValue", MDC.get("existingKey"));
+    assertEquals("tempValue", MDC.get("tempKey"));
+  }
+
+  /** A bridge key that already had a value is put back, not just removed. */
+  @Test
+  void restore_putsBackThePreviousBridgeValue() {
+    MDC.put("traceId", "outer-trace");
+    ThreadContext.put("traceId", "inner-trace");
+
+    MdcInjector.MdcSnapshot snapshot = MdcInjector.inject();
+    assertEquals("inner-trace", MDC.get("traceId"), "inject must apply the ThreadContext value");
+
+    MdcInjector.restore(snapshot);
+    assertEquals("outer-trace", MDC.get("traceId"), "restore must put the previous value back");
   }
 
   @Test
