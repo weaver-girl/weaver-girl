@@ -372,3 +372,11 @@ cd weaver-girl.github.io && npm ci && npm run dev   # local preview
 ## License
 
 MIT License — see [LICENSE](LICENSE) for details.
+
+## Contact
+
+Use the [GitHub issues](https://github.com/weaver-girl/weaver-girl/issues) for bugs in the
+repository itself. For a custom plugin, help taking the base to a product, or hands-on
+troubleshooting, the maintainer's WeChat is **CC11001100-weixin**, and the QR code is on the
+[contact section of the site](https://weaver-girl.github.io/#contact).
+
