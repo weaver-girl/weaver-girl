@@ -75,10 +75,12 @@ coordinates, no account, no credentials, no upload step.
 and `com.github.weaver-girl` — **not** `io.github.cc11001100`. Two sets of coordinates for the
 same artifact is a decision to make deliberately, not something to end up with by accident.
 
-**Why it is not the destination:** JitPack is third-party infrastructure with no SLA, builds
-happen lazily on first request (a consumer's first build can wait minutes, or fail), and the
-artifact it produces is built from a git ref rather than from a signed release that passed the
-gate. It is a good answer to "make it resolvable today".
+**Why it is not the destination:** JitPack is third-party infrastructure with no SLA, and a
+build happens lazily on first request. Measured here: resolving a commit JitPack had never
+built took **2m16s** from a cold local repository (most of it JitPack building the reactor),
+against seconds once it is cached. The artifact is also built from a git ref rather than from
+the signed release that passed this repository's gate. It is a good answer to "make it
+resolvable today", not a place for a project's canonical coordinates.
 
 ## A GitHub repository as a Maven repository
 
