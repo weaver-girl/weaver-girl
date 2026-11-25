@@ -1,0 +1,25 @@
+# JitPack builds this repository on demand from a git ref. Two defaults have to be
+# overridden for that to work:
+#
+#   * the JDK. JitPack's default is 8, and this build's verify phase runs
+#     spotbugs-maven-plugin, which declares "Required Java version 11". The very first
+#     JitPack build of v1.0.0 failed on exactly that:
+#     "The plugin com.github.spotbugs:spotbugs-maven-plugin has unmet prerequisites:
+#     Required Java version 11 is not met by current version: 1.8.0_292".
+#
+#   * the command. The plain `mvn install` JitPack runs would execute the verify-phase
+#     quality gate (JaCoCo coverage floor, SpotBugs at max effort, Checkstyle) over a
+#     reactor of 115+ modules. That is several minutes of work JitPack's build budget
+#     is not meant to absorb, and the gate already runs in this repository's own CI on
+#     every push to main. JitPack only needs the jars and poms.
+#
+# What this does NOT do: publish to Maven Central. JitPack coordinates are
+# com.github.<owner>:<repo> (and com.github.<owner>.<repo>:<module> for the modules),
+# which are different from the io.github.cc11001100 coordinates this POM declares, so
+# JitPack artifacts are a convenience, not a replacement for Central.
+#
+# See CHANGELOG.md and RELEASE_PROCEDURE.md for the position on publishing.
+jdk:
+  - openjdk17
+install:
+  - ./mvnw -B -DskipTests -Djacoco.skip=true -Dcheckstyle.skip=true -Dspotbugs.skip=true install
