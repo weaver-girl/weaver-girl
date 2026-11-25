@@ -15,10 +15,45 @@ built on top. If you want a complete APM platform today, use SkyWalking or
 OpenTelemetry plus a backend. If you are building your own product on a stable
 hook layer, this is the base. See [`docs/positioning.md`](docs/positioning.md).
 
-> **Status:** pre-1.0. The first release is being prepared; artifacts publish to
-> Maven Central when `v1.0.0` is tagged. Versioning and compatibility are
-> documented in
+> **Status:** 1.0.0 is released on GitHub. The Maven Central deployment is prepared but not
+> live: the release workflow's `maven-central` job was skipped because the `CENTRAL_*` secrets
+> are not configured yet. Until it is, resolve the artifacts from JitPack (below).
+> Versioning and compatibility are documented in
 > [`docs/versioning-and-compatibility.md`](docs/versioning-and-compatibility.md).
+
+## Dependency
+
+**Maven Central** — the intended coordinates, live once the `maven-central` job has run:
+
+```xml
+<dependency>
+  <groupId>io.github.cc11001100</groupId>
+  <artifactId>weaver-girl-api</artifactId>
+  <version>1.0.0</version>
+</dependency>
+```
+
+**JitPack** — available now, no credentials. The group id differs; this is the same artifact:
+
+```xml
+<repositories>
+  <repository>
+    <id>jitpack</id>
+    <url>https://jitpack.io</url>
+  </repository>
+</repositories>
+<dependencies>
+  <dependency>
+    <groupId>com.github.weaver-girl.weaver-girl</groupId>
+    <artifactId>weaver-girl-api</artifactId>
+    <version>v1.0.0</version>   <!-- or main-SNAPSHOT to follow main -->
+  </dependency>
+</dependencies>
+```
+
+Both were verified against `v1.0.0`; [`docs/publishing.md`](docs/publishing.md) records the
+measurements, and why GitHub Packages is not one of the options.
+
 
 ## Quick Start (30 seconds)
 

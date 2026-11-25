@@ -31,6 +31,9 @@ comes after those:
 - [ ] Central Publishing credentials and GPG key configured as repository secrets
 - [x] `v1.0.0` tag pushed and the GitHub Release published (`2026-11-24`, six signed assets)
 - [ ] Maven Central deployment published (the release job runs it only when `CENTRAL_*` secrets exist)
+- [x] Artifacts resolvable meanwhile: JitPack builds `v1.0.0` and `main` and serves them as
+      `com.github.weaver-girl.weaver-girl` (`2026-11-25`); the three publishing options are
+      measured in [`docs/publishing.md`](docs/publishing.md)
 - [x] Seed “good first issue” issues and apply labels ([#43](https://github.com/weaver-girl/weaver-girl/issues/43)–[#46](https://github.com/weaver-girl/weaver-girl/issues/46))
 - [ ] Launch post, demo recording and a short “what it is / is not” explainer
 - [ ] `weaver-girl-examples` repository created from released artifacts (after 1.0.0);
