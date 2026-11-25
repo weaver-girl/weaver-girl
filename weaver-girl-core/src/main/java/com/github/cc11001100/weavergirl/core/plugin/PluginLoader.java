@@ -862,8 +862,16 @@ public class PluginLoader {
           List<Future<?>> futures = new ArrayList<>();
           for (WeaverPlugin plugin : levelPlugins) {
             futures.add(executor.submit(() -> {
-              loadPluginSync(plugin, registry, config, perPluginMs);
-              latch.countDown();
+              // The countdown has to release the waiting loader even when the plugin load dies. A
+              // throwable that escapes here — an Error a plugin raised, or one the event bus raised
+              // while a lifecycle event was being published — otherwise leaves `latch.await()` on the
+              // calling thread waiting for a count that never comes, which hangs agent startup
+              // instead of reporting the failure.
+              try {
+                loadPluginSync(plugin, registry, config, perPluginMs);
+              } finally {
+                latch.countDown();
+              }
             }));
           }
           latch.await();

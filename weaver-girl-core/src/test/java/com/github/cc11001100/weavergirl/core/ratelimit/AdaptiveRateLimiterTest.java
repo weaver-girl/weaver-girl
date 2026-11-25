@@ -256,14 +256,20 @@ class AdaptiveRateLimiterTest {
   /**
    * Tokens come back as time passes. A limiter drained to nothing must allow again once a refill has
    * had time to run, which is the only way the refill itself is exercised.
+   *
+   * <p>The rate is deliberately slow. At 1,000/s the bucket refills one token per millisecond, and
+   * the second {@code tryAcquire} reads the clock again — on a loaded machine those two calls stand
+   * a millisecond apart often enough that "nothing left" was asserted against a bucket that had
+   * already refilled. At 10/s a token takes 100 ms, so the immediate call cannot see one, and the
+   * wait below is long enough that the refill is certain rather than merely likely.
    */
   @Test
   void tokensRefillAfterTheyAreSpent() throws Exception {
-    AdaptiveRateLimiter tight = new AdaptiveRateLimiter(1_000, 1, 0.8);
+    AdaptiveRateLimiter tight = new AdaptiveRateLimiter(10, 1, 0.8);
     assertTrue(tight.tryAcquire(), "the only token should be taken");
     assertFalse(tight.tryAcquire(), "nothing should be left immediately");
 
-    Thread.sleep(20);
+    Thread.sleep(150);
 
     assertTrue(tight.tryAcquire(), "a refill should have restored a token");
   }

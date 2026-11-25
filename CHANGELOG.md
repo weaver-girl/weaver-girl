@@ -4,6 +4,48 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## Unreleased — the Dependabot queue, and two failures behind it (2026-11-25)
+
+Ten Dependabot pull requests had been open since 2026-11-24, which made the repository look
+unmaintained. Every bump was applied directly on `main` and verified once against a full reactor
+rather than ten times in parallel. Nothing in them was wrong; four of the ten had simply been
+red for reasons that had nothing to do with the dependency:
+
+- **Two were Maven Central rate limiting.** `maven-jar-plugin` and `build-helper-maven-plugin`
+  failed with `status code: 429, Too Many Requests` while resolving a plugin that the change
+  never touched. Both pass on the upgraded reactor.
+- **Two were test-owned failures, not dependency failures.** The `logback-classic` and
+  `maven-dependency-plugin` runs died as
+  `There was an error in the forked process: java.lang.OutOfMemoryError: span unavailable`
+  while reporting `Tests run: 1022, Failures: 0, Errors: 0`. The OOME was a *test stand-in* — the
+  suites install a `ThreadLocal` whose `get()` throws to exercise "a lifecycle event cannot be
+  published" — and it escaped a plugin-loader thread, where surefire treats any uncaught `Error`
+  as a crashed fork no matter what the test results say.
+
+The fixes behind those two:
+
+- **`PluginLoader` released its latch from `finally`.** A parallel plugin load counted down only
+  after `loadPluginSync` returned, so anything that escaped the loader thread left `latch.await()`
+  on the calling thread waiting forever. Agent startup would hang instead of reporting the plugin
+  as failed; the test stand-in turned that into a crashed fork.
+- **`AdaptiveRateLimiterTest.tokensRefillAfterTheyAreSpent` no longer races the clock.** At
+  1,000 permits/s the bucket refills one token per millisecond, so the immediate second
+  `tryAcquire` sometimes found one. The rate is now 10/s — a token takes 100 ms, and the wait
+  after it is 150 ms, so both the "still empty" and "refilled" halves are certain.
+
+Dependency versions: Byte Buddy 1.18.17, Micrometer 1.18.0, JaCoCo 0.8.16, logback 1.6.8,
+maven-jar 3.5.1, maven-dependency 3.11.0, maven-assembly 3.8.0, exec 3.7.0,
+build-helper 3.8.0, Maven wrapper 3.10.0 to 3.10.2. The wrapper move is required, not cosmetic:
+`exec-maven-plugin` 3.7.0 refuses to run below Maven 3.9, so a bare `mvn` on 3.8 fails the
+agent's relocate step.
+
+Verified on the wrapper's 3.10.2: `clean test` green (3,819 tests), `-Pquality-gate verify`
+green across the reactor (checkstyle 0 violations), agent packaged with 140 plugin jars, and the
+packaged agent attached on JDK 8, 17 and 21 with `/health` UP, `/ready` READY, Byte Buddy still
+loaded by `AgentClassLoader`, and metrics served.
+
+---
+
 ## Unreleased — CI green again: the test-state leaks behind the red suite (2026-11-24)
 
 `main` had been red since 2026-11-22, and the failure set changed on every run: fourteen weaving
