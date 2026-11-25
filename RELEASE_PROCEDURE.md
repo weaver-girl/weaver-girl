@@ -13,6 +13,8 @@ not be hostage to a publishing account you may not have set up yet.
 
 ## Prerequisites (one-time repo setup)
 
+> First time publishing to Central? [`docs/publishing-to-central-tutorial.md`](docs/publishing-to-central-tutorial.md) walks through these prerequisites step by step, including the namespace verification, the token, and how to prove the pipeline before tagging.
+
 ### 1. Verify the Maven Central namespace
 
 The artifacts use the group id `io.github.cc11001100`. Maven Central only accepts a

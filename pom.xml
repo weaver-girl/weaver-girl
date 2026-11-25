@@ -1287,7 +1287,11 @@
                         <extensions>true</extensions>
                         <configuration>
                             <publishingServerId>central</publishingServerId>
-                            <tokenAuth>true</tokenAuth>
+                            <!-- No tokenAuth element: the plugin dropped that parameter, and Maven
+                                 reports "Parameter 'tokenAuth' is unknown" on every module when it
+                                 finds one. Token authentication is what the plugin does when the
+                                 server named above has any credentials, which is what the
+                                 release workflow supplies. -->
                             <!-- Publish as soon as the deployment validates, so the GitHub
                                  Release the workflow creates right afterwards points at coordinates
                                  that actually resolve. Leave waitUntil at VALIDATED so a

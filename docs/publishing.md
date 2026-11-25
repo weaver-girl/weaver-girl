@@ -118,6 +118,9 @@ controls and JitPack's third-party dependency is unacceptable. That is not the c
 
 ## Recommended sequence
 
+0. **First time doing this?** [`publishing-to-central-tutorial.md`](publishing-to-central-tutorial.md)
+   is the step-by-step walkthrough for the account side (namespace, token, secrets) and for
+   proving the pipeline before a tag.
 1. **Verify the Central namespace and set the four secrets.** This is the only remaining step
    for the destination; the workflow is already written and already skipped for exactly this
    reason. Re-cutting `v1.0.0` then publishes the real coordinates.
