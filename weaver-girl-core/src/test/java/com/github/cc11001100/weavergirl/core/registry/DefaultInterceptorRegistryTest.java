@@ -751,6 +751,47 @@ class DefaultInterceptorRegistryTest {
     assertEquals("annotation-LoggingAspect-execute", result.get(1).getName());
   }
 
+  /**
+   * A thread whose context class loader cannot see application classes must not lose precedence
+   * ordering. The resolver tries the engine's own and the system loader after the context one, so
+   * a leaked or restricted TCCL (a test harness, a child-first loader) no longer makes
+   * {@code @DeclarePrecedence} silently fall back to registration order.
+   */
+  @Test
+  void annotationLoader_declarePrecedenceSurvivesARestrictedContextLoader() {
+    com.github.cc11001100.weavergirl.core.plugin.AnnotationPluginLoader loader =
+        new com.github.cc11001100.weavergirl.core.plugin.AnnotationPluginLoader();
+    ClassLoader restricted =
+        new ClassLoader(DefaultInterceptorRegistryTest.class.getClassLoader()) {
+          @Override
+          protected Class<?> loadClass(String name, boolean resolve) throws ClassNotFoundException {
+            // Hide every application class, like a loader that only exposes the JDK.
+            if (!name.startsWith("java.")) {
+              throw new ClassNotFoundException(name);
+            }
+            return super.loadClass(name, resolve);
+          }
+        };
+    Thread thread = Thread.currentThread();
+    ClassLoader previous = thread.getContextClassLoader();
+    thread.setContextClassLoader(restricted);
+    try {
+      java.util.Set<Class<?>> aspects = new java.util.LinkedHashSet<>();
+      aspects.add(LoggingAspect.class);
+      aspects.add(SecurityAspect.class);
+      aspects.add(OrderingConfig.class);
+      loader.loadAnnotatedInterceptors(aspects, registry);
+
+      List<InterceptorDefinition> result =
+          registry.getInterceptorsForClass("com.example.GuardedService");
+      assertEquals(2, result.size());
+      assertEquals("annotation-SecurityAspect-execute", result.get(0).getName());
+      assertEquals("annotation-LoggingAspect-execute", result.get(1).getName());
+    } finally {
+      thread.setContextClassLoader(previous);
+    }
+  }
+
   @Test
   void annotationLoader_definitionAspectClassName_isFullyQualified() {
     com.github.cc11001100.weavergirl.core.plugin.AnnotationPluginLoader loader =

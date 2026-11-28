@@ -113,8 +113,10 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
       return cached;
     }
     try {
-      Class<?> aspectClass =
-          Class.forName(aspectName, false, Thread.currentThread().getContextClassLoader());
+      Class<?> aspectClass = tryLoad(aspectName);
+      if (aspectClass == null) {
+        throw new IllegalStateException("Cannot resolve class " + aspectName);
+      }
       DeclarePrecedence declarePrecedence = aspectClass.getAnnotation(DeclarePrecedence.class);
       if (declarePrecedence == null) {
         aspectPrecedence.put(aspectName, new String[0]);
@@ -160,6 +162,12 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
     if (!precedenceDirty) {
       return;
     }
+    // The aspect name declared by @DeclarePrecedence is resolved to a class only to read the
+    // annotation; the actual ordering must be recorded under the definition's own aspect class
+    // name, which is what the lookup in getInterceptorsForClass and the dispatch cache read. A
+    // dotted nested-class spelling (Repro.Aspect) never equals Class.getName() (Repro$Aspect),
+    // and after the dots-to-dollars walk the resolved name no longer matches the definition
+    // string either, so both forms are mapped below.
     Map<String, Integer> newMap = new LinkedHashMap<>();
     for (InterceptorDefinition def : definitions) {
       String aspectName = def.getAspectClassName();
@@ -172,14 +180,21 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
       }
       for (int i = 0; i < ordered.length; i++) {
         String name = ordered[i];
-        if (name.isEmpty() || newMap.containsKey(name)) {
+        if (name.isEmpty()) {
           continue;
         }
-        newMap.put(name, i);
+        newMap.putIfAbsent(name, i);
         // Nested classes are written with dots in source and dollars in Class.getName().
         Class<?> resolved = resolveAspectClass(name);
         if (resolved != null) {
           newMap.putIfAbsent(resolved.getName(), i);
+        }
+        // The definition carries its aspect class's own getName() spelling; give it the same
+        // index so a dotted declaration still orders the definition it names.
+        if (def.getAspectClassName() != null
+            && (name.equals(def.getAspectClassName())
+                || (resolved != null && resolved.getName().equals(def.getAspectClassName())))) {
+          newMap.put(def.getAspectClassName(), i);
         }
       }
     }
@@ -193,20 +208,81 @@ public class DefaultInterceptorRegistry implements InterceptorRegistry {
    * {@code $}. Walk the dots from the right until the class loads.
    */
   private static Class<?> resolveAspectClass(String name) {
-    ClassLoader loader = Thread.currentThread().getContextClassLoader();
-    String candidate = name;
-    while (candidate != null) {
-      try {
-        return Class.forName(candidate, false, loader);
-      } catch (Throwable ignored) {
-        int dot = candidate.lastIndexOf('.');
-        if (dot < 0) {
-          return null;
+    Class<?> direct = tryLoad(name);
+    if (direct != null) {
+      return direct;
+    }
+    // A nested class written in source form (Outer.Middle.Inner) uses dots where the binary name
+    // uses dollars. Rewriting only the last dot handles one level; try every dot in the suffix so
+    // a two-level nest resolves too. The outermost class always uses dots (it is a package).
+    int firstDollarlessDot = name.lastIndexOf('.');
+    while (firstDollarlessDot >= 0) {
+      String prefix = name.substring(0, firstDollarlessDot);
+      String nested = name.substring(firstDollarlessDot + 1);
+      // Every combination of '.' -> '$' within the nested suffix.
+      Class<?> resolved = tryNestedCombinations(prefix, nested);
+      if (resolved != null) {
+        return resolved;
+      }
+      firstDollarlessDot = prefix.lastIndexOf('.');
+    }
+    return null;
+  }
+
+  private static Class<?> tryNestedCombinations(String prefix, String nested) {
+    int dots = (int) nested.chars().filter(c -> c == '.').count();
+    if (dots > 8) {
+      return null; // pathological; a nest this deep is not a real class reference
+    }
+    for (int mask = 0; mask < (1 << dots); mask++) {
+      StringBuilder candidate = new StringBuilder(prefix).append('$');
+      int bit = 0;
+      for (int i = 0; i < nested.length(); i++) {
+        char c = nested.charAt(i);
+        if (c == '.') {
+          candidate.append(((mask >> bit++) & 1) == 1 ? '$' : '.');
+        } else {
+          candidate.append(c);
         }
-        candidate = candidate.substring(0, dot) + '$' + candidate.substring(dot + 1);
+      }
+      Class<?> resolved = tryLoad(candidate.toString());
+      if (resolved != null) {
+        return resolved;
       }
     }
     return null;
+  }
+
+  /**
+   * Resolve a class by name for precedence bookkeeping.
+   *
+   * <p>The thread context class loader alone is not enough: a thread that once ran with a
+   * restricted or child-first loader pinned as its context loader leaves later resolutions
+   * unable to see application classes, and {@code @DeclarePrecedence} then silently falls back
+   * to registration order. Try the context loader first (the normal case, and the one that keeps
+   * plugin-private classes visible), then the loader that defined this engine, then the system
+   * loader. Only when every one of them fails does the caller treat the class as unresolvable.
+   *
+   * @param name the fully-qualified binary name
+   * @return the class, or {@code null} when no loader can see it
+   */
+  private static Class<?> tryLoad(String name) {
+    for (ClassLoader loader : resolutionLoaders()) {
+      try {
+        return Class.forName(name, false, loader);
+      } catch (Throwable ignored) {
+        // Try the next loader; null means the bootstrap loader, which is only consulted once.
+      }
+    }
+    return null;
+  }
+
+  private static ClassLoader[] resolutionLoaders() {
+    ClassLoader context = Thread.currentThread().getContextClassLoader();
+    ClassLoader engine = DefaultInterceptorRegistry.class.getClassLoader();
+    ClassLoader system = ClassLoader.getSystemClassLoader();
+    // Null (the bootstrap loader) is appended last as a final attempt for JDK types.
+    return new ClassLoader[] {context, engine, system, null};
   }
 
   /**
