@@ -1,17 +1,18 @@
 package com.github.cc11001100.weavergirl.plugins.spring;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
-import java.util.ArrayList;
+import com.github.cc11001100.weavergirl.testkit.RecordingInterceptorRegistry;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class SpringPluginTest {
 
@@ -148,32 +149,11 @@ class SpringPluginTest {
   }
 
   /** Helper to register interceptors and collect the definitions. */
+  /** Registers the plugin's interceptors and returns what it declared, for assertions. */
   private List<InterceptorDefinition> registerAndCollect() {
-    List<InterceptorDefinition> defs = new ArrayList<>();
-    InterceptorRegistry registry =
-        new InterceptorRegistry() {
-          @Override
-          public void register(InterceptorDefinition definition) {
-            defs.add(definition);
-          }
-
-          @Override
-          public boolean unregister(String name) {
-            return false;
-          }
-
-          @Override
-          public List<InterceptorDefinition> getInterceptorsForClass(String className) {
-            return defs;
-          }
-
-          @Override
-          public List<InterceptorDefinition> getAllDefinitions() {
-            return defs;
-          }
-        };
+    RecordingInterceptorRegistry registry = new RecordingInterceptorRegistry();
     plugin.registerInterceptors(registry);
-    return defs;
+    return registry.getAllDefinitions();
   }
 
   /** Simple test PluginContext backed by a map. */

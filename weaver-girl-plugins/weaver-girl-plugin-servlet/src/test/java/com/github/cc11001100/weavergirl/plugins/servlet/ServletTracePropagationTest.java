@@ -1,14 +1,15 @@
 package com.github.cc11001100.weavergirl.plugins.servlet;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import com.github.cc11001100.weavergirl.api.tracing.SpanContext;
 import com.github.cc11001100.weavergirl.api.tracing.Tracer;
-import java.util.HashMap;
-import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for cross-service HTTP trace context propagation in the servlet plugin.

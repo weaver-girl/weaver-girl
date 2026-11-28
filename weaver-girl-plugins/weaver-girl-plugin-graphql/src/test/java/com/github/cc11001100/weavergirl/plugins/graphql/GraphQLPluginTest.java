@@ -1,20 +1,20 @@
 package com.github.cc11001100.weavergirl.plugins.graphql;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.matcher.ClassMatcher.MatchType;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
-import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
-import java.util.ArrayList;
+import com.github.cc11001100.weavergirl.testkit.RecordingInterceptorRegistry;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GraphQLPluginTest {
 
@@ -71,59 +71,14 @@ class GraphQLPluginTest {
     assertDoesNotThrow(() -> def.getInterceptor().onException(failing));
   }
 
+  /** Registers the plugin's interceptors and returns what it declared, for assertions. */
   private List<InterceptorDefinition> registerAndCollect() {
-    List<InterceptorDefinition> defs = new ArrayList<>();
-    plugin.registerInterceptors(
-        new InterceptorRegistry() {
-          @Override
-          public void register(InterceptorDefinition definition) {
-            defs.add(definition);
-          }
-
-          @Override
-          public boolean unregister(String name) {
-            return false;
-          }
-
-          @Override
-          public List<InterceptorDefinition> getInterceptorsForClass(String className) {
-            return defs;
-          }
-
-          @Override
-          public List<InterceptorDefinition> getAllDefinitions() {
-            return defs;
-          }
-        });
-    return defs;
+    RecordingInterceptorRegistry registry = new RecordingInterceptorRegistry();
+    plugin.registerInterceptors(registry);
+    return registry.getAllDefinitions();
   }
 
   private static PluginContext context(Map<String, String> config) {
-    return new PluginContext() {
-      @Override
-      public InterceptorRegistry getRegistry() {
-        return null;
-      }
-
-      @Override
-      public String getConfig(String key) {
-        return config.get(key);
-      }
-
-      @Override
-      public String getConfig(String key, String defaultValue) {
-        return config.getOrDefault(key, defaultValue);
-      }
-
-      @Override
-      public Map<String, String> getAllConfig() {
-        return config;
-      }
-
-      @Override
-      public String getPluginName() {
-        return "graphql";
-      }
-    };
+    return RecordingInterceptorRegistry.context("graphql", config);
   }
 }

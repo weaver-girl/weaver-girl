@@ -27,6 +27,12 @@
             <artifactId>weaver-girl-api</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.github.cc11001100</groupId>
+            <artifactId>weaver-girl-testkit</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>

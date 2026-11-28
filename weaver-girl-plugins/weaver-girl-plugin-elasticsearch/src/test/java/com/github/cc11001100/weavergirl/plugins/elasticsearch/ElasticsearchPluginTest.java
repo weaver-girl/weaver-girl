@@ -1,18 +1,19 @@
 package com.github.cc11001100.weavergirl.plugins.elasticsearch;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 class ElasticsearchPluginTest {
 

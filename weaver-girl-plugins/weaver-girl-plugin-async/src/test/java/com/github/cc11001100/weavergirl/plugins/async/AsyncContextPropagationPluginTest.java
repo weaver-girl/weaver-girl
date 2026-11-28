@@ -1,7 +1,5 @@
 package com.github.cc11001100.weavergirl.plugins.async;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import com.github.cc11001100.weavergirl.api.context.ContextCallable;
 import com.github.cc11001100.weavergirl.api.context.ContextRunnable;
 import com.github.cc11001100.weavergirl.api.context.ThreadContext;
@@ -10,6 +8,10 @@ import com.github.cc11001100.weavergirl.api.interceptor.InterceptorDefinition;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
 import com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -18,9 +20,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicReference;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Unit tests for {@link AsyncContextPropagationPlugin}.
