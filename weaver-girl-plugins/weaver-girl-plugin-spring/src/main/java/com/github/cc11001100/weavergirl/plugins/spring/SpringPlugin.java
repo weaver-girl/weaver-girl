@@ -3,6 +3,7 @@ package com.github.cc11001100.weavergirl.plugins.spring;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
 import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
+import com.github.cc11001100.weavergirl.api.interceptor.TimingInterceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
@@ -88,82 +89,33 @@ public class SpringPlugin extends AbstractPlugin {
       com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry registry) {
     if (!enabled) return;
 
-    Interceptor springInterceptor =
-        new Interceptor() {
-          private final ThreadLocal<Long> startTime = new ThreadLocal<>();
+    // TimingInterceptor owns the clock, threshold and event shape. The slow/error callbacks keep
+    // this plugin's own log lines (and the argument logging the plugin does in before()).
+    TimingInterceptor springInterceptor =
+        TimingInterceptor.builder("spring", "slow-spring", "spring-error", slowThresholdMs)
+            .slowLog(
+                (inv, elapsedMs) -> {
+                  log.warn(
+                      "[SLOW-SPRING] {}.{} took {}ms (threshold: {}ms)",
+                      inv.getTargetClass().getSimpleName(),
+                      inv.getMethodName(),
+                      elapsedMs,
+                      slowThresholdMs);
+                  if (logArguments && log.isDebugEnabled()) {
+                    log.debug("[SPRING] arguments {}", describeArguments(inv));
+                  }
+                })
+            .errorLog(
+                (inv, thrown) ->
+                    log.warn(
+                        "[SPRING-ERROR] {}.{} threw: {}",
+                        inv.getTargetClass().getSimpleName(),
+                        inv.getMethodName(),
+                        thrown != null ? thrown.getMessage() : "unknown"))
+            .build();
 
-          @Override
-          public void before(MethodInvocation inv) {
-            startTime.set(System.nanoTime());
-            if (logArguments && log.isDebugEnabled()) {
-              StringBuilder args = new StringBuilder();
-              Object[] methodArgs = inv.getArguments();
-              if (methodArgs != null) {
-                for (int i = 0; i < methodArgs.length; i++) {
-                  if (i > 0) args.append(", ");
-                  args.append(methodArgs[i] != null ? methodArgs[i].toString() : "null");
-                }
-              }
-              log.debug(
-                  "[SPRING] {}.{}({})",
-                  inv.getTargetClass().getSimpleName(),
-                  inv.getMethodName(),
-                  args);
-            }
-          }
-
-          @Override
-          public void after(MethodInvocation inv) {
-            Long start = startTime.get();
-            startTime.remove();
-            if (start != null) {
-              long elapsedMs = (System.nanoTime() - start) / 1_000_000;
-              if (elapsedMs >= slowThresholdMs) {
-                log.warn(
-                    "[SLOW-SPRING] {}.{} took {}ms (threshold: {}ms)",
-                    inv.getTargetClass().getSimpleName(),
-                    inv.getMethodName(),
-                    elapsedMs,
-                    slowThresholdMs);
-                InterceptorEventPublisher.getInstance()
-                    .publish(
-                        InterceptorEvent.builder()
-                            .type("slow-spring")
-                            .plugin("spring")
-                            .className(inv.getTargetClass().getSimpleName())
-                            .methodName(inv.getMethodName())
-                            .durationMs(elapsedMs)
-                            .build());
-              } else if (log.isDebugEnabled()) {
-                log.debug(
-                    "[SPRING] {}.{} took {}ms",
-                    inv.getTargetClass().getSimpleName(),
-                    inv.getMethodName(),
-                    elapsedMs);
-              }
-            }
-          }
-
-          @Override
-          public void onException(MethodInvocation inv) {
-            startTime.remove();
-            log.warn(
-                "[SPRING-ERROR] {}.{} threw: {}",
-                inv.getTargetClass().getSimpleName(),
-                inv.getMethodName(),
-                inv.getThrowable().getMessage());
-            InterceptorEventPublisher.getInstance()
-                .publish(
-                    InterceptorEvent.builder()
-                        .type("spring-error")
-                        .plugin("spring")
-                        .className(inv.getTargetClass().getSimpleName())
-                        .methodName(inv.getMethodName())
-                        .attribute("error", inv.getThrowable().getMessage())
-                        .build());
-          }
-        };
-
+    // Argument logging used to run inside before(); decorators keep that behaviour after the
+    // timing interceptor records its start time.
     // Strategy 1: Intercept handler methods on @Controller/@RestController classes
     // Only intercept methods with @RequestMapping, @GetMapping, etc.
     for (String classAnnotation : CONTROLLER_ANNOTATIONS) {
@@ -171,7 +123,7 @@ public class SpringPlugin extends AbstractPlugin {
         registry.register(
             interceptAnnotated(classAnnotation)
                 .methodAnnotated(methodAnnotation)
-                .around(inv -> springInterceptor.before(inv), inv -> springInterceptor.after(inv))
+                .around(springInterceptor::before, springInterceptor::after)
                 .priority(10)
                 .build());
       }
@@ -184,9 +136,22 @@ public class SpringPlugin extends AbstractPlugin {
           interceptAnnotated(annotation)
               .methodPattern(
                   "^(?!toString$|hashCode$|equals$|getClass$|notify$|notifyAll$|wait$|clone$|finalize$).+")
-              .around(inv -> springInterceptor.before(inv), inv -> springInterceptor.after(inv))
+              .around(springInterceptor::before, springInterceptor::after)
               .priority(20)
               .build());
     }
+  }
+
+  /** Renders the invocation's arguments for the {@code logArguments} debug line. */
+  private static String describeArguments(MethodInvocation inv) {
+    StringBuilder args = new StringBuilder();
+    Object[] methodArgs = inv.getArguments();
+    if (methodArgs != null) {
+      for (int i = 0; i < methodArgs.length; i++) {
+        if (i > 0) args.append(", ");
+        args.append(methodArgs[i] != null ? methodArgs[i].toString() : "null");
+      }
+    }
+    return args.toString();
   }
 }

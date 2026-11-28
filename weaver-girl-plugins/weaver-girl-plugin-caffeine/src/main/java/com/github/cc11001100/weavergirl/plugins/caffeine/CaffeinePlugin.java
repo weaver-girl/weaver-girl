@@ -1,8 +1,7 @@
 package com.github.cc11001100.weavergirl.plugins.caffeine;
 
-import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
-import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
+import com.github.cc11001100.weavergirl.api.interceptor.TimingInterceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
@@ -78,57 +77,21 @@ public class CaffeinePlugin extends AbstractPlugin {
   }
 
   private Interceptor timingInterceptor() {
-    return new Interceptor() {
-      private final ThreadLocal<Long> startTime = new ThreadLocal<>();
-
-      @Override
-      public void before(MethodInvocation inv) {
-        startTime.set(System.nanoTime());
-      }
-
-      @Override
-      public void after(MethodInvocation inv) {
-        Long start = startTime.get();
-        startTime.remove();
-        if (start == null) return;
-        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
-        if (elapsedMs >= slowLoadThresholdMs) {
-          log.warn(
-              "[SLOW-CAFFEINE] {}.{} took {}ms",
-              inv.getTargetClass().getSimpleName(),
-              inv.getMethodName(),
-              elapsedMs);
-          InterceptorEventPublisher.getInstance()
-              .publish(
-                  InterceptorEvent.builder()
-                      .type("slow-caffeine")
-                      .plugin(name())
-                      .className(inv.getTargetClass().getSimpleName())
-                      .methodName(inv.getMethodName())
-                      .durationMs(elapsedMs)
-                      .build());
-        }
-      }
-
-      @Override
-      public void onException(MethodInvocation inv) {
-        startTime.remove();
-        Throwable thrown = inv.getThrowable();
-        log.warn(
-            "[CAFFEINE-ERROR] {}.{} threw: {}",
-            inv.getTargetClass().getSimpleName(),
-            inv.getMethodName(),
-            thrown != null ? thrown.getMessage() : "unknown");
-        InterceptorEventPublisher.getInstance()
-            .publish(
-                InterceptorEvent.builder()
-                    .type("caffeine-error")
-                    .plugin(name())
-                    .className(inv.getTargetClass().getSimpleName())
-                    .methodName(inv.getMethodName())
-                    .attribute("error", thrown != null ? thrown.getMessage() : "")
-                    .build());
-      }
-    };
+    return TimingInterceptor.builder(name(), "slow-caffeine", "caffeine-error", slowLoadThresholdMs)
+        .slowLog(
+            (inv, elapsedMs) ->
+                log.warn(
+                    "[SLOW-CAFFEINE] {}.{} took {}ms",
+                    inv.getTargetClass().getSimpleName(),
+                    inv.getMethodName(),
+                    elapsedMs))
+        .errorLog(
+            (inv, thrown) ->
+                log.warn(
+                    "[CAFFEINE-ERROR] {}.{} threw: {}",
+                    inv.getTargetClass().getSimpleName(),
+                    inv.getMethodName(),
+                    thrown != null ? thrown.getMessage() : "unknown"))
+        .build();
   }
 }

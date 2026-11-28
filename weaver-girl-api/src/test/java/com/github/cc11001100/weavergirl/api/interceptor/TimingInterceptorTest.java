@@ -86,6 +86,50 @@ class TimingInterceptorTest {
     assertEquals(250, interceptor(250).getThresholdMs());
   }
 
+  @Test
+  void slowLogRunsOnceBeforeTheEventAndDoesNotSuppressIt() {
+    List<Long> logged = new ArrayList<>();
+    TimingInterceptor interceptor =
+        TimingInterceptor.builder("orders", "slow", "error", 0).slowLog((inv, ms) -> logged.add(ms)).
+            build();
+
+    interceptor.before(invocation(null));
+    interceptor.after(invocation(null));
+
+    assertEquals(1, logged.size(), "the slow callback runs once per slow call");
+    assertEquals(1, events.size(), "the callback must not swallow the event");
+  }
+
+  @Test
+  void slowLogIsNotCalledForAFAstCall() {
+    List<Long> logged = new ArrayList<>();
+    TimingInterceptor interceptor =
+        TimingInterceptor.builder("orders", "slow", "error", 60_000)
+            .slowLog((inv, ms) -> logged.add(ms))
+            .build();
+
+    interceptor.before(invocation(null));
+    interceptor.after(invocation(null));
+
+    assertTrue(logged.isEmpty());
+    assertTrue(events.isEmpty());
+  }
+
+  @Test
+  void errorLogSeesTheThrowableAndTheEventStillPublishes() {
+    List<Throwable> logged = new ArrayList<>();
+    TimingInterceptor interceptor =
+        TimingInterceptor.builder("orders", "slow", "error", 0)
+            .errorLog((inv, thrown) -> logged.add(thrown))
+            .build();
+
+    interceptor.onException(invocation(new IllegalStateException("db down")));
+
+    assertEquals(1, logged.size());
+    assertEquals("db down", logged.get(0).getMessage());
+    assertEquals(1, events.size());
+  }
+
   private static TimingInterceptor interceptor(long thresholdMs) {
     return new TimingInterceptor("orders", "slow", "error", thresholdMs);
   }

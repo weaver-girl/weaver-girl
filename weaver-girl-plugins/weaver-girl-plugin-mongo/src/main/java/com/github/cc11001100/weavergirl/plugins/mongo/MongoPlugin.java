@@ -1,8 +1,7 @@
 package com.github.cc11001100.weavergirl.plugins.mongo;
 
-import com.github.cc11001100.weavergirl.api.event.InterceptorEvent;
-import com.github.cc11001100.weavergirl.api.event.InterceptorEventPublisher;
 import com.github.cc11001100.weavergirl.api.interceptor.Interceptor;
+import com.github.cc11001100.weavergirl.api.interceptor.TimingInterceptor;
 import com.github.cc11001100.weavergirl.api.interceptor.MethodInvocation;
 import com.github.cc11001100.weavergirl.api.plugin.AbstractPlugin;
 import com.github.cc11001100.weavergirl.api.plugin.PluginContext;
@@ -60,83 +59,30 @@ public class MongoPlugin extends AbstractPlugin {
       com.github.cc11001100.weavergirl.api.registry.InterceptorRegistry registry) {
     if (!enabled) return;
 
-    // Shared interceptor for all MongoDB operations — measures execution time
-    Interceptor mongoInterceptor =
-        new Interceptor() {
-          private final ThreadLocal<Long> startTime = new ThreadLocal<>();
-
-          @Override
-          public void before(MethodInvocation inv) {
-            startTime.set(System.nanoTime());
-            if (log.isDebugEnabled()) {
-              String collectionInfo = logCollection ? extractCollectionLabel(inv) : "";
-              String docPreview = extractDocPreview(inv);
-              log.debug(
-                  "[MONGO] {}.{}{}{}",
-                  inv.getTargetClass().getSimpleName(),
-                  inv.getMethodName(),
-                  collectionInfo,
-                  docPreview != null ? " doc=" + docPreview : "");
-            }
-          }
-
-          @Override
-          public void after(MethodInvocation inv) {
-            Long start = startTime.get();
-            startTime.remove();
-            if (start != null) {
-              long elapsedMs = (System.nanoTime() - start) / 1_000_000;
-              if (elapsedMs >= slowThresholdMs) {
-                String collectionInfo = logCollection ? extractCollectionLabel(inv) : "";
-                String docPreview = extractDocPreview(inv);
-                log.warn(
-                    "[SLOW-MONGO] {}.{} took {}ms{}{}",
-                    inv.getTargetClass().getSimpleName(),
-                    inv.getMethodName(),
-                    elapsedMs,
-                    collectionInfo,
-                    docPreview != null ? " doc=" + docPreview : "");
-                InterceptorEvent.Builder eventBuilder =
-                    InterceptorEvent.builder()
-                        .type("slow-mongo")
-                        .plugin("mongo")
-                        .className(inv.getTargetClass().getSimpleName())
-                        .methodName(inv.getMethodName())
-                        .durationMs(elapsedMs)
-                        .attribute("operation", inv.getMethodName());
-                if (docPreview != null) {
-                  eventBuilder.attribute("doc", docPreview);
-                }
-                InterceptorEventPublisher.getInstance().publish(eventBuilder.build());
-              } else if (log.isDebugEnabled()) {
-                log.debug(
-                    "[MONGO] {}.{} took {}ms",
-                    inv.getTargetClass().getSimpleName(),
-                    inv.getMethodName(),
-                    elapsedMs);
-              }
-            }
-          }
-
-          @Override
-          public void onException(MethodInvocation inv) {
-            startTime.remove();
-            log.warn(
-                "[MONGO-ERROR] {}.{} threw: {}",
-                inv.getTargetClass().getSimpleName(),
-                inv.getMethodName(),
-                inv.getThrowable().getMessage());
-            InterceptorEventPublisher.getInstance()
-                .publish(
-                    InterceptorEvent.builder()
-                        .type("mongo-error")
-                        .plugin("mongo")
-                        .className(inv.getTargetClass().getSimpleName())
-                        .methodName(inv.getMethodName())
-                        .attribute("error", inv.getThrowable().getMessage())
-                        .build());
-          }
-        };
+    // Shared interceptor for all MongoDB operations. TimingInterceptor owns the clock, the
+    // threshold check and the event shape; the callbacks below keep this plugin's log lines.
+    TimingInterceptor mongoInterceptor =
+        TimingInterceptor.builder(name(), "slow-mongo", "mongo-error", slowThresholdMs)
+            .slowLog(
+                (inv, elapsedMs) -> {
+                  String collectionInfo = logCollection ? extractCollectionLabel(inv) : "";
+                  String docPreview = extractDocPreview(inv);
+                  log.warn(
+                      "[SLOW-MONGO] {}.{} took {}ms{}{}",
+                      inv.getTargetClass().getSimpleName(),
+                      inv.getMethodName(),
+                      elapsedMs,
+                      collectionInfo,
+                      docPreview != null ? " doc=" + docPreview : "");
+                })
+            .errorLog(
+                (inv, thrown) ->
+                    log.warn(
+                        "[MONGO-ERROR] {}.{} threw: {}",
+                        inv.getTargetClass().getSimpleName(),
+                        inv.getMethodName(),
+                        thrown != null ? thrown.getMessage() : "unknown"))
+            .build();
 
     // MongoClientImpl — startSession
     registry.register(
