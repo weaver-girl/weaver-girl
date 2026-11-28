@@ -242,6 +242,15 @@ public class DefaultPluginManager implements PluginManager {
   }
 
   /** Every managed plugin that goes by {@code pluginName}, in load order. */
+  /** Entries under {@code pluginName}, or an empty list after logging that the name found none. */
+  private List<PluginEntry> entriesNamedOrWarn(String pluginName, String action) {
+    List<PluginEntry> entries = entriesNamed(pluginName);
+    if (entries.isEmpty()) {
+      log.warn("[PluginManager] Plugin '{}' not found — cannot {}", pluginName, action);
+    }
+    return entries;
+  }
+
   private List<PluginEntry> entriesNamed(String pluginName) {
     List<PluginEntry> entries = new ArrayList<>();
     for (WeaverPlugin plugin : pluginLoader.getLoadedPlugins()) {
@@ -257,9 +266,8 @@ public class DefaultPluginManager implements PluginManager {
   public boolean disablePlugin(String pluginName) {
     // A name can belong to more than one plugin. Each one that can move to DISABLED does; the call
     // reports success when at least one did, and a name that matches nothing reports failure.
-    List<PluginEntry> entries = entriesNamed(pluginName);
+    List<PluginEntry> entries = entriesNamedOrWarn(pluginName, "disable");
     if (entries.isEmpty()) {
-      log.warn("[PluginManager] Plugin '{}' not found — cannot disable", pluginName);
       return false;
     }
 
@@ -274,14 +282,7 @@ public class DefaultPluginManager implements PluginManager {
           "[PluginManager] Plugin '{}' in state {} — cannot disable",
           pluginName,
           entries.get(0).state);
-      try {
-        InterceptorEventPublisher.getInstance()
-            .publish(
-                LifecycleEvents.plugin(
-                    LifecycleEvents.PHASE_DISABLE, pluginName, false, "state=" + entries.get(0).state));
-      } catch (Throwable t) {
-        log.debug("Lifecycle event publish failed: {}", t.getMessage());
-      }
+      publishLifecycle(LifecycleEvents.PHASE_DISABLE, pluginName, false, "state=" + entries.get(0).state);
       return false;
     }
 
@@ -307,23 +308,14 @@ public class DefaultPluginManager implements PluginManager {
         pluginName,
         movable.size(),
         removed);
-    try {
-      InterceptorEventPublisher.getInstance()
-          .publish(
-              LifecycleEvents.plugin(
-                  LifecycleEvents.PHASE_DISABLE, pluginName, true,
-                  "unregistered=" + removed));
-    } catch (Throwable t) {
-      log.debug("Lifecycle event publish failed: {}", t.getMessage());
-    }
+    publishLifecycle(LifecycleEvents.PHASE_DISABLE, pluginName, true, "unregistered=" + removed);
     return true;
   }
 
   @Override
   public boolean enablePlugin(String pluginName) {
-    List<PluginEntry> entries = entriesNamed(pluginName);
+    List<PluginEntry> entries = entriesNamedOrWarn(pluginName, "enable");
     if (entries.isEmpty()) {
-      log.warn("[PluginManager] Plugin '{}' not found — cannot enable", pluginName);
       return false;
     }
 
@@ -336,14 +328,7 @@ public class DefaultPluginManager implements PluginManager {
     if (movable.isEmpty()) {
       log.warn(
           "[PluginManager] Plugin '{}' in state {} — cannot enable", pluginName, entries.get(0).state);
-      try {
-        InterceptorEventPublisher.getInstance()
-            .publish(
-                LifecycleEvents.plugin(
-                    LifecycleEvents.PHASE_ENABLE, pluginName, false, "state=" + entries.get(0).state));
-      } catch (Throwable t) {
-        log.debug("Lifecycle event publish failed: {}", t.getMessage());
-      }
+      publishLifecycle(LifecycleEvents.PHASE_ENABLE, pluginName, false, "state=" + entries.get(0).state);
       return false;
     }
 
@@ -357,14 +342,7 @@ public class DefaultPluginManager implements PluginManager {
         entry.plugin.registerInterceptors(ownership.recording(entry.plugin, recording(names)));
       } catch (Exception e) {
         log.error("[PluginManager] Failed to enable plugin '{}': {}", pluginName, e.getMessage(), e);
-        try {
-          InterceptorEventPublisher.getInstance()
-              .publish(
-                  LifecycleEvents.plugin(
-                      LifecycleEvents.PHASE_ENABLE, pluginName, false, e.getMessage()));
-        } catch (Throwable t) {
-          log.debug("Lifecycle event publish failed: {}", t.getMessage());
-        }
+        publishLifecycle(LifecycleEvents.PHASE_ENABLE, pluginName, false, e.getMessage());
         return false;
       }
       entry.interceptorNames.clear();
@@ -384,14 +362,7 @@ public class DefaultPluginManager implements PluginManager {
         pluginName,
         movable.size(),
         registered);
-    try {
-      InterceptorEventPublisher.getInstance()
-          .publish(
-              LifecycleEvents.plugin(
-                  LifecycleEvents.PHASE_ENABLE, pluginName, true, "registered=" + registered));
-    } catch (Throwable t) {
-      log.debug("Lifecycle event publish failed: {}", t.getMessage());
-    }
+    publishLifecycle(LifecycleEvents.PHASE_ENABLE, pluginName, true, "registered=" + registered);
     return true;
   }
 
@@ -434,12 +405,7 @@ public class DefaultPluginManager implements PluginManager {
         "[PluginManager] Plugin '{}' unloaded and destroyed ({} instance(s))",
         pluginName,
         movable.size());
-    try {
-      InterceptorEventPublisher.getInstance()
-          .publish(LifecycleEvents.plugin(LifecycleEvents.PHASE_UNLOAD, pluginName, true, null));
-    } catch (Throwable t) {
-      log.debug("Lifecycle event publish failed: {}", t.getMessage());
-    }
+    publishLifecycle(LifecycleEvents.PHASE_UNLOAD, pluginName, true, null);
     return true;
   }
 
@@ -721,6 +687,19 @@ public class DefaultPluginManager implements PluginManager {
   }
 
   /** Internal tracking entry for a managed plugin. */
+  /**
+   * Publish one plugin lifecycle event. The publisher is process-wide and a listener may throw, so
+   * a failed publish is a debug note, never a reason to fail the operation that raised the event.
+   */
+  private static void publishLifecycle(String phase, String pluginName, boolean ok, String detail) {
+    try {
+      InterceptorEventPublisher.getInstance()
+          .publish(LifecycleEvents.plugin(phase, pluginName, ok, detail));
+    } catch (Throwable t) {
+      log.debug("Lifecycle event publish failed: {}", t.getMessage());
+    }
+  }
+
   private static class PluginEntry {
     final WeaverPlugin plugin;
     volatile PluginState state;
