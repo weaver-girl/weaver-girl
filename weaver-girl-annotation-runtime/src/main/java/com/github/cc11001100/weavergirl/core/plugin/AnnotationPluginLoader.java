@@ -129,278 +129,19 @@ public class AnnotationPluginLoader {
       return;
     }
 
-    // --- Collect advice methods by category ---
-    Map<String, List<Method>> beforeMethods = new HashMap<>();
-    Map<String, List<Method>> afterMethods = new HashMap<>();
-    Map<String, List<Method>> aroundMethods = new LinkedHashMap<>();
-    Map<String, List<Method>> onExceptionMethods = new HashMap<>();
-    Map<String, List<Method>> afterReturningMethods = new HashMap<>();
-    Map<String, List<Method>> afterThrowingMethods = new HashMap<>();
-    Map<String, List<Method>> afterFinallyMethods = new HashMap<>();
-    Map<String, List<Method>> rewriteArgMethods = new HashMap<>();
-    Map<String, List<Method>> retryMethods = new HashMap<>();
-    Map<String, List<Method>> traceMethods = new HashMap<>();
-    Map<String, List<Method>> tagMethods = new HashMap<>();
-    Map<String, List<Method>> countedMethods = new HashMap<>();
-    Map<String, List<Method>> loggedMethods = new HashMap<>();
-    Map<String, List<Method>> metricMethods = new HashMap<>();
-    Map<String, List<Method>> histogramMethods = new HashMap<>();
-    Map<String, List<Method>> gaugeMethods = new HashMap<>();
-    Map<String, List<Method>> circuitBreakerMethods = new HashMap<>();
-    Map<String, List<Method>> timeoutMethods = new HashMap<>();
-    Map<String, List<Method>> fallbackMethods = new HashMap<>();
-    Map<String, List<Method>> bulkheadMethods = new HashMap<>();
-    Map<String, List<Method>> rateLimiterMethods = new HashMap<>();
-    Map<String, List<Method>> cacheResultMethods = new HashMap<>();
-    Map<String, List<Method>> cacheEvictMethods = new HashMap<>();
-    Map<String, List<Method>> requiresRoleMethods = new HashMap<>();
-    Map<String, List<Method>> auditedMethods = new HashMap<>();
-    Map<String, List<Method>> synchronizedMethods = new HashMap<>();
-    Map<String, List<Method>> readOnlyMethods = new HashMap<>();
-    Map<String, List<Method>> idempotentMethods = new HashMap<>();
-    Map<String, List<Method>> validateArgsMethods = new HashMap<>();
-    Map<String, List<Method>> validateReturnMethods = new HashMap<>();
-    Map<String, List<Method>> methodPatternMethods = new HashMap<>();
-    Map<String, List<Method>> whenAnnotatedMethods = new HashMap<>();
-    // Additional annotations (1.9.0): caching, resilience, security, context, observability
-    Map<String, List<Method>> cachePutMethods = new HashMap<>();
-    Map<String, List<Method>> fallbackValueMethods = new HashMap<>();
-    Map<String, List<Method>> suppressExceptionsMethods = new HashMap<>();
-    Map<String, List<Method>> denyAllMethods = new HashMap<>();
-    Map<String, List<Method>> preAuthorizeMethods = new HashMap<>();
-    Map<String, List<Method>> withMdcMethods = new HashMap<>();
-    Map<String, List<Method>> spanAttributeMethods = new HashMap<>();
-    Map<String, List<Method>> warnIfSlowMethods = new HashMap<>();
-    List<Method> constructorMethods = new ArrayList<>();
-    List<Method> fieldGetMethods = new ArrayList<>();
-    List<Method> fieldSetMethods = new ArrayList<>();
-    List<Method> staticInitMethods = new ArrayList<>();
-    List<Method> catchMethods = new ArrayList<>();
-
-    // Collect named @Pointcut definitions: methodName -> PointcutExpression
-    Map<String, PointcutExpression> namedPointcuts = new HashMap<>();
-    for (Method m : clazz.getDeclaredMethods()) {
-      if (m.isAnnotationPresent(com.github.cc11001100.weavergirl.annotation.Pointcut.class)) {
-        com.github.cc11001100.weavergirl.annotation.Pointcut ann = m.getAnnotation(com.github.cc11001100.weavergirl.annotation.Pointcut.class);
-        namedPointcuts.put(m.getName(), PointcutParser.getInstance().parse(ann.value()));
-      }
-    }
-
-    for (Method m : clazz.getDeclaredMethods()) {
-      // Lifecycle annotations
-      if (m.isAnnotationPresent(Before.class)) {
-        Before ann = m.getAnnotation(Before.class);
-        beforeMethods
-            .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
-            .add(m);
-      }
-      if (m.isAnnotationPresent(After.class)) {
-        After ann = m.getAnnotation(After.class);
-        afterMethods
-            .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
-            .add(m);
-      }
-      if (m.isAnnotationPresent(Around.class)) {
-        Around ann = m.getAnnotation(Around.class);
-        aroundMethods
-            .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
-            .add(m);
-      }
-      if (m.isAnnotationPresent(OnException.class)) {
-        OnException ann = m.getAnnotation(OnException.class);
-        onExceptionMethods
-            .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
-            .add(m);
-      }
-      if (m.isAnnotationPresent(AfterReturning.class)) {
-        AfterReturning ann = m.getAnnotation(AfterReturning.class);
-        afterReturningMethods
-            .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
-            .add(m);
-      }
-      if (m.isAnnotationPresent(AfterThrowing.class)) {
-        AfterThrowing ann = m.getAnnotation(AfterThrowing.class);
-        afterThrowingMethods
-            .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
-            .add(m);
-      }
-      if (m.isAnnotationPresent(AfterFinally.class)) {
-        AfterFinally ann = m.getAnnotation(AfterFinally.class);
-        afterFinallyMethods
-            .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
-            .add(m);
-      }
-      if (m.isAnnotationPresent(RewriteArg.class)) {
-        RewriteArg ann = m.getAnnotation(RewriteArg.class);
-        rewriteArgMethods
-            .computeIfAbsent(resolvePointcutKey(ann, namedPointcuts), k -> new ArrayList<>())
-            .add(m);
-      }
-      if (m.isAnnotationPresent(OnConstructor.class)) {
-        constructorMethods.add(m);
-      }
-      if (m.isAnnotationPresent(OnFieldGet.class)) {
-        fieldGetMethods.add(m);
-      }
-      if (m.isAnnotationPresent(OnFieldSet.class)) {
-        fieldSetMethods.add(m);
-      }
-      if (m.isAnnotationPresent(OnStaticInit.class)) {
-        staticInitMethods.add(m);
-      }
-      if (m.isAnnotationPresent(OnCatch.class)) {
-        catchMethods.add(m);
-      }
-
-      // Matching annotations
-      if (m.isAnnotationPresent(OnMethodPattern.class)) {
-        OnMethodPattern ann = m.getAnnotation(OnMethodPattern.class);
-        methodPatternMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(WhenAnnotated.class)) {
-        WhenAnnotated ann = m.getAnnotation(WhenAnnotated.class);
-        whenAnnotatedMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-
-      // Observability annotations
-      if (m.isAnnotationPresent(Trace.class)) {
-        Trace ann = m.getAnnotation(Trace.class);
-        traceMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(Tag.class)) {
-        Tag ann = m.getAnnotation(Tag.class);
-        tagMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(Counted.class)) {
-        Counted ann = m.getAnnotation(Counted.class);
-        countedMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(Logged.class)) {
-        Logged ann = m.getAnnotation(Logged.class);
-        loggedMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(Metric.class)) {
-        Metric ann = m.getAnnotation(Metric.class);
-        metricMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(Histogram.class)) {
-        Histogram ann = m.getAnnotation(Histogram.class);
-        histogramMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(Gauge.class)) {
-        Gauge ann = m.getAnnotation(Gauge.class);
-        gaugeMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-
-      // Resilience annotations
-      if (m.isAnnotationPresent(RetryOnException.class)) {
-        RetryOnException ann = m.getAnnotation(RetryOnException.class);
-        retryMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(CircuitBreaker.class)) {
-        CircuitBreaker ann = m.getAnnotation(CircuitBreaker.class);
-        circuitBreakerMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(Timeout.class)) {
-        Timeout ann = m.getAnnotation(Timeout.class);
-        timeoutMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(Fallback.class)) {
-        Fallback ann = m.getAnnotation(Fallback.class);
-        fallbackMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(Bulkhead.class)) {
-        Bulkhead ann = m.getAnnotation(Bulkhead.class);
-        bulkheadMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(RateLimiter.class)) {
-        RateLimiter ann = m.getAnnotation(RateLimiter.class);
-        rateLimiterMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-
-      // Caching annotations
-      if (m.isAnnotationPresent(CacheResult.class)) {
-        CacheResult ann = m.getAnnotation(CacheResult.class);
-        cacheResultMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(CacheEvict.class)) {
-        CacheEvict ann = m.getAnnotation(CacheEvict.class);
-        cacheEvictMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-
-      // Security annotations
-      if (m.isAnnotationPresent(RequiresRole.class)) {
-        RequiresRole ann = m.getAnnotation(RequiresRole.class);
-        requiresRoleMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(Audited.class)) {
-        Audited ann = m.getAnnotation(Audited.class);
-        auditedMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-
-      // Concurrency annotations
-      if (m.isAnnotationPresent(Synchronized.class)) {
-        Synchronized ann = m.getAnnotation(Synchronized.class);
-        synchronizedMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(ReadOnly.class)) {
-        ReadOnly ann = m.getAnnotation(ReadOnly.class);
-        readOnlyMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(Idempotent.class)) {
-        Idempotent ann = m.getAnnotation(Idempotent.class);
-        idempotentMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-
-      // Validation annotations
-      if (m.isAnnotationPresent(ValidateArgs.class)) {
-        ValidateArgs ann = m.getAnnotation(ValidateArgs.class);
-        validateArgsMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(ValidateReturn.class)) {
-        ValidateReturn ann = m.getAnnotation(ValidateReturn.class);
-        validateReturnMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-
-      // Additional annotations (1.9.0)
-      if (m.isAnnotationPresent(CachePut.class)) {
-        CachePut ann = m.getAnnotation(CachePut.class);
-        cachePutMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(FallbackValue.class)) {
-        FallbackValue ann = m.getAnnotation(FallbackValue.class);
-        fallbackValueMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(SuppressExceptions.class)) {
-        SuppressExceptions ann = m.getAnnotation(SuppressExceptions.class);
-        suppressExceptionsMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(DenyAll.class)) {
-        DenyAll ann = m.getAnnotation(DenyAll.class);
-        denyAllMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(PreAuthorize.class)) {
-        PreAuthorize ann = m.getAnnotation(PreAuthorize.class);
-        preAuthorizeMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(WithMDC.class)) {
-        WithMDC ann = m.getAnnotation(WithMDC.class);
-        withMdcMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(SpanAttribute.class)) {
-        SpanAttribute ann = m.getAnnotation(SpanAttribute.class);
-        spanAttributeMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-      if (m.isAnnotationPresent(WarnIfSlow.class)) {
-        WarnIfSlow ann = m.getAnnotation(WarnIfSlow.class);
-        warnIfSlowMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
-      }
-    }
+    final AdviceMethods adviceMethods = collectAdviceMethods(clazz);
+    final List<Method> fieldGetMethods = adviceMethods.fieldGetMethods();
+    final List<Method> fieldSetMethods = adviceMethods.fieldSetMethods();
+    final List<Method> staticInitMethods = adviceMethods.staticInitMethods();
+    final List<Method> constructorMethods = adviceMethods.constructorMethods();
+    final List<Method> catchMethods = adviceMethods.catchMethods();
+    final Map<String, List<Method>> methodPatternMethods = adviceMethods.methodPatternMethods();
+    final Map<String, List<Method>> whenAnnotatedMethods = adviceMethods.whenAnnotatedMethods();
 
     // --- PointcutExpression mode ---
     boolean usePointcutExpression = !weaveClass.pointcut().isEmpty();
     if (usePointcutExpression) {
-      if (!rewriteArgMethods.isEmpty()
+      if (!adviceMethods.has(AdviceDimension.REWRITE_ARG)
           || !constructorMethods.isEmpty()
           || !fieldGetMethods.isEmpty()
           || !fieldSetMethods.isEmpty()) {
@@ -414,13 +155,13 @@ public class AnnotationPluginLoader {
       Interceptor interceptor =
           createReflectiveInterceptor(
               interceptorInstance,
-              flattenAll(beforeMethods),
-              flattenAll(afterMethods),
-              flattenAll(aroundMethods),
-              flattenAll(onExceptionMethods),
-              flattenAll(afterReturningMethods),
-              flattenAll(afterThrowingMethods),
-              flattenAll(afterFinallyMethods),
+              adviceMethods.all(AdviceDimension.BEFORE),
+              adviceMethods.all(AdviceDimension.AFTER),
+              adviceMethods.all(AdviceDimension.AROUND),
+              adviceMethods.all(AdviceDimension.ON_EXCEPTION),
+              adviceMethods.all(AdviceDimension.AFTER_RETURNING),
+              adviceMethods.all(AdviceDimension.AFTER_THROWING),
+              adviceMethods.all(AdviceDimension.AFTER_FINALLY),
               sampleRate,
               isTimed,
               timedAnnotation);
@@ -528,7 +269,7 @@ public class AnnotationPluginLoader {
     // Each @RewriteArg method group becomes an ARGUMENT_REWRITE definition so the transformer
     // weaves AsyncArgumentAdvice (writable @Advice.Argument slots): setArgument(i, ...) reaches
     // the method body. Uses the same interceptor shape as the async-context-propagation plugin.
-    for (Map.Entry<String, List<Method>> entry : rewriteArgMethods.entrySet()) {
+    for (Map.Entry<String, List<Method>> entry : adviceMethods.map(AdviceDimension.REWRITE_ARG).entrySet()) {
       MethodMatcher methodMatcher = buildMethodMatcher(entry.getKey());
       Interceptor interceptor =
           createArgumentRewriteInterceptor(interceptorInstance, entry.getValue(), sampleRate);
@@ -586,123 +327,47 @@ public class AnnotationPluginLoader {
     }
 
     // --- Collect all target method keys ---
-    Set<String> allTargetMethods = new HashSet<>();
-    allTargetMethods.addAll(beforeMethods.keySet());
-    allTargetMethods.addAll(afterMethods.keySet());
-    allTargetMethods.addAll(aroundMethods.keySet());
-    allTargetMethods.addAll(onExceptionMethods.keySet());
-    allTargetMethods.addAll(afterReturningMethods.keySet());
-    allTargetMethods.addAll(afterThrowingMethods.keySet());
-    allTargetMethods.addAll(afterFinallyMethods.keySet());
-    allTargetMethods.addAll(retryMethods.keySet());
-    allTargetMethods.addAll(traceMethods.keySet());
-    allTargetMethods.addAll(tagMethods.keySet());
-    allTargetMethods.addAll(countedMethods.keySet());
-    allTargetMethods.addAll(loggedMethods.keySet());
-    allTargetMethods.addAll(metricMethods.keySet());
-    allTargetMethods.addAll(histogramMethods.keySet());
-    allTargetMethods.addAll(gaugeMethods.keySet());
-    allTargetMethods.addAll(circuitBreakerMethods.keySet());
-    allTargetMethods.addAll(timeoutMethods.keySet());
-    allTargetMethods.addAll(fallbackMethods.keySet());
-    allTargetMethods.addAll(bulkheadMethods.keySet());
-    allTargetMethods.addAll(rateLimiterMethods.keySet());
-    allTargetMethods.addAll(cacheResultMethods.keySet());
-    allTargetMethods.addAll(cacheEvictMethods.keySet());
-    allTargetMethods.addAll(requiresRoleMethods.keySet());
-    allTargetMethods.addAll(auditedMethods.keySet());
-    allTargetMethods.addAll(synchronizedMethods.keySet());
-    allTargetMethods.addAll(readOnlyMethods.keySet());
-    allTargetMethods.addAll(idempotentMethods.keySet());
-    allTargetMethods.addAll(validateArgsMethods.keySet());
-    allTargetMethods.addAll(validateReturnMethods.keySet());
-    allTargetMethods.addAll(cachePutMethods.keySet());
-    allTargetMethods.addAll(fallbackValueMethods.keySet());
-    allTargetMethods.addAll(suppressExceptionsMethods.keySet());
-    allTargetMethods.addAll(denyAllMethods.keySet());
-    allTargetMethods.addAll(preAuthorizeMethods.keySet());
-    allTargetMethods.addAll(withMdcMethods.keySet());
-    allTargetMethods.addAll(spanAttributeMethods.keySet());
-    allTargetMethods.addAll(warnIfSlowMethods.keySet());
-
-    if (allTargetMethods.isEmpty()) {
-      // A class can exist only to declare @DeclarePrecedence. It has no advice methods, but the
-      // registry learns precedence by loading registered aspect classes, so it still has to be
-      // registered. The method name matches nothing, so the definition does not weave real methods.
-      if (clazz.getAnnotation(DeclarePrecedence.class) != null) {
-        registry.register(
-            new InterceptorDefinition(
-                "annotation-" + clazz.getSimpleName() + "-precedence",
-                new Pointcut(classMatcher, MethodMatcher.byName("__weavergirl_precedence_only__")),
-                new Interceptor() {},
-                priority,
-                InterceptorDefinition.AdviceMode.STANDARD,
-                false,
-                null,
-                null,
-                clazz.getName()));
-      }
-      return;
-    }
+    Set<String> allTargetMethods = adviceMethods.targetMethodKeys();
 
     for (String targetMethod : allTargetMethods) {
-      List<Method> befores = beforeMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> afters = afterMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> arounds = aroundMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> onExceptions =
-          onExceptionMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> afterReturnings =
-          afterReturningMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> afterThrowings =
-          afterThrowingMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> afterFinallys =
-          afterFinallyMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> retries = retryMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> traces = traceMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> tags = tagMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> counted = countedMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> logged = loggedMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> metrics = metricMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> histograms =
-          histogramMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> gauges = gaugeMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> circuitBreakers =
-          circuitBreakerMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> timeouts = timeoutMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> fallbacks = fallbackMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> bulkheads = bulkheadMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> rateLimiters =
-          rateLimiterMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> cacheResults =
-          cacheResultMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> cacheEvicts =
-          cacheEvictMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> requiresRoles =
-          requiresRoleMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> auditeds = auditedMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> syncs = synchronizedMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> readOnlys = readOnlyMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> idempotents =
-          idempotentMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> validateArgss =
-          validateArgsMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> validateReturns =
-          validateReturnMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> cachePuts =
-          cachePutMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> fallbackValues =
-          fallbackValueMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> suppressExceptionss =
-          suppressExceptionsMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> denyAlls = denyAllMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> preAuthorizes =
-          preAuthorizeMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> withMdcs =
-          withMdcMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> spanAttributes =
-          spanAttributeMethods.getOrDefault(targetMethod, Collections.emptyList());
-      List<Method> warnIfSlows =
-          warnIfSlowMethods.getOrDefault(targetMethod, Collections.emptyList());
+      // One table lookup per dimension; absent dimensions come back as an empty list.
+      List<Method> befores = adviceMethods.of(AdviceDimension.BEFORE, targetMethod);
+      List<Method> afters = adviceMethods.of(AdviceDimension.AFTER, targetMethod);
+      List<Method> arounds = adviceMethods.of(AdviceDimension.AROUND, targetMethod);
+      List<Method> onExceptions = adviceMethods.of(AdviceDimension.ON_EXCEPTION, targetMethod);
+      List<Method> afterReturnings = adviceMethods.of(AdviceDimension.AFTER_RETURNING, targetMethod);
+      List<Method> afterThrowings = adviceMethods.of(AdviceDimension.AFTER_THROWING, targetMethod);
+      List<Method> afterFinallys = adviceMethods.of(AdviceDimension.AFTER_FINALLY, targetMethod);
+      List<Method> retries = adviceMethods.of(AdviceDimension.RETRY, targetMethod);
+      List<Method> traces = adviceMethods.of(AdviceDimension.TRACE, targetMethod);
+      List<Method> tags = adviceMethods.of(AdviceDimension.TAG, targetMethod);
+      List<Method> counted = adviceMethods.of(AdviceDimension.COUNTED, targetMethod);
+      List<Method> logged = adviceMethods.of(AdviceDimension.LOGGED, targetMethod);
+      List<Method> metrics = adviceMethods.of(AdviceDimension.METRIC, targetMethod);
+      List<Method> histograms = adviceMethods.of(AdviceDimension.HISTOGRAM, targetMethod);
+      List<Method> gauges = adviceMethods.of(AdviceDimension.GAUGE, targetMethod);
+      List<Method> circuitBreakers = adviceMethods.of(AdviceDimension.CIRCUIT_BREAKER, targetMethod);
+      List<Method> timeouts = adviceMethods.of(AdviceDimension.TIMEOUT, targetMethod);
+      List<Method> fallbacks = adviceMethods.of(AdviceDimension.FALLBACK, targetMethod);
+      List<Method> bulkheads = adviceMethods.of(AdviceDimension.BULKHEAD, targetMethod);
+      List<Method> rateLimiters = adviceMethods.of(AdviceDimension.RATE_LIMITER, targetMethod);
+      List<Method> cacheResults = adviceMethods.of(AdviceDimension.CACHE_RESULT, targetMethod);
+      List<Method> cacheEvicts = adviceMethods.of(AdviceDimension.CACHE_EVICT, targetMethod);
+      List<Method> requiresRoles = adviceMethods.of(AdviceDimension.REQUIRES_ROLE, targetMethod);
+      List<Method> auditeds = adviceMethods.of(AdviceDimension.AUDITED, targetMethod);
+      List<Method> syncs = adviceMethods.of(AdviceDimension.SYNCHRONIZED, targetMethod);
+      List<Method> readOnlys = adviceMethods.of(AdviceDimension.READ_ONLY, targetMethod);
+      List<Method> idempotents = adviceMethods.of(AdviceDimension.IDEMPOTENT, targetMethod);
+      List<Method> validateArgss = adviceMethods.of(AdviceDimension.VALIDATE_ARGS, targetMethod);
+      List<Method> validateReturns = adviceMethods.of(AdviceDimension.VALIDATE_RETURN, targetMethod);
+      List<Method> cachePuts = adviceMethods.of(AdviceDimension.CACHE_PUT, targetMethod);
+      List<Method> fallbackValues = adviceMethods.of(AdviceDimension.FALLBACK_VALUE, targetMethod);
+      List<Method> suppressExceptionss = adviceMethods.of(AdviceDimension.SUPPRESS_EXCEPTIONS, targetMethod);
+      List<Method> denyAlls = adviceMethods.of(AdviceDimension.DENY_ALL, targetMethod);
+      List<Method> preAuthorizes = adviceMethods.of(AdviceDimension.PRE_AUTHORIZE, targetMethod);
+      List<Method> withMdcs = adviceMethods.of(AdviceDimension.WITH_MDC, targetMethod);
+      List<Method> spanAttributes = adviceMethods.of(AdviceDimension.SPAN_ATTRIBUTE, targetMethod);
+      List<Method> warnIfSlows = adviceMethods.of(AdviceDimension.WARN_IF_SLOW, targetMethod);
 
       MethodMatcher methodMatcher = buildMethodMatcher(targetMethod);
 
@@ -793,6 +458,231 @@ public class AnnotationPluginLoader {
               null,
               clazz.getName()));
     }
+  }
+
+  /**
+   * Reads every annotation a class declared and groups its advice methods by target-method key.
+   * Constructor, static-init, field and catch advice come back as flat lists because they weave
+   * through their own advice modes and carry no target-method key.
+   */
+  private AdviceMethods collectAdviceMethods(Class<?> clazz) {
+    AdviceMethods adviceMethods = new AdviceMethods();
+    List<Method> constructorMethods = new ArrayList<>();
+    List<Method> fieldGetMethods = new ArrayList<>();
+    List<Method> fieldSetMethods = new ArrayList<>();
+    List<Method> staticInitMethods = new ArrayList<>();
+    List<Method> catchMethods = new ArrayList<>();
+    Map<String, List<Method>> methodPatternMethods = new HashMap<>();
+    Map<String, List<Method>> whenAnnotatedMethods = new HashMap<>();
+
+    // Collect named @Pointcut definitions: methodName -> PointcutExpression
+    Map<String, PointcutExpression> namedPointcuts = new HashMap<>();
+    for (Method m : clazz.getDeclaredMethods()) {
+      if (m.isAnnotationPresent(com.github.cc11001100.weavergirl.annotation.Pointcut.class)) {
+        com.github.cc11001100.weavergirl.annotation.Pointcut ann = m.getAnnotation(com.github.cc11001100.weavergirl.annotation.Pointcut.class);
+        namedPointcuts.put(m.getName(), PointcutParser.getInstance().parse(ann.value()));
+      }
+    }
+
+    for (Method m : clazz.getDeclaredMethods()) {
+      // Lifecycle annotations
+      if (m.isAnnotationPresent(Before.class)) {
+        Before ann = m.getAnnotation(Before.class);
+        adviceMethods.add(AdviceDimension.BEFORE, resolvePointcutKey(ann, namedPointcuts), m);
+      }
+      if (m.isAnnotationPresent(After.class)) {
+        After ann = m.getAnnotation(After.class);
+        adviceMethods.add(AdviceDimension.AFTER, resolvePointcutKey(ann, namedPointcuts), m);
+      }
+      if (m.isAnnotationPresent(Around.class)) {
+        Around ann = m.getAnnotation(Around.class);
+        adviceMethods.add(AdviceDimension.AROUND, resolvePointcutKey(ann, namedPointcuts), m);
+      }
+      if (m.isAnnotationPresent(OnException.class)) {
+        OnException ann = m.getAnnotation(OnException.class);
+        adviceMethods.add(AdviceDimension.ON_EXCEPTION, resolvePointcutKey(ann, namedPointcuts), m);
+      }
+      if (m.isAnnotationPresent(AfterReturning.class)) {
+        AfterReturning ann = m.getAnnotation(AfterReturning.class);
+        adviceMethods.add(AdviceDimension.AFTER_RETURNING, resolvePointcutKey(ann, namedPointcuts), m);
+      }
+      if (m.isAnnotationPresent(AfterThrowing.class)) {
+        AfterThrowing ann = m.getAnnotation(AfterThrowing.class);
+        adviceMethods.add(AdviceDimension.AFTER_THROWING, resolvePointcutKey(ann, namedPointcuts), m);
+      }
+      if (m.isAnnotationPresent(AfterFinally.class)) {
+        AfterFinally ann = m.getAnnotation(AfterFinally.class);
+        adviceMethods.add(AdviceDimension.AFTER_FINALLY, resolvePointcutKey(ann, namedPointcuts), m);
+      }
+      if (m.isAnnotationPresent(RewriteArg.class)) {
+        RewriteArg ann = m.getAnnotation(RewriteArg.class);
+        adviceMethods.add(AdviceDimension.REWRITE_ARG, resolvePointcutKey(ann, namedPointcuts), m);
+      }
+      if (m.isAnnotationPresent(OnConstructor.class)) {
+        constructorMethods.add(m);
+      }
+      if (m.isAnnotationPresent(OnFieldGet.class)) {
+        fieldGetMethods.add(m);
+      }
+      if (m.isAnnotationPresent(OnFieldSet.class)) {
+        fieldSetMethods.add(m);
+      }
+      if (m.isAnnotationPresent(OnStaticInit.class)) {
+        staticInitMethods.add(m);
+      }
+      if (m.isAnnotationPresent(OnCatch.class)) {
+        catchMethods.add(m);
+      }
+
+      // Matching annotations
+      if (m.isAnnotationPresent(OnMethodPattern.class)) {
+        OnMethodPattern ann = m.getAnnotation(OnMethodPattern.class);
+        methodPatternMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
+      }
+      if (m.isAnnotationPresent(WhenAnnotated.class)) {
+        WhenAnnotated ann = m.getAnnotation(WhenAnnotated.class);
+        whenAnnotatedMethods.computeIfAbsent(ann.value(), k -> new ArrayList<>()).add(m);
+      }
+
+      // Observability annotations
+      if (m.isAnnotationPresent(Trace.class)) {
+        Trace ann = m.getAnnotation(Trace.class);
+        adviceMethods.add(AdviceDimension.TRACE, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(Tag.class)) {
+        Tag ann = m.getAnnotation(Tag.class);
+        adviceMethods.add(AdviceDimension.TAG, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(Counted.class)) {
+        Counted ann = m.getAnnotation(Counted.class);
+        adviceMethods.add(AdviceDimension.COUNTED, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(Logged.class)) {
+        Logged ann = m.getAnnotation(Logged.class);
+        adviceMethods.add(AdviceDimension.LOGGED, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(Metric.class)) {
+        Metric ann = m.getAnnotation(Metric.class);
+        adviceMethods.add(AdviceDimension.METRIC, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(Histogram.class)) {
+        Histogram ann = m.getAnnotation(Histogram.class);
+        adviceMethods.add(AdviceDimension.HISTOGRAM, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(Gauge.class)) {
+        Gauge ann = m.getAnnotation(Gauge.class);
+        adviceMethods.add(AdviceDimension.GAUGE, ann.value(), m);
+      }
+
+      // Resilience annotations
+      if (m.isAnnotationPresent(RetryOnException.class)) {
+        RetryOnException ann = m.getAnnotation(RetryOnException.class);
+        adviceMethods.add(AdviceDimension.RETRY, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(CircuitBreaker.class)) {
+        CircuitBreaker ann = m.getAnnotation(CircuitBreaker.class);
+        adviceMethods.add(AdviceDimension.CIRCUIT_BREAKER, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(Timeout.class)) {
+        Timeout ann = m.getAnnotation(Timeout.class);
+        adviceMethods.add(AdviceDimension.TIMEOUT, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(Fallback.class)) {
+        Fallback ann = m.getAnnotation(Fallback.class);
+        adviceMethods.add(AdviceDimension.FALLBACK, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(Bulkhead.class)) {
+        Bulkhead ann = m.getAnnotation(Bulkhead.class);
+        adviceMethods.add(AdviceDimension.BULKHEAD, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(RateLimiter.class)) {
+        RateLimiter ann = m.getAnnotation(RateLimiter.class);
+        adviceMethods.add(AdviceDimension.RATE_LIMITER, ann.value(), m);
+      }
+
+      // Caching annotations
+      if (m.isAnnotationPresent(CacheResult.class)) {
+        CacheResult ann = m.getAnnotation(CacheResult.class);
+        adviceMethods.add(AdviceDimension.CACHE_RESULT, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(CacheEvict.class)) {
+        CacheEvict ann = m.getAnnotation(CacheEvict.class);
+        adviceMethods.add(AdviceDimension.CACHE_EVICT, ann.value(), m);
+      }
+
+      // Security annotations
+      if (m.isAnnotationPresent(RequiresRole.class)) {
+        RequiresRole ann = m.getAnnotation(RequiresRole.class);
+        adviceMethods.add(AdviceDimension.REQUIRES_ROLE, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(Audited.class)) {
+        Audited ann = m.getAnnotation(Audited.class);
+        adviceMethods.add(AdviceDimension.AUDITED, ann.value(), m);
+      }
+
+      // Concurrency annotations
+      if (m.isAnnotationPresent(Synchronized.class)) {
+        Synchronized ann = m.getAnnotation(Synchronized.class);
+        adviceMethods.add(AdviceDimension.SYNCHRONIZED, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(ReadOnly.class)) {
+        ReadOnly ann = m.getAnnotation(ReadOnly.class);
+        adviceMethods.add(AdviceDimension.READ_ONLY, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(Idempotent.class)) {
+        Idempotent ann = m.getAnnotation(Idempotent.class);
+        adviceMethods.add(AdviceDimension.IDEMPOTENT, ann.value(), m);
+      }
+
+      // Validation annotations
+      if (m.isAnnotationPresent(ValidateArgs.class)) {
+        ValidateArgs ann = m.getAnnotation(ValidateArgs.class);
+        adviceMethods.add(AdviceDimension.VALIDATE_ARGS, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(ValidateReturn.class)) {
+        ValidateReturn ann = m.getAnnotation(ValidateReturn.class);
+        adviceMethods.add(AdviceDimension.VALIDATE_RETURN, ann.value(), m);
+      }
+
+      // Additional annotations (1.9.0)
+      if (m.isAnnotationPresent(CachePut.class)) {
+        CachePut ann = m.getAnnotation(CachePut.class);
+        adviceMethods.add(AdviceDimension.CACHE_PUT, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(FallbackValue.class)) {
+        FallbackValue ann = m.getAnnotation(FallbackValue.class);
+        adviceMethods.add(AdviceDimension.FALLBACK_VALUE, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(SuppressExceptions.class)) {
+        SuppressExceptions ann = m.getAnnotation(SuppressExceptions.class);
+        adviceMethods.add(AdviceDimension.SUPPRESS_EXCEPTIONS, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(DenyAll.class)) {
+        DenyAll ann = m.getAnnotation(DenyAll.class);
+        adviceMethods.add(AdviceDimension.DENY_ALL, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(PreAuthorize.class)) {
+        PreAuthorize ann = m.getAnnotation(PreAuthorize.class);
+        adviceMethods.add(AdviceDimension.PRE_AUTHORIZE, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(WithMDC.class)) {
+        WithMDC ann = m.getAnnotation(WithMDC.class);
+        adviceMethods.add(AdviceDimension.WITH_MDC, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(SpanAttribute.class)) {
+        SpanAttribute ann = m.getAnnotation(SpanAttribute.class);
+        adviceMethods.add(AdviceDimension.SPAN_ATTRIBUTE, ann.value(), m);
+      }
+      if (m.isAnnotationPresent(WarnIfSlow.class)) {
+        WarnIfSlow ann = m.getAnnotation(WarnIfSlow.class);
+        adviceMethods.add(AdviceDimension.WARN_IF_SLOW, ann.value(), m);
+      }
+    }
+
+    adviceMethods.setFieldAndLifecycleLists(
+        constructorMethods, fieldGetMethods, fieldSetMethods, staticInitMethods, catchMethods,
+        methodPatternMethods, whenAnnotatedMethods);
+    return adviceMethods;
   }
 
   // ==================== Wrapper methods for each annotation dimension ====================
@@ -3144,12 +3034,6 @@ public class AnnotationPluginLoader {
     return ClassMatcher.byName(weaveClass.target());
   }
 
-  private List<Method> flattenAll(Map<String, List<Method>> methodsMap) {
-    List<Method> result = new ArrayList<>();
-    for (List<Method> methods : methodsMap.values()) result.addAll(methods);
-    return result;
-  }
-
   // ==================== Inner state classes ====================
 
   private static class CircuitState {
@@ -3266,6 +3150,145 @@ public class AnnotationPluginLoader {
       if (cacheStore.keySet().stream().filter(k -> k.startsWith(prefix)).count() <= maxSize) {
         break;
       }
+    }
+  }
+
+  // ==================== Advice collection model ====================
+
+  /**
+   * The per-method-name advice buckets a class's annotations can fill. Each dimension maps a
+   * target-method key to the advice methods declared for it. The two non-method-dimension groups,
+   * {@link #CONSTRUCTOR}, {@link #FIELD_GET}, {@link #FIELD_SET}, {@link #STATIC_INIT} and {@link
+   * #CATCH}, are handled separately in {@link #loadFromAnnotatedClass}: they weave through their own
+   * advice modes and carry no target-method key.
+   *
+   * <p>Wrapping order matters — the order of the constants is the order in which a method's
+   * interceptors are layered, outermost first. Do not reorder them without checking
+   * AnnotationPluginLoader's wrapper tests.
+   */
+  private enum AdviceDimension {
+    // Not wrapped in the layer chain below; @RewriteArg produces an ARGUMENT_REWRITE definition.
+    REWRITE_ARG,
+    BEFORE, AFTER, AROUND, ON_EXCEPTION, AFTER_RETURNING, AFTER_THROWING, AFTER_FINALLY,
+    TRACE, TAG, COUNTED, LOGGED, METRIC, HISTOGRAM, GAUGE,
+    CIRCUIT_BREAKER, TIMEOUT, FALLBACK, BULKHEAD, RATE_LIMITER,
+    CACHE_RESULT, CACHE_EVICT, REQUIRES_ROLE, AUDITED,
+    SYNCHRONIZED, READ_ONLY, IDEMPOTENT,
+    VALIDATE_ARGS, VALIDATE_RETURN, RETRY,
+    CACHE_PUT, FALLBACK_VALUE, SUPPRESS_EXCEPTIONS, DENY_ALL, PRE_AUTHORIZE,
+    WITH_MDC, SPAN_ATTRIBUTE, WARN_IF_SLOW
+  }
+
+  /**
+   * Collects advice methods a class declared, grouped by target-method key and dimension.
+   *
+   * <p>Replaces three parallel sets of fields (one map per dimension) with a single {@link EnumMap}
+   * lookup: one table drives collection, the set of target methods, the wrapper layering and the
+   * per-target retrieval. Adding a dimension is one enum constant plus the matching annotation
+   * branch in {@link #collectAdviceMethods}, not edits at four separate places.
+   */
+  private static final class AdviceMethods {
+    private final Map<AdviceDimension, Map<String, List<Method>>> byDimension =
+        new EnumMap<>(AdviceDimension.class);
+
+    // Dimensions that are not keyed by a target method name; they weave through their own advice
+    // modes, so they come back as flat lists or as maps of their own key.
+    private List<Method> constructorMethods = Collections.emptyList();
+    private List<Method> fieldGetMethods = Collections.emptyList();
+    private List<Method> fieldSetMethods = Collections.emptyList();
+    private List<Method> staticInitMethods = Collections.emptyList();
+    private List<Method> catchMethods = Collections.emptyList();
+    private Map<String, List<Method>> methodPatternMethods = Collections.emptyMap();
+    private Map<String, List<Method>> whenAnnotatedMethods = Collections.emptyMap();
+
+    void setFieldAndLifecycleLists(
+        List<Method> constructorMethods,
+        List<Method> fieldGetMethods,
+        List<Method> fieldSetMethods,
+        List<Method> staticInitMethods,
+        List<Method> catchMethods,
+        Map<String, List<Method>> methodPatternMethods,
+        Map<String, List<Method>> whenAnnotatedMethods) {
+      this.constructorMethods = constructorMethods;
+      this.fieldGetMethods = fieldGetMethods;
+      this.fieldSetMethods = fieldSetMethods;
+      this.staticInitMethods = staticInitMethods;
+      this.catchMethods = catchMethods;
+      this.methodPatternMethods = methodPatternMethods;
+      this.whenAnnotatedMethods = whenAnnotatedMethods;
+    }
+
+    List<Method> constructorMethods() {
+      return constructorMethods;
+    }
+
+    List<Method> fieldGetMethods() {
+      return fieldGetMethods;
+    }
+
+    List<Method> fieldSetMethods() {
+      return fieldSetMethods;
+    }
+
+    List<Method> staticInitMethods() {
+      return staticInitMethods;
+    }
+
+    List<Method> catchMethods() {
+      return catchMethods;
+    }
+
+    Map<String, List<Method>> methodPatternMethods() {
+      return methodPatternMethods;
+    }
+
+    Map<String, List<Method>> whenAnnotatedMethods() {
+      return whenAnnotatedMethods;
+    }
+
+    /** Advice methods for one target method in one dimension; empty when none were declared. */
+    List<Method> of(AdviceDimension dimension, String methodKey) {
+      return byDimension.getOrDefault(dimension, Collections.emptyMap())
+          .getOrDefault(methodKey, Collections.emptyList());
+    }
+
+    /** The whole dimension's table, keyed by target method. Used by the pointcut-expression path. */
+    Map<String, List<Method>> map(AdviceDimension dimension) {
+      return byDimension.getOrDefault(dimension, Collections.emptyMap());
+    }
+
+    /** Every advice method declared in the dimension, in declaration order within each key. */
+    List<Method> all(AdviceDimension dimension) {
+      List<Method> flattened = new ArrayList<>();
+      map(dimension).values().forEach(flattened::addAll);
+      return flattened;
+    }
+
+    boolean has(AdviceDimension dimension) {
+      return !map(dimension).isEmpty();
+    }
+
+    void add(AdviceDimension dimension, String methodKey, Method method) {
+      byDimension
+          .computeIfAbsent(dimension, d -> new LinkedHashMap<>())
+          .computeIfAbsent(methodKey, k -> new ArrayList<>())
+          .add(method);
+    }
+
+    /**
+     * Target methods that get a standard woven definition. {@link AdviceDimension#REWRITE_ARG}
+     * is excluded: its methods are registered by the argument-rewrite path instead, and counting
+     * them here would produce a second, redundant definition for the same method.
+     */
+    Set<String> targetMethodKeys() {
+      Set<String> keys = new HashSet<>();
+      for (Map.Entry<AdviceDimension, Map<String, List<Method>>> entry : byDimension.entrySet()) {
+        if (entry.getKey() == AdviceDimension.REWRITE_ARG) {
+          continue;
+        }
+        keys.addAll(entry.getValue().keySet());
+      }
+      return keys;
     }
   }
 }
