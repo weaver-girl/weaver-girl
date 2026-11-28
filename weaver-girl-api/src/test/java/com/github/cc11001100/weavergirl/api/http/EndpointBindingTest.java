@@ -9,7 +9,9 @@ import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -55,6 +57,50 @@ class EndpointBindingTest {
     ExecutorService executor = EndpointBinding.boundedExecutor(4);
     assertNotNull(executor);
     executor.shutdownNow();
+  }
+
+  /**
+   * The executor must be bounded in the queue as well as in threads. An unbounded queue makes the
+   * thread ceiling meaningless: past it, tasks pile up instead of being rejected. Saturate the pool
+   * with workers that block, then assert a queued submission is refused once the queue is full.
+   */
+  @Test
+  void executorRejectsOnceThreadsAndQueueAreFull() throws Exception {
+    ExecutorService executor = EndpointBinding.boundedExecutor(1);
+    CountDownLatch release = new CountDownLatch(1);
+    CountDownLatch started = new CountDownLatch(1);
+    try {
+      executor.execute(
+          () -> {
+            started.countDown();
+            awaitQuietly(release);
+          });
+      assertTrue(started.await(2, TimeUnit.SECONDS), "the worker never started");
+
+      // With 1 thread, the queue holds QUEUE_FACTOR tasks (private; sized 2). Two fit, the third
+      // submission must be rejected rather than buffered.
+      int accepted = 0;
+      for (int i = 0; i < 8; i++) {
+        try {
+          executor.execute(() -> awaitQuietly(release));
+          accepted++;
+        } catch (java.util.concurrent.RejectedExecutionException expected) {
+          break;
+        }
+      }
+      assertEquals(2, accepted, "only the bounded queue depth should be accepted");
+    } finally {
+      release.countDown();
+      executor.shutdownNow();
+    }
+  }
+
+  private static void awaitQuietly(CountDownLatch latch) {
+    try {
+      latch.await(10, TimeUnit.SECONDS);
+    } catch (InterruptedException interrupted) {
+      Thread.currentThread().interrupt();
+    }
   }
 
   @Test

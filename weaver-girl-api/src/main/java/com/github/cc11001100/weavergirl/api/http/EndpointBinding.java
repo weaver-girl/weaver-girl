@@ -40,6 +40,9 @@ public final class EndpointBinding {
   /** Thread ceiling for one endpoint server. */
   public static final int DEFAULT_MAX_THREADS = 16;
 
+  /** Queued requests accepted per worker thread before a request is rejected. */
+  private static final int QUEUE_FACTOR = 2;
+
   private EndpointBinding() {}
 
   /**
@@ -99,13 +102,18 @@ public final class EndpointBinding {
    */
   public static ExecutorService boundedExecutor(int maxThreads) {
     final AtomicInteger counter = new AtomicInteger();
+    final int threads = maxThreads <= 0 ? DEFAULT_MAX_THREADS : maxThreads;
     ThreadPoolExecutor executor =
         new ThreadPoolExecutor(
-            maxThreads <= 0 ? DEFAULT_MAX_THREADS : maxThreads,
-            maxThreads <= 0 ? DEFAULT_MAX_THREADS : maxThreads,
+            threads,
+            threads,
             60L,
             TimeUnit.SECONDS,
-            new LinkedBlockingQueue<Runnable>(),
+            // The queue must be bounded too: with an unbounded LinkedBlockingQueue, tasks past the
+            // thread ceiling are never rejected and simply pile up, so a scrape loop or a port
+            // scan could still exhaust memory. Two queued requests per worker, then the standard
+            // AbortPolicy surfaces a rejected request instead of buffering it forever.
+            new LinkedBlockingQueue<Runnable>(threads * QUEUE_FACTOR),
             new java.util.concurrent.ThreadFactory() {
               @Override
               public Thread newThread(Runnable runnable) {

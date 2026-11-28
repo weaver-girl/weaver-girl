@@ -2962,68 +2962,51 @@ public class AnnotationPluginLoader {
     return rawKey;
   }
 
-  private String resolvePointcutKey(Before ann, Map<String, PointcutExpression> namedPointcuts) {
-    String base = resolvePointcutKey(ann.value(), namedPointcuts);
-    if (ann.parameterTypes().length == 0) {
+  /**
+   * The one place that turns a lifecycle annotation's {@code value()} and {@code parameterTypes()}
+   * into a target-method key. The eight {@code resolvePointcutKey(Xxx ann, ...)} overloads below
+   * differ only in which annotation they read, so each delegates here rather than repeating the
+   * concatenation.
+   */
+  private String lifecycleKey(
+      String value, String[] parameterTypes, Map<String, PointcutExpression> namedPointcuts) {
+    String base = resolvePointcutKey(value, namedPointcuts);
+    if (parameterTypes.length == 0) {
       return base;
     }
-    return base + "(" + String.join(",", ann.parameterTypes()) + ")";
+    return base + "(" + String.join(",", parameterTypes) + ")";
+  }
+
+  private String resolvePointcutKey(Before ann, Map<String, PointcutExpression> namedPointcuts) {
+    return lifecycleKey(ann.value(), ann.parameterTypes(), namedPointcuts);
   }
 
   private String resolvePointcutKey(After ann, Map<String, PointcutExpression> namedPointcuts) {
-    String base = resolvePointcutKey(ann.value(), namedPointcuts);
-    if (ann.parameterTypes().length == 0) {
-      return base;
-    }
-    return base + "(" + String.join(",", ann.parameterTypes()) + ")";
+    return lifecycleKey(ann.value(), ann.parameterTypes(), namedPointcuts);
   }
 
   private String resolvePointcutKey(AfterReturning ann, Map<String, PointcutExpression> namedPointcuts) {
-    String base = resolvePointcutKey(ann.value(), namedPointcuts);
-    if (ann.parameterTypes().length == 0) {
-      return base;
-    }
-    return base + "(" + String.join(",", ann.parameterTypes()) + ")";
+    return lifecycleKey(ann.value(), ann.parameterTypes(), namedPointcuts);
   }
 
   private String resolvePointcutKey(AfterThrowing ann, Map<String, PointcutExpression> namedPointcuts) {
-    String base = resolvePointcutKey(ann.value(), namedPointcuts);
-    if (ann.parameterTypes().length == 0) {
-      return base;
-    }
-    return base + "(" + String.join(",", ann.parameterTypes()) + ")";
+    return lifecycleKey(ann.value(), ann.parameterTypes(), namedPointcuts);
   }
 
   private String resolvePointcutKey(OnException ann, Map<String, PointcutExpression> namedPointcuts) {
-    String base = resolvePointcutKey(ann.value(), namedPointcuts);
-    if (ann.parameterTypes().length == 0) {
-      return base;
-    }
-    return base + "(" + String.join(",", ann.parameterTypes()) + ")";
+    return lifecycleKey(ann.value(), ann.parameterTypes(), namedPointcuts);
   }
 
   private String resolvePointcutKey(Around ann, Map<String, PointcutExpression> namedPointcuts) {
-    String base = resolvePointcutKey(ann.value(), namedPointcuts);
-    if (ann.parameterTypes().length == 0) {
-      return base;
-    }
-    return base + "(" + String.join(",", ann.parameterTypes()) + ")";
+    return lifecycleKey(ann.value(), ann.parameterTypes(), namedPointcuts);
   }
 
   private String resolvePointcutKey(AfterFinally ann, Map<String, PointcutExpression> namedPointcuts) {
-    String base = resolvePointcutKey(ann.value(), namedPointcuts);
-    if (ann.parameterTypes().length == 0) {
-      return base;
-    }
-    return base + "(" + String.join(",", ann.parameterTypes()) + ")";
+    return lifecycleKey(ann.value(), ann.parameterTypes(), namedPointcuts);
   }
 
   private String resolvePointcutKey(RewriteArg ann, Map<String, PointcutExpression> namedPointcuts) {
-    String base = resolvePointcutKey(ann.value(), namedPointcuts);
-    if (ann.parameterTypes().length == 0) {
-      return base;
-    }
-    return base + "(" + String.join(",", ann.parameterTypes()) + ")";
+    return lifecycleKey(ann.value(), ann.parameterTypes(), namedPointcuts);
   }
 
   private void recordTiming(MethodInvocation invocation, Timed timedAnnotation) {
