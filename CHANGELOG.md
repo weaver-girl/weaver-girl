@@ -4,6 +4,37 @@ All notable changes to the Weaver-Girl project, organized by development phase.
 
 ---
 
+## Unreleased — code-quality pass (2026-11-29)
+
+Structural cleanups, plus three `@DeclarePrecedence` defects surfaced while chasing a full-suite
+failure that had been mistaken for test-order flakiness.
+
+- **`AnnotationPluginLoader.loadFromAnnotatedClass` split.** The method carried forty parallel
+  advice maps, forty annotation `if`-branches, forty lookups and forty wrapper layers, each
+  dimension touched in four places. Collection now fills one `AdviceMethods` table keyed by
+  `AdviceDimension`; the wrapper chain, target-method set and per-target retrieval read that table.
+  The method body went from 703 to 369 lines.
+- **Nine plugins use `TimingInterceptor` instead of copied timers.** Caffeine, Druid, Dubbo,
+  Feign, Mongo, Redisson, RocketMQ, Redis, Spring each reproduced the same ThreadLocal clock,
+  threshold and event shape. `TimingInterceptor` gained an optional `slowLog`/`errorLog` hook so
+  the plugin keeps its own log lines at the same moment without a second event.
+- **One test harness for every plugin test.** `weaver-girl-testkit` now provides
+  `RecordingInterceptorRegistry` and a map-backed `context(name, map)`; ~5,000 lines of copied
+  anonymous registries/contexts across 127 plugin test files are gone.
+- **Endpoint executor really bounded.** `EndpointBinding.boundedExecutor` used an unbounded queue,
+  so past the thread ceiling tasks piled up instead of being rejected; the queue is now two per
+  worker and a test saturates it.
+- **`@DeclarePrecedence` fixes.** The loader refactor briefly dropped the registration of a
+  precedence-only class (restored); nested classes written with dots now resolve (the old walk
+  rewrote only the last dot); and resolution no longer depends solely on the thread context class
+  loader (a leaked or restricted TCCL silently fell back to registration order). A regression test
+  pins the restricted-TCCL case.
+
+Checkstyle and SpotBugs stay clean on every touched module; the full core suite (1,519 tests) and
+every plugin module pass.
+
+---
+
 ## Unreleased — the Dependabot queue, and two failures behind it (2026-11-25)
 
 Ten Dependabot pull requests had been open since 2026-11-24, which made the repository look
